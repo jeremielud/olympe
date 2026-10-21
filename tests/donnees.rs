@@ -206,6 +206,10 @@ fn quest_and_monster_goals_name_their_events() {
     assert_eq!(jason.parent[2].events[0], Event::Quest { god: 0, quest: 0, hero: 2 });
     // Troie devient rivale entre la première et la deuxième année de la guerre.
     assert_eq!(troy.parent[0].events[20], Event::World { change: 10, cities: (6, 6), amount: (5, 10), month: 0, years: (1, 2) });
+    // Après le vol du Palladium, l'armée de Troie s'affaiblit (15) ; Ithaque, qu'Ulysse
+    // a quittée, se retire du monde (19).
+    assert!(matches!(troy.parent[3].events[0], Event::World { change: 15, cities: (6, 6), .. }));
+    assert!(matches!(troy.parent[2].events[1], Event::World { change: 19, cities: (13, 13), .. }));
     // La colonie de Ténédos reçoit de la cité mère ce qu'elle a mis de côté.
     assert!(matches!(troy.colonies[0].events[1], Event::Gift { resource: 14, cities: (0, 0), amount: (-1, -1), .. }));
     // Une cité demande entre 1000 et 2000 drachmes (19 dans la numérotation de Zeus).

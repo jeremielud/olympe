@@ -146,14 +146,23 @@ pub enum Soldier {
     Horseman,
 }
 
-/// Changements du monde qu'Olympe sait jouer (sous-types des événements du jeu ; sens
-/// établi sur les récits, provisoire pour certains).
+/// Changements du monde qu'Olympe sait jouer : sous-types des événements du jeu, dans
+/// l'ordre de leurs noms dans les textes de l'éditeur (le commerce cesse ou s'ouvre,
+/// une cité redevient alliée, devient rivale ou vassale, une vassale se rebelle,
+/// une armée se renforce ou s'affaiblit, une cité devient active ou inactive,
+/// apparaît ou disparaît).
+pub const TRADE_SHUTS: u8 = 2;
+pub const TRADE_OPENS: u8 = 3;
 pub const BECOMES_ALLY: u8 = 9;
 pub const BECOMES_RIVAL: u8 = 10;
 pub const BECOMES_VASSAL: u8 = 11;
-pub const VASSAL_REBELS: u8 = 13;
-pub const MILITARY_BUILDUP: u8 = 15;
-pub const MILITARY_DECLINE: u8 = 16;
+pub const VASSAL_REBELS: u8 = 12;
+pub const MILITARY_BUILDUP: u8 = 14;
+pub const MILITARY_DECLINE: u8 = 15;
+pub const BECOMES_ACTIVE: u8 = 18;
+pub const BECOMES_INACTIVE: u8 = 19;
+pub const APPEARS: u8 = 20;
+pub const DISAPPEARS: u8 = 21;
 /// Nature des événements programmés qui sont des invasions armées, et des cadeaux
 /// (`GIFT` + ressource).
 pub const INVASION: u8 = 99;
@@ -1533,6 +1542,15 @@ impl World {
                 self.gifts.push((city, resource as u8, given));
                 continue;
             }
+            // Une cité inactive peut reparaître ; les autres changements veulent une
+            // cité active.
+            if matches!(event.change, BECOMES_ACTIVE | APPEARS) {
+                if let Some(target) = self.cities.get_mut(city).filter(|c| !c.active && c.kind == FOREIGN) {
+                    target.active = true;
+                    self.world_news.push((city, event.change));
+                }
+                continue;
+            }
             let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
             // Invasion : seule une cité rivale attaque. Olympe compare les forces : un
             // envahisseur vaut un hoplite (deux points) ; vaincue, la cité perd un
@@ -1582,6 +1600,18 @@ impl World {
                 }
                 MILITARY_DECLINE => {
                     target.military = (target.military as i32 - amount.max(1)).max(1) as u8;
+                    true
+                }
+                TRADE_SHUTS if target.trade => {
+                    target.trade = false;
+                    true
+                }
+                TRADE_OPENS if !target.trade && target.status != RIVAL => {
+                    target.trade = true;
+                    true
+                }
+                BECOMES_INACTIVE | DISAPPEARS => {
+                    target.active = false;
                     true
                 }
                 _ => false,

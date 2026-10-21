@@ -2288,7 +2288,11 @@ fn run(
                     zeus::world::BECOMES_VASSAL => format!("{name} devient votre vassale"),
                     zeus::world::VASSAL_REBELS => format!("{name} se rebelle"),
                     zeus::world::MILITARY_BUILDUP => format!("{name} renforce son armée"),
-                    _ => format!("L'armée de {name} s'affaiblit"),
+                    zeus::world::MILITARY_DECLINE => format!("L'armée de {name} s'affaiblit"),
+                    zeus::world::TRADE_SHUTS => format!("{name} cesse de commercer avec vous"),
+                    zeus::world::TRADE_OPENS => format!("{name} ouvre son commerce avec vous"),
+                    zeus::world::BECOMES_INACTIVE | zeus::world::DISAPPEARS => format!("{name} se retire du monde"),
+                    _ => format!("{name} reparaît dans le monde"),
                 };
                 notice = (line, now);
                 world.world_news.clear();
