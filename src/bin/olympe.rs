@@ -908,6 +908,26 @@ fn request_good(text: &Text, resource: u8) -> String {
     }
 }
 
+/// Catalogue de chaque monstre, dans l'ordre du groupe de textes 87.
+const MONSTER_FILES: [&str; 16] = [
+    "zeus_hydra",
+    "zeus_kraken",
+    "zeus_cerberus",
+    "zeus_cyclops",
+    "zeus_minotaur",
+    "zeus_medusa",
+    "zeus_calydonianboar",
+    "zeus_dragon",
+    "zeus_talos",
+    "zeus_hector",
+    "zeus_scylla",
+    "zeus_maenads",
+    "poseidon_sphinx",
+    "poseidon_chimera",
+    "poseidon_harpie",
+    "poseidon_echidna",
+];
+
 /// Noms des cités du monde.
 const TEXT_CITIES: usize = 21;
 
@@ -1064,6 +1084,8 @@ struct Graphics {
     /// dieux par rang, et catalogue vide pour ceux qui manquent.
     sanctuaries: Vec<Catalog>,
     gods: Vec<Catalog>,
+    /// Catalogues des monstres, chargés quand un monstre paraît.
+    monsters: HashMap<u8, Catalog>,
     empty: Catalog,
     /// Teinte appliquée au texte (blanc = couleur propre de la police).
     ink: (u8, u8, u8),
@@ -1091,6 +1113,7 @@ impl Graphics {
             Source::Interface => &self.interface,
             Source::Sanctuary(stage) => self.sanctuaries.get(stage as usize).unwrap_or(&self.empty),
             Source::God(rank) => self.gods.get(rank as usize).unwrap_or(&self.empty),
+            Source::Monster(monster) => self.monsters.get(&monster).unwrap_or(&self.empty),
         }
     }
 
@@ -1556,6 +1579,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             interface: load("zeus_interface.sg3")?,
             sanctuaries: Vec::new(),
             gods: Vec::new(),
+            monsters: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -1907,6 +1931,7 @@ fn run(
             // Facultatifs : sans eux, les sanctuaires se dessinent sans temple ni statues.
             sanctuaries: (1..=3).map(|n| Catalog::load(&data.join(format!("data/zeus_sanctuary{n}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
             gods: (1..=12).map(|n| Catalog::load(&data.join(format!("data/zeus_god{n:02}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
+            monsters: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -2526,14 +2551,22 @@ fn run(
                     }
                 }
             }
+            // Catalogue d'un monstre qui vient de paraître.
+            for figure in &world.figures {
+                let Source::Monster(monster) = figure.source else { continue };
+                if !graphics.monsters.contains_key(&monster) {
+                    let file = MONSTER_FILES.get(monster as usize).map_or(String::new(), |f| format!("data/{f}.sg3"));
+                    graphics.monsters.insert(monster, Catalog::load(&data.join(file)).unwrap_or_else(|_| Catalog::empty()));
+                }
+            }
             // Personnages : ancrés au centre de leur case, par-dessus le sol de même rang.
             for figure in &world.figures {
                 let image = figure.image();
-                let Some(info) = graphics.figures.images.get(image) else { continue };
+                let Some(info) = graphics.catalog(figure.source).images.get(image) else { continue };
                 let wx = (figure.x - figure.y) * HALF_WIDTH + HALF_WIDTH - 1.0 - info.offset_x as f32;
                 let wy = (figure.x + figure.y) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32;
                 if wx < right && wx + info.width as f32 > left && wy < bottom && wy + info.height as f32 > top {
-                    draw_list.push(((figure.x + figure.y).ceil() as i32, i32::MAX, wx, wy, Source::Figures, image));
+                    draw_list.push(((figure.x + figure.y).ceil() as i32, i32::MAX, wx, wy, figure.source, image));
                 }
             }
             draw_list.sort_unstable_by_key(|&(depth, layer, ..)| (depth, layer));

@@ -34,7 +34,8 @@ Ce qui fonctionne :
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont
-  suivis (les monstres ne paraissent pas encore dans la cité) ;
+  suivis ; les monstres entrent dans la cité, où ils détruisent un bâtiment tous les
+  deux mois jusqu'à ce que leur héros les tue (les monstres marins restent au large) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
@@ -51,8 +52,8 @@ Ce qui fonctionne :
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), monstres
-et héros à l'écran, batailles, commerce, tributs et colonies (une colonie part de sa carte
+Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), héros à
+l'écran et combats, batailles, commerce, tributs et colonies (une colonie part de sa carte
 vierge, le trésor suit le joueur), les objectifs qui en dépendent ; scierie et
 atelier de maçonnerie se posent sans forêt ni carrière, et les marchandises mises
 de côté ne parviennent pas à la cité suivante ; conseillers, voix, vidéos, et

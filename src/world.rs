@@ -209,6 +209,25 @@ const CONQUEST_PER_SHIELD: i32 = 24;
 pub const TRADE_ROUTE_COST: i32 = 1000;
 const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 
+/// Monstre sans cible, et repos d'un monstre entre deux destructions (Olympe). Le
+/// Kraken et Scylla, monstres marins, ne marchent pas dans la cité.
+const NO_TARGET: u16 = u16::MAX;
+const MONSTER_REST_TICKS: u64 = TICKS_PER_MONTH * 2;
+const SEA_MONSTERS: [u8; 2] = [1, 10];
+
+/// Chemin en ligne droite, case par case (diagonales permises), rangé à l'envers.
+fn straight_path(from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
+    let mut path = Vec::new();
+    let (mut x, mut y) = (from.0 as i32, from.1 as i32);
+    while (x, y) != (to.0 as i32, to.1 as i32) {
+        x += (to.0 as i32 - x).signum();
+        y += (to.1 as i32 - y).signum();
+        path.push((x as u16, y as u16));
+    }
+    path.reverse();
+    path
+}
+
 /// Durée d'un combat de héros contre un monstre, et d'une quête (valeurs d'Olympe).
 const HERO_FIGHT_TICKS: u64 = TICKS_PER_MONTH;
 const QUEST_TICKS: u64 = TICKS_PER_MONTH * 6;
@@ -590,11 +609,15 @@ enum Role {
     Deliver { to: u16, load: i32, from: u16 },
     /// Acheteuse en route vers un fournisseur pour le compte d'une échoppe.
     Fetch { source: u16, vendor: u16 },
+    /// Monstre en marche vers le bâtiment `target`, qu'il détruira ; il se repose
+    /// ensuite jusqu'à `rest_until`.
+    Monster { monster: u8, target: u16, rest_until: u64 },
 }
 
 pub struct Figure {
-    /// Première image de marche du personnage dans `sprmain.sg3`.
+    /// Première image de marche du personnage, dans le catalogue `source`.
     image_base: usize,
+    pub source: Source,
     /// Position en cases, fractionnaire pendant un déplacement.
     pub x: f32,
     pub y: f32,
@@ -1050,6 +1073,7 @@ impl World {
             Role::Deliver { to, from, .. } => to != id && from != id,
             Role::Fetch { source, vendor } => source != id && vendor != id,
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
+            Role::Monster { .. } => true,
         });
         self.rebuild_appeal();
     }
@@ -1484,6 +1508,39 @@ impl World {
         self.cities.iter().filter(|c| c.active && c.trade && c.status != RIVAL).count() as i32
     }
 
+    /// Monstres dans la cité : chaque monstre vivant (sauf ceux de la mer) y marche ;
+    /// un monstre tué disparaît.
+    fn release_monsters(&mut self) {
+        let alive: Vec<u8> = self.monsters.iter().filter(|m| !m.slain && !SEA_MONSTERS.contains(&m.monster)).map(|m| m.monster).collect();
+        self.figures.retain(|f| !matches!(f.role, Role::Monster { monster, .. } if !alive.contains(&monster)));
+        for monster in alive {
+            if self.figures.iter().any(|f| matches!(f.role, Role::Monster { monster: m, .. } if m == monster)) {
+                continue;
+            }
+            // Il arrive par l'entrée de la carte, depuis la première case dessinée.
+            let start = self.map.entry_points().first().copied().unwrap_or((GRID / 2, GRID / 2));
+            let inward = straight_path((start.0 as u16, start.1 as u16), (GRID as u16 / 2, GRID as u16 / 2));
+            let at = inward
+                .iter()
+                .rev()
+                .copied()
+                .find(|&(x, y)| self.map.image(x as usize, y as usize) != 0 && self.map.edge(x as usize, y as usize) & EDGE_DRAW_TILE != 0)
+                .unwrap_or((GRID as u16 / 2, GRID as u16 / 2));
+            self.figures.push(Figure {
+                image_base: 1,
+                x: at.0 as f32,
+                y: at.1 as f32,
+                direction: 0,
+                frame: 0,
+                path: Vec::new(),
+                from: at,
+                came_from: None,
+                role: Role::Monster { monster, target: NO_TARGET, rest_until: self.ticks + MONSTER_REST_TICKS },
+                source: Source::Monster(monster),
+            });
+        }
+    }
+
     /// La quête ou le monstre de cet événement est venu à bout.
     pub fn quest_done(&self, event: usize) -> bool {
         self.quests.iter().any(|q| q.event == event && q.state == QuestState::Done)
@@ -1657,6 +1714,7 @@ impl World {
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
         self.call_heroes();
+        self.release_monsters();
         self.change_world();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
@@ -1822,6 +1880,7 @@ impl World {
             from,
             came_from: None,
             role: Role::Rounds { rounds, steps_left: rounds_length(&rounds), heading, home: id as u16 },
+            source: Source::Figures,
         });
         if let Some(building) = self.buildings[id].as_mut() {
             building.next_walk = WALKER_OUT;
@@ -1896,6 +1955,7 @@ impl World {
             from: start,
             came_from: None,
             role,
+            source: Source::Figures,
         });
     }
 
@@ -2035,6 +2095,31 @@ impl World {
                 continue;
             }
             match role {
+                // Monstre arrivé : il détruit sa cible, se repose, puis en choisit une autre.
+                Role::Monster { monster, target, rest_until } => {
+                    let now = self.ticks;
+                    if target != NO_TARGET {
+                        if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
+                            let (kind, x, y) = (building.kind, building.x, building.y);
+                            self.remove_building(target, Cell::Rubble(0));
+                            self.disasters.push(Disaster { fire: false, kind, x, y });
+                        }
+                        self.figures[index].role = Role::Monster { monster, target: NO_TARGET, rest_until: now + MONSTER_REST_TICKS };
+                    } else if now >= rest_until {
+                        let standing: Vec<u16> = (0..self.buildings.len()).filter(|&i| self.buildings[i].is_some()).map(|i| i as u16).collect();
+                        if !standing.is_empty() {
+                            let target = standing[self.next_random() as usize % standing.len()];
+                            let building = self.buildings[target as usize].as_ref().unwrap();
+                            let path = straight_path(at, (building.x as u16, building.y as u16));
+                            let figure = &mut self.figures[index];
+                            if let Some(&next) = path.last() {
+                                figure.direction = direction(at, next);
+                            }
+                            figure.path = path;
+                            figure.role = Role::Monster { monster, target, rest_until };
+                        }
+                    }
+                }
                 Role::Immigrant { home, people } => {
                     if let Some(house) = self.buildings.get_mut(home as usize).and_then(|b| b.as_mut()).and_then(|b| b.house.as_mut()) {
                         house.arriving -= people;
@@ -2483,6 +2568,7 @@ impl World {
                 }
                 Role::Deliver { to, load, from } => format!("livraison {to} {load} {from} 0 0"),
                 Role::Fetch { source, vendor } => format!("achat {source} {vendor} 0 0 0"),
+                Role::Monster { monster, target, rest_until } => format!("bete {monster} {target} {rest_until} 0 0"),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -2687,6 +2773,7 @@ impl World {
                         },
                         "livraison" => Role::Deliver { to: a as u16, load: b as i32, from: c as u16 },
                         "achat" => Role::Fetch { source: a as u16, vendor: b as u16 },
+                        "bete" => Role::Monster { monster: a as u8, target: b as u16, rest_until: c as u64 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -2703,6 +2790,10 @@ impl World {
                         from,
                         came_from,
                         role,
+                        source: match role {
+                            Role::Monster { monster, .. } => Source::Monster(monster),
+                            _ => Source::Figures,
+                        },
                     });
                 }
                 "" => {}
@@ -2717,6 +2808,7 @@ impl World {
             Role::Deliver { to, from, .. } => exists(to) && exists(from),
             Role::Fetch { source, vendor } => exists(source) && exists(vendor),
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
+            Role::Monster { .. } => true,
         });
         self.cells = cells;
         self.fires = fires;

@@ -453,3 +453,26 @@ fn neglected_requests_turn_allies_into_rivals() {
     (0..26 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(world.cities[0].status, RIVAL);
 }
+
+#[test]
+fn a_living_monster_wrecks_the_city_until_slain() {
+    use zeus::map::Source;
+    use zeus::world::Monster;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    let standing = |w: &World| w.buildings.iter().flatten().count();
+    let before = standing(&world);
+    world.monsters.push(Monster { event: 0, monster: 3, fight_until: None, slain: false });
+    (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    assert_eq!(world.figures.iter().filter(|f| f.source == Source::Monster(3)).count(), 1);
+    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(standing(&world) < before, "le Cyclope n'a rien détruit");
+    // La sauvegarde garde le monstre en marche.
+    let (mut other, ..) = self::world(&data);
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.figures.iter().filter(|f| f.source == Source::Monster(3)).count(), 1);
+    world.monsters[0].slain = true;
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.figures.iter().all(|f| f.source != Source::Monster(3)));
+}

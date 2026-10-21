@@ -93,6 +93,8 @@ pub enum Source {
     Sanctuary(u8),
     /// `zeus_godNN.sg3` : grande statue d'un dieu, par rang du dieu dans le jeu.
     God(u8),
+    /// Catalogue d'un monstre (numéro du groupe de textes 87).
+    Monster(u8),
 }
 
 /// Dans tous les catalogues, les 200 premières images sont communes (« système ») ;
