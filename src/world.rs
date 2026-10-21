@@ -168,6 +168,11 @@ pub struct Request {
 pub const DRACHMAS: u8 = 23;
 pub const TROOPS: u8 = 24;
 pub const ANY_FOOD: u8 = 25;
+/// Faveur gagnée en satisfaisant une demande, perdue en l'ignorant ; en dessous du
+/// seuil, une alliée devient rivale et une vassale se rebelle (barème d'Olympe).
+const FAVOR_FOR_SERVICE: i32 = 15;
+const FAVOR_FOR_NEGLECT: i32 = 20;
+const FAVOR_THRESHOLD: i32 = 20;
 /// Délai laissé pour satisfaire une demande (valeur d'Olympe).
 const REQUEST_TICKS: u64 = TICKS_PER_MONTH * 12;
 /// Nature des événements programmés qui sont des demandes.
@@ -1355,6 +1360,9 @@ impl World {
         };
         if done {
             self.requests.remove(index);
+            if let Some(city) = self.cities.get_mut(request.city) {
+                city.favor = (city.favor + FAVOR_FOR_SERVICE).min(100);
+            }
         }
         done
     }
@@ -1375,7 +1383,17 @@ impl World {
         // Demandes restées sans réponse.
         let expired: Vec<Request> = self.requests.iter().filter(|r| r.until <= now).copied().collect();
         self.requests.retain(|r| r.until > now);
-        self.request_news.extend(expired.into_iter().map(RequestNews::Expired));
+        for request in expired {
+            self.request_news.push(RequestNews::Expired(request));
+            let Some(city) = self.cities.get_mut(request.city) else { continue };
+            city.favor = (city.favor - FAVOR_FOR_NEGLECT).max(0);
+            // Une cité fâchée se détourne : l'alliée devient rivale, la vassale se rebelle.
+            if city.favor < FAVOR_THRESHOLD && (city.status == crate::map::ALLY || city.status == VASSAL) {
+                let change = if city.status == VASSAL { VASSAL_REBELS } else { BECOMES_RIVAL };
+                city.status = RIVAL;
+                self.world_news.push((request.city, change));
+            }
+        }
         let due: Vec<Scheduled> = self.scheduled.iter().filter(|s| s.at <= now).copied().collect();
         self.scheduled.retain(|s| s.at > now);
         for event in due {
@@ -2401,6 +2419,8 @@ impl World {
         let military: Vec<String> = self.cities.iter().map(|c| c.military.to_string()).collect();
         if !military.is_empty() {
             let _ = writeln!(out, "forces {}", military.join(" "));
+            let favor: Vec<String> = self.cities.iter().map(|c| c.favor.to_string()).collect();
+            let _ = writeln!(out, "faveurs {}", favor.join(" "));
         }
         for q in &self.quests {
             let (state, until) = match q.state {
@@ -2495,6 +2515,7 @@ impl World {
         let (mut campaign, mut statuses): (u64, Vec<i32>) = (0, Vec::new());
         let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
         let mut requests = Vec::new();
+        let mut favors: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2533,6 +2554,7 @@ impl World {
                     amount: number_at(2)? as i32,
                     until: number_at(3)? as u64,
                 }),
+                "faveurs" => favors = (0..rest.len()).map(|i| number_at(i).map(|f| f as i32)).collect::<Result<_, _>>()?,
                 "forces" => military = (0..rest.len()).map(|i| number_at(i).map(|m| m as u8)).collect::<Result<_, _>>()?,
                 "heros" => {
                     for (i, slot) in heroes.iter_mut().enumerate() {
@@ -2715,6 +2737,9 @@ impl World {
         (self.requests, self.request_news) = (requests, Vec::new());
         for (city, strength) in self.cities.iter_mut().zip(military) {
             city.military = strength;
+        }
+        for (city, favor) in self.cities.iter_mut().zip(favors) {
+            city.favor = favor;
         }
         for (city, status) in self.cities.iter_mut().zip(statuses) {
             (city.status, city.trade) = (status % 10, status >= 10);

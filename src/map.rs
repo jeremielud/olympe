@@ -49,6 +49,9 @@ const CITY_KIND: usize = 2;
 const CITY_NAME: usize = 3;
 const CITY_STATUS: usize = 212;
 const CITY_MILITARY: usize = 220;
+/// Attitude envers le joueur (entier en 340 : de 50 à 85 dans les aventures, 80
+/// pour les colonies à fonder) ; Olympe en fait la faveur de la cité.
+const CITY_FAVOR: usize = 340;
 pub const FOREIGN: u8 = 2;
 pub const ALLY: i32 = 0;
 pub const RIVAL: i32 = 1;
@@ -64,6 +67,8 @@ pub struct City {
     pub military: u8,
     /// Route commerciale ouverte par le joueur.
     pub trade: bool,
+    /// Faveur de la cité envers le joueur, de 0 à 100.
+    pub favor: i32,
 }
 
 /// Catalogue d'où provient une image de terrain.
@@ -192,6 +197,7 @@ impl Map {
                 status: le32(r, CITY_STATUS) as i32,
                 military: r[CITY_MILITARY],
                 trade: false,
+                favor: (le32(r, CITY_FAVOR) as i32).clamp(0, 100),
             })
             .collect()
     }

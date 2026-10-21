@@ -43,7 +43,8 @@ Ce qui fonctionne :
   les événements de l'épisode changent le monde à leur date (une cité devient
   rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
   demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
-  depuis le panneau `C` (sans effet encore sur la faveur des cités) ;
+  depuis le panneau `C` : servir une cité accroît sa faveur, l'ignorer la fâche,
+  jusqu'à la rendre rivale (barème d'Olympe) ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;

@@ -2886,7 +2886,7 @@ fn run(
                             (false, false) => format!("  [ouvrir le commerce : {} dr.]", zeus::world::TRADE_ROUTE_COST),
                             (false, true) => String::new(),
                         };
-                        (i, format!("{} ({status}, force {}{action})", city_name(&text, &world, i), c.military), trade)
+                        (i, format!("{} ({status}, faveur {}, force {}{action})", city_name(&text, &world, i), c.favor, c.military), trade)
                     })
                     .collect();
                 let line_width = |(_, city, trade): &(usize, String, String)| graphics.text_width(FONT_TEXT, city) + graphics.text_width(FONT_TEXT, trade);
