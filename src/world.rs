@@ -119,6 +119,9 @@ const MIN_HOUSEHOLD: i32 = 8;
 const HOUSE_FOOD_MONTHS: i32 = 4;
 /// Un chargement nourrit ce nombre d'habitants pendant un mois.
 const PEOPLE_PER_LOAD: i32 = 64;
+/// Durée d'un combat de héros contre un monstre, et d'une quête (valeurs d'Olympe).
+const HERO_FIGHT_TICKS: u64 = TICKS_PER_MONTH;
+const QUEST_TICKS: u64 = TICKS_PER_MONTH * 6;
 /// Une cité n'a jamais plus de quatre sanctuaires à la fois.
 pub const MAX_SANCTUARIES: usize = 4;
 /// Marchandises qu'on livre à un sanctuaire en chantier, dans l'ordre de ses besoins.
@@ -309,6 +312,47 @@ pub enum Function {
     /// Sanctuaire d'un dieu (numéro du jeu), et ce qu'il faut y livrer pour l'achever :
     /// marbre, bois, sculptures.
     Sanctuary { god: u8, needs: [u16; 3] },
+    /// Temple d'un héros : le héros y vient quand ses exigences sont remplies.
+    HeroHall(u8),
+}
+
+/// Quête de l'épisode, désignée par son événement.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Quest {
+    pub event: usize,
+    pub god: u8,
+    pub quest: u8,
+    pub hero: u8,
+    pub state: QuestState,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum QuestState {
+    /// Le héros n'est pas encore parti.
+    Waiting,
+    /// Le héros est en route ; il revient, quête accomplie, à ce pas de simulation.
+    Away { until: u64 },
+    Done,
+}
+
+/// Monstre de l'épisode, désigné par son événement.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Monster {
+    pub event: usize,
+    pub monster: u8,
+    /// Le héros l'affronte jusqu'à ce pas de simulation.
+    pub fight_until: Option<u64>,
+    pub slain: bool,
+}
+
+/// Ce qui vient d'arriver aux héros, pour prévenir le joueur.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HeroNews {
+    Arrived(u8),
+    Departed(usize),
+    QuestDone(usize),
+    Fighting(usize),
+    Slain(usize),
 }
 
 /// Attrait qu'un bâtiment donne à son voisinage, tel que décrit dans les règles.
@@ -545,6 +589,11 @@ pub struct World {
     pub set_aside: [i32; RESOURCES],
     /// Nombre de sanctuaires que l'épisode permet d'avoir à la fois (quatre au plus).
     pub max_sanctuaries: usize,
+    /// Quêtes et monstres de l'épisode, héros présents dans la cité, et nouvelles.
+    pub quests: Vec<Quest>,
+    pub monsters: Vec<Monster>,
+    pub heroes: [bool; crate::heroes::HEROES],
+    pub hero_news: Vec<HeroNews>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -577,6 +626,10 @@ impl World {
             best_produced: [0; RESOURCES],
             set_aside: [0; RESOURCES],
             max_sanctuaries: MAX_SANCTUARIES,
+            quests: Vec::new(),
+            monsters: Vec::new(),
+            heroes: [false; crate::heroes::HEROES],
+            hero_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -689,6 +742,11 @@ impl World {
                 self.can_build(x, y, k.size) && near_water
             }
             Function::Farm => self.can_build(x, y, k.size) && (0..size).all(|dy| (0..size).all(|dx| self.is_meadow(x + dx, y + dy))),
+            // Un temple par héros.
+            Function::HeroHall(hero) => {
+                !self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::HeroHall(hero))
+                    && (0..k.depth as i32).all(|dy| (0..size).all(|dx| self.is_free(x + dx, y + dy)))
+            }
             // Un sanctuaire par dieu, et pas plus que l'épisode n'en permet.
             Function::Sanctuary { god, .. } => {
                 let sanctuaries: Vec<u8> = self.buildings.iter().flatten().filter_map(|b| self.sanctuary_god(b.kind)).collect();
@@ -1091,6 +1149,66 @@ impl World {
         self.buildings.iter().flatten().filter(|b| self.is_complete(b)).filter_map(|b| self.sanctuary_god(b.kind)).collect()
     }
 
+    /// Héros : chaque mois, ceux dont le temple est bâti et les exigences remplies
+    /// viennent dans la cité ; un héros présent affronte le monstre qui lui revient,
+    /// puis part pour sa quête. Le jeu laisse le joueur l'y envoyer ; Olympe le fait
+    /// partir de lui-même, et les durées (un mois de combat, six de quête) sont les
+    /// siennes.
+    fn call_heroes(&mut self) {
+        let now = self.ticks;
+        for building in self.buildings.iter().flatten() {
+            let Function::HeroHall(hero) = self.kinds[building.kind].function else { continue };
+            if self.heroes[hero as usize] {
+                continue;
+            }
+            let hall = (building.x, building.y, self.kinds[building.kind].size);
+            if crate::heroes::requirements(hero).all(|r| r.check(self, hall).passes()) {
+                self.heroes[hero as usize] = true;
+                self.hero_news.push(HeroNews::Arrived(hero));
+            }
+        }
+        let mut busy = [false; crate::heroes::HEROES];
+        for monster in self.monsters.iter_mut().filter(|m| !m.slain) {
+            let Some(hero) = crate::heroes::hero_against(monster.monster).filter(|&h| self.heroes[h as usize]) else { continue };
+            busy[hero as usize] = true;
+            match monster.fight_until {
+                None => {
+                    monster.fight_until = Some(now + HERO_FIGHT_TICKS);
+                    self.hero_news.push(HeroNews::Fighting(monster.event));
+                }
+                Some(until) if until <= now => {
+                    monster.slain = true;
+                    self.hero_news.push(HeroNews::Slain(monster.event));
+                }
+                Some(_) => {}
+            }
+        }
+        for quest in &mut self.quests {
+            match quest.state {
+                QuestState::Waiting if self.heroes[quest.hero as usize] && !busy[quest.hero as usize] => {
+                    quest.state = QuestState::Away { until: now + QUEST_TICKS };
+                    busy[quest.hero as usize] = true;
+                    self.hero_news.push(HeroNews::Departed(quest.event));
+                }
+                QuestState::Away { until } if until <= now => {
+                    quest.state = QuestState::Done;
+                    self.hero_news.push(HeroNews::QuestDone(quest.event));
+                }
+                QuestState::Away { .. } => busy[quest.hero as usize] = true,
+                _ => {}
+            }
+        }
+    }
+
+    /// La quête ou le monstre de cet événement est venu à bout.
+    pub fn quest_done(&self, event: usize) -> bool {
+        self.quests.iter().any(|q| q.event == event && q.state == QuestState::Done)
+    }
+
+    pub fn monster_slain(&self, event: usize) -> bool {
+        self.monsters.iter().any(|m| m.event == event && m.slain)
+    }
+
     /// Chantiers des sanctuaires : chaque mois, ceux qui ont leurs ouvriers prennent
     /// dans les entrepôts ce qui leur manque (sans porteurs, pour l'instant).
     fn supply_sanctuaries(&mut self) {
@@ -1254,6 +1372,7 @@ impl World {
         self.money += taxes - wages;
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
+        self.call_heroes();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
         if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {
@@ -2000,6 +2119,19 @@ impl World {
         let _ = writeln!(out, "production {}", list(&self.produced));
         let _ = writeln!(out, "meilleure {}", list(&self.best_produced));
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
+        let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
+        let _ = writeln!(out, "heros {}", present.join(" "));
+        for q in &self.quests {
+            let (state, until) = match q.state {
+                QuestState::Waiting => (0, 0),
+                QuestState::Away { until } => (1, until),
+                QuestState::Done => (2, 0),
+            };
+            let _ = writeln!(out, "quete {} {} {} {} {state} {until}", q.event, q.god, q.quest, q.hero);
+        }
+        for m in &self.monsters {
+            let _ = writeln!(out, "monstre {} {} {} {}", m.event, m.monster, m.fight_until.map_or(-1, |t| t as i64), m.slain as u8);
+        }
         for (index, cell) in self.cells.iter().enumerate() {
             let _ = match *cell {
                 Cell::Road => writeln!(out, "route {} {}", index % GRID, index / GRID),
@@ -2076,6 +2208,8 @@ impl World {
         let mut profits = (0, None);
         // Compteurs des objectifs : absents des sauvegardes plus anciennes.
         let mut counters = [[0; RESOURCES]; 3];
+        // Héros, quêtes et monstres : absents des sauvegardes plus anciennes.
+        let (mut heroes, mut quests, mut monsters) = ([false; crate::heroes::HEROES], Vec::new(), Vec::new());
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2098,6 +2232,28 @@ impl World {
                         *slot = number_at(i)? as i32;
                     }
                 }
+                "heros" => {
+                    for (i, slot) in heroes.iter_mut().enumerate() {
+                        *slot = number_at(i)? != 0;
+                    }
+                }
+                "quete" => quests.push(Quest {
+                    event: number_at(0)? as usize,
+                    god: number_at(1)? as u8,
+                    quest: number_at(2)? as u8,
+                    hero: (number_at(3)? as u8).min(crate::heroes::HEROES as u8 - 1),
+                    state: match number_at(4)? {
+                        0 => QuestState::Waiting,
+                        1 => QuestState::Away { until: number_at(5)? as u64 },
+                        _ => QuestState::Done,
+                    },
+                }),
+                "monstre" => monsters.push(Monster {
+                    event: number_at(0)? as usize,
+                    monster: number_at(1)? as u8,
+                    fight_until: u64::try_from(number_at(2)?).ok(),
+                    slain: number_at(3)? != 0,
+                }),
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
                     *cells.get_mut(y * GRID + x).ok_or_else(bad)? = if kind == "route" { Cell::Road } else { Cell::AgoraRoad };
@@ -2250,6 +2406,8 @@ impl World {
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;
         [self.produced, self.best_produced, self.set_aside] = counters;
+        (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
+        self.hero_news.clear();
         self.rebuild_appeal();
         Ok(())
     }

@@ -178,6 +178,9 @@ impl Goal {
                 Some(best) => against(best, first),
                 None => Status::Pending(None),
             },
+            // Objectifs désignés par un événement de l'épisode.
+            Kind::Quest => if world.quest_done(first.max(0) as usize) { Status::Met } else { Status::Pending(None) },
+            Kind::Slay => if world.monster_slain(first.max(0) as usize) { Status::Met } else { Status::Pending(None) },
             Kind::Sanctuary => {
                 let built = world.sanctuaries();
                 match first {

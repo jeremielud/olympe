@@ -42,6 +42,21 @@ const PROPONENT_GODS: usize = 48;
 const SANCTUARY_ALLOWED: usize = 208;
 const MAX_SANCTUARIES: usize = 220;
 const PROXIMATE_PROPONENTS: usize = 6;
+/// Événements : 150 de 124 octets par épisode (dix de la cité mère, quatre de
+/// colonie), juste après les tables de mythologie ; leur nombre réel par épisode est
+/// rangé après la copie de travail de la carte (lecture de 0x425d00).
+const EVENT_SIZE: usize = 124;
+const EVENTS_PER_EPISODE: usize = 150;
+const EVENT_COUNTS_GAP: usize = 1 + 4 + 20 + 500_000;
+/// Dans un événement : son type (octet 2), puis pour une quête le héros (octet 3), le
+/// dieu (octet 96) et le rang de la quête parmi les deux du dieu (octet 122) ; pour
+/// une invasion de monstre, le monstre (octet 3).
+const EVENT_TYPE: usize = 2;
+const EVENT_SUBJECT: usize = 3;
+const EVENT_GOD: usize = 96;
+const EVENT_QUEST: usize = 122;
+const EVENT_QUEST_TYPE: u8 = 4;
+const EVENT_MONSTER_TYPE: u8 = 26;
 
 /// Ce qui suit un épisode de la cité mère. Valeurs écrites par l'éditeur du jeu.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -71,6 +86,18 @@ pub struct Episode {
     /// sanctuaires la cité peut avoir à la fois.
     pub sanctuaries: Vec<u8>,
     pub max_sanctuaries: usize,
+    /// Événements, par rang (les objectifs de quête et de monstre y renvoient).
+    pub events: Vec<Event>,
+}
+
+/// Événement d'un épisode, quand Olympe sait le jouer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Event {
+    /// Quête qu'un dieu confie à un héros ; `quest` vaut 0 ou 1 (chaque dieu en a deux).
+    Quest { god: u8, quest: u8, hero: u8 },
+    /// Monstre qui s'en prend à la cité (numéro du groupe de textes 87).
+    Monster { monster: u8 },
+    Other,
 }
 
 /// Épisode à jouer, désigné par son rang dans la cité mère ou parmi les colonies.
@@ -100,6 +127,22 @@ impl Settings {
         let resource = |r: u8| if version < MODERN_RESOURCES_VERSION { modern_resource(r) } else { r };
         let goals = Goals::parse(file, version).unwrap_or_default();
         let table_size = if version < MODERN_RESOURCES_VERSION { MYTHOLOGY_SIZE } else { MYTHOLOGY_SIZE_POSEIDON };
+        let events_start = MYTHOLOGY + 14 * table_size;
+        let event_counts = events_start + 14 * EVENTS_PER_EPISODE * EVENT_SIZE + EVENT_COUNTS_GAP;
+        let events_of = |table: usize| -> Vec<Event> {
+            let count = int(event_counts + 4 * table).unwrap_or(0).clamp(0, EVENTS_PER_EPISODE as i32) as usize;
+            (0..count)
+                .map(|i| {
+                    let at = events_start + (table * EVENTS_PER_EPISODE + i) * EVENT_SIZE;
+                    let Some(event) = file.get(at..at + EVENT_SIZE) else { return Event::Other };
+                    match event[EVENT_TYPE] {
+                        EVENT_QUEST_TYPE => Event::Quest { god: event[EVENT_GOD], quest: event[EVENT_QUEST], hero: event[EVENT_SUBJECT] },
+                        EVENT_MONSTER_TYPE => Event::Monster { monster: event[EVENT_SUBJECT] },
+                        _ => Event::Other,
+                    }
+                })
+                .collect()
+        };
         let episodes = |count: i32, headers: usize, records: usize, goals: &[Vec<Goal>], first_table: usize| -> Option<Vec<Episode>> {
             (0..count.clamp(0, 10) as usize)
                 .map(|i| {
@@ -121,6 +164,7 @@ impl Settings {
                         resources: resources.iter().copied().take_while(|&r| r != 0).map(resource).collect(),
                         goals: goals.get(i).cloned().unwrap_or_default(),
                         sanctuaries,
+                        events: events_of(first_table + i),
                         max_sanctuaries: int(table + MAX_SANCTUARIES).map_or(0, |n| n.clamp(0, 4) as usize),
                     })
                 })

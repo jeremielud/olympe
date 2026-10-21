@@ -167,3 +167,28 @@ fn sanctuary_goals_name_allowed_gods() {
     assert_eq!((odyssey.parent[1].sanctuaries.clone(), odyssey.parent[1].max_sanctuaries), (vec![7], 1));
     assert_eq!((odyssey.parent[3].sanctuaries.clone(), odyssey.parent[3].max_sanctuaries), (vec![8, 7, 0], 3));
 }
+
+#[test]
+fn quest_and_monster_goals_name_their_events() {
+    use zeus::pak::Event;
+    let Some(data) = data() else { return };
+    let mut checked = 0;
+    for file in files(&data.join("adventures"), "pak") {
+        let Some(settings) = Campaign::parse(&fs::read(&file).unwrap()).unwrap().settings else { continue };
+        for episode in settings.parent.iter().chain(&settings.colonies) {
+            for goal in &episode.goals {
+                let event = episode.events.get(goal.values[0] as usize).copied();
+                match goal.kind {
+                    Kind::Quest => assert!(matches!(event, Some(Event::Quest { .. })), "{} : {event:?}", file.display()),
+                    Kind::Slay => assert!(matches!(event, Some(Event::Monster { .. })), "{} : {event:?}", file.display()),
+                    _ => continue,
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 40, "{checked}");
+    // Troie : Ulysse doit rapporter le Palladium de Poséidon.
+    let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().settings.unwrap();
+    assert_eq!(troy.parent[2].events[0], Event::Quest { god: 1, quest: 0, hero: 3 });
+}

@@ -19,7 +19,8 @@ use zeus::map::{GRID, Map, Source};
 use zeus::model::Model;
 use zeus::ambience::Ambience;
 use zeus::music::Music;
-use zeus::pak::{Campaign, Episode, Settings, Step};
+use zeus::heroes::{self, Check, Requirement};
+use zeus::pak::{Campaign, Episode, Event, Settings, Step};
 use zeus::paths;
 use zeus::png;
 use zeus::sdl;
@@ -27,7 +28,7 @@ use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
 use zeus::world::{TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
-use zeus::world::{Appeal, Function, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
+use zeus::world::{Appeal, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
   olympe                              lance le jeu (écran de choix d'aventure)
@@ -221,6 +222,11 @@ const GOOD_TEXTS: [usize; 10] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19];
 /// orientations) dans `zeus_godNN.sg3`, et dans `zeus_general.sg3` : petites statues
 /// (quatre par dieu, par rang), dalles décorées, dallage uni (six variantes), autel.
 const SANCTUARY_TEMPLE_IMAGE: usize = 201;
+/// Temple des héros (4 × 4) et statues des six héros de Zeus, dans `zeus_general.sg3`.
+const TYPE_HERO_HALL: usize = 125;
+const HERO_HALL_IMAGE: usize = 1460;
+const HERO_STATUE_IMAGE: usize = 1461;
+const HERO_STATUES: usize = 6;
 const GOD_STATUE_IMAGE: usize = 201;
 const SMALL_STATUE_IMAGE: usize = 1399;
 const SANCTUARY_TILE_IMAGE: usize = 1447;
@@ -281,7 +287,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
-        Function::Sanctuary { .. } => "SANCTUARY",
+        Function::Sanctuary { .. } | Function::HeroHall(_) => "SANCTUARY",
         Function::None => "BEAUTIFICATION",
     }
 }
@@ -378,7 +384,7 @@ fn category_of(function: Function) -> usize {
         Function::Service(Service::Philosophy | Service::Athletics | Service::Drama) | Function::School(_) | Function::Stadium => 6,
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
-        Function::Sanctuary { .. } => 7,
+        Function::Sanctuary { .. } | Function::HeroHall(_) => 7,
         Function::None => 8,
     }
 }
@@ -722,6 +728,12 @@ fn lock_resources(world: &mut World, episode: &Episode) {
         .map(|kind| match kind.function {
             // Seuls les dieux favorables que l'épisode désigne reçoivent un sanctuaire.
             Function::Sanctuary { god, .. } => !episode.sanctuaries.contains(&god),
+            // Un temple de héros, seulement si une quête ou un monstre le demande.
+            Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
+                Event::Quest { hero: wanted, .. } => wanted == hero,
+                Event::Monster { monster } => heroes::hero_against(monster) == Some(hero),
+                Event::Other => false,
+            }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
             Function::Producer(Good::Fleece) => !has(RESOURCE_FLEECE),
@@ -868,6 +880,98 @@ fn sanctuary_part(dx: usize, dy: usize, piece: Piece) -> Part {
         Piece::Plain => plain,
     };
     Part { dx, dy, size: piece.size(), image, crop: false, bay: None, source }
+}
+
+/// Quêtes et monstres d'un épisode qui commence.
+fn begin_events(world: &mut World, episode: &Episode) {
+    world.quests.clear();
+    world.monsters.clear();
+    for (event, &kind) in episode.events.iter().enumerate() {
+        match kind {
+            Event::Quest { god, quest, hero } => {
+                let hero = hero.min(heroes::HEROES as u8 - 1);
+                world.quests.push(Quest { event, god, quest, hero, state: QuestState::Waiting });
+            }
+            Event::Monster { monster } => world.monsters.push(Monster { event, monster, fight_until: None, slain: false }),
+            Event::Other => {}
+        }
+    }
+}
+
+/// Nom d'une quête : chaque dieu en a deux, rangées à 14 d'écart.
+fn quest_name(text: &Text, god: u8, quest: u8) -> String {
+    text.get(heroes::TEXT_QUESTS, god as usize + 14 * quest.min(1) as usize)
+}
+
+/// Annonce d'une nouvelle des héros.
+fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
+    let hero_name = |hero: u8| text.get(heroes::TEXT_HEROES, hero as usize);
+    let monster_name = |event: usize| match events.get(event) {
+        Some(&Event::Monster { monster }) => text.get(heroes::TEXT_MONSTERS, monster as usize),
+        _ => String::new(),
+    };
+    let quest = |event: usize| match events.get(event) {
+        Some(&Event::Quest { god, quest, hero }) => (hero_name(hero), quest_name(text, god, quest)),
+        _ => (String::new(), String::new()),
+    };
+    match news {
+        HeroNews::Arrived(hero) => text.get(heroes::TEXT_HALLS, 68).replace("[hero_name]", &hero_name(hero)),
+        HeroNews::Departed(event) => {
+            let (hero, quest) = quest(event);
+            format!("{hero} part : {quest}")
+        }
+        HeroNews::QuestDone(event) => format!("Quête accomplie : {}", quest(event).1),
+        HeroNews::Fighting(event) => format!("Un héros affronte {}", monster_name(event)),
+        HeroNews::Slain(event) => format!("{} est vaincu", capitalized(&monster_name(event))),
+    }
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or(String::new(), |first| first.to_uppercase().chain(chars).collect())
+}
+
+/// Ligne du panneau d'un temple de héros : une exigence et où elle en est.
+fn requirement_line(text: &Text, requirement: Requirement, check: Check) -> String {
+    let [a, b, c, d, e] = requirement.values;
+    let resource = |id: i32| if id == 25 { text.get(23, 25).to_lowercase() } else { text.get(23, id.max(0) as usize).to_lowercase() };
+    let hall = |index: usize| text.get(heroes::TEXT_HALLS, index);
+    let what = match requirement.kind {
+        0 => {
+            let unit = if b == 19 { 400 } else { 100 };
+            let alternative = if c > 0 { format!(" ou {}", resource(c)) } else { String::new() };
+            format!("{} {}{alternative} en réserve", a / unit, resource(b))
+        }
+        1 if b == 43 => format!("{a} {} {}", resource(15).to_lowercase(), hall(34)),
+        1 => format!("{a} trières"),
+        2 => format!("{a} manoirs ou mieux"),
+        10 => format!("{a} {}", hall(35)),
+        3 => {
+            let gods: Vec<String> = [b, c, d, e].iter().filter(|&&g| g >= 0).map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
+            if a > 1 { format!("{a} sanctuaires : {}", gods.join(", ")) } else { format!("{} {}", hall(47), gods.join(" ou ")) }
+        }
+        4 => hall(48),
+        5 if b == -1 => hall(49),
+        5 => hall(51),
+        6 => hall(50),
+        7 => format!("{a} {}", hall(52)),
+        8 => hall(54),
+        9 => hall(55),
+        11 => format!("{a} drachmes {}", hall(36)),
+        12 => hall(56),
+        13 => hall(57),
+        14 => hall(58),
+        17 => hall(124),
+        _ => "Condition particulière".to_string(),
+    };
+    let state = match check {
+        Check::Met => "rempli".to_string(),
+        Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 9 | 17) => format!("{current} % sur {wanted} %"),
+        Check::Missing { current, wanted } if wanted > 1 => format!("{current} sur {wanted}"),
+        Check::Missing { .. } => "pas encore".to_string(),
+        Check::Unsimulated => "non simulé, tenu pour rempli".to_string(),
+    };
+    format!("{what} ({state})")
 }
 
 /// Prépare l'affichage d'une cité où l'on arrive : son sol, la vue sur son terrain
@@ -1685,6 +1789,29 @@ fn run(
             product: 0,
         });
     }
+    // Temples des héros : un par héros, la statue du héros devant (les six de Zeus).
+    for hero in 0..heroes::HEROES {
+        let rule = rules(TYPE_HERO_HALL)?;
+        let mut parts = vec![Part { dx: 0, dy: 0, size: 4, image: HERO_HALL_IMAGE, crop: false, bay: None, source: Source::General }];
+        if hero < HERO_STATUES {
+            parts.push(Part { dx: 1, dy: 3, size: 1, image: HERO_STATUE_IMAGE + hero, crop: false, bay: None, source: Source::General });
+        }
+        kinds.push(Kind {
+            name: text.get(heroes::TEXT_HALLS, heroes::FIRST_HALL_TEXT + hero),
+            cost: rule.cost,
+            size: 4,
+            depth: 4,
+            parts,
+            function: Function::HeroHall(hero as u8),
+            walker: 0,
+            stock_overlay: None,
+            employees: rule.employees,
+            appeal: appeal_of(TYPE_HERO_HALL)?,
+            fire_risk: rule.fire_risk,
+            damage_risk: rule.damage_risk,
+            product: 0,
+        });
+    }
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -1696,6 +1823,7 @@ fn run(
     // La démonstration a droit à tout.
     if let Some(first) = episode(Step::Parent(0)).filter(|_| !demo) {
         lock_resources(&mut world, first);
+        begin_events(&mut world, first);
     }
     let mut tool = Tool::None;
     let name = map_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -1947,6 +2075,12 @@ fn run(
             }
 
             // Sinistres survenus pendant la simulation : on prévient le joueur.
+            // Héros : arrivées, départs en quête, combats.
+            if let Some(news) = world.hero_news.pop() {
+                let events = episode(journey.step()).map_or(&[][..], |e| &e.events[..]);
+                notice = (hero_news(&text, news, events), now);
+                world.hero_news.clear();
+            }
             if let Some(disaster) = world.disasters.pop() {
                 let what = if disaster.fire { "Incendie" } else { "Effondrement" };
                 notice = (format!("{what} : {}", world.kinds[disaster.kind].name), now);
@@ -1964,11 +2098,12 @@ fn run(
                         (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
                     }
                     let step = journey.step();
+                    world.start_episode();
                     if let Some(episode) = episode(step).filter(|_| !demo) {
                         lock_resources(&mut world, episode);
+                        begin_events(&mut world, episode);
                     }
                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
-                    world.start_episode();
                     intro = story(data, map_path, settings.as_ref(), step, Moment::Opening);
                 } else {
                     journey.position = journey.order.len();
@@ -2027,6 +2162,10 @@ fn run(
                                     let step = journey.step();
                                     if let Some(episode) = episode(step).filter(|_| !demo) {
                                         lock_resources(&mut world, episode);
+                                        // Sauvegardes d'avant les héros : quêtes et monstres repartent.
+                                        if world.quests.is_empty() && world.monsters.is_empty() {
+                                            begin_events(&mut world, episode);
+                                        }
                                     }
                                     // Les objectifs déjà atteints ne sont pas annoncés de nouveau.
                                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
@@ -2515,6 +2654,16 @@ fn run(
                     let (fire, damage) = world.risks(building);
                     lines.push(format!("Risques : feu {fire} %, dégâts {damage} %"));
                 }
+                // Temple de héros : où en sont les exigences du héros.
+                if let Function::HeroHall(hero) = world.kinds[building.kind].function {
+                    let hall = (building.x, building.y, world.kinds[building.kind].size);
+                    if world.heroes[hero as usize] {
+                        lines.push(text.get(heroes::TEXT_HALLS, 68).replace("[hero_name]", &text.get(heroes::TEXT_HEROES, hero as usize)));
+                    }
+                    for requirement in heroes::requirements(hero) {
+                        lines.push(requirement_line(&text, requirement, requirement.check(&world, hall)));
+                    }
+                }
                 if world.kinds[building.kind].function == Function::Storehouse {
                     for good in GOODS.into_iter().filter(|&good| building.goods[good as usize] > 0) {
                         lines.push(format!("{} : {}", good_names[good as usize], building.goods[good as usize]));
@@ -2601,7 +2750,17 @@ fn run(
                             Status::Pending(None) => text.get(194, 52),
                             Status::Unsupported => "pas encore simulé par Olympe".to_string(),
                         };
-                        format!("{} ({state})", goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_))))
+                        let event = episode(journey.step()).and_then(|e| e.events.get(goal.values[0].max(0) as usize).copied());
+                        let label = match (goal.kind, event) {
+                            (GoalKind::Quest, Some(Event::Quest { god, quest, hero })) => {
+                                format!("{} ({})", quest_name(&text, god, quest), text.get(heroes::TEXT_HEROES, hero as usize))
+                            }
+                            (GoalKind::Slay, Some(Event::Monster { monster })) => {
+                                text.get(194, 28).replace("[monster]", &text.get(heroes::TEXT_MONSTERS, monster as usize))
+                            }
+                            _ => goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_))),
+                        };
+                        format!("{label} ({state})")
                     })
                     .collect();
                 if lines.is_empty() {

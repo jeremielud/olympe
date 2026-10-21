@@ -30,16 +30,21 @@ Ce qui fonctionne :
 - sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
   comme dans le jeu ; le chantier prend marbre, bois et sculptures à l'entrepôt
   (quantités provisoires), et les objectifs de sanctuaire sont suivis ;
+- héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
+  ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
+  qui lui revient puis part pour sa quête, et les objectifs correspondants sont
+  suivis (les monstres ne paraissent pas encore dans la cité) ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), héros et monstres, armée, commerce et
-colonies (une colonie part de sa carte vierge, le trésor suit le joueur), les
-objectifs qui en dépendent ; scierie et atelier de maçonnerie se posent sans forêt
-ni carrière, et les marchandises mises de côté ne parviennent pas à la cité
-suivante ; conseillers, voix, vidéos, et l'interface d'origine
+Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), monstres
+et héros à l'écran, armée, commerce et colonies (une colonie part de sa carte
+vierge, le trésor suit le joueur), les objectifs qui en dépendent ; scierie et
+atelier de maçonnerie se posent sans forêt ni carrière, et les marchandises mises
+de côté ne parviennent pas à la cité suivante ; conseillers, voix, vidéos, et
+l'interface d'origine
 (celle d'Olympe est provisoire). Plusieurs réglages d'équilibre (rendements,
 consommations) sont approchés et non repris du jeu.
 

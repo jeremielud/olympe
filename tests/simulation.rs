@@ -158,7 +158,7 @@ fn goals_follow_the_city() {
     // Ni impôts ni salaires dans cette rue : une année à l'équilibre.
     assert_eq!(world.best_year_profit, Some(0));
     assert_eq!(profit.status(&world), Status::Met);
-    assert_eq!(goal(GoalKind::Quest, [0, 0, 0]).status(&world), Status::Unsupported);
+    assert_eq!(goal(GoalKind::Rule, [0, 0, 0]).status(&world), Status::Unsupported);
     // Le bilan annuel passe par la sauvegarde.
     let (mut other, ..) = self::world(&data);
     other.load(&world.save()).unwrap();
@@ -296,4 +296,41 @@ fn a_sanctuary_is_built_from_storehouse_materials() {
     assert_eq!(hermes.status(&world), Status::Met);
     assert_eq!(any_two.status(&world), Status::Pending(Some(1)));
     assert_eq!((world.stored(11), world.stored(9), world.stored(19)), (0, 2, 0));
+}
+
+#[test]
+fn heroes_fight_monsters_then_leave_on_quests() {
+    use zeus::world::{Monster, Quest, QuestState};
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Ulysse (3) contre le Cyclope (3), puis le Palladium de Poséidon.
+    world.monsters.push(Monster { event: 1, monster: 3, fight_until: None, slain: false });
+    world.quests.push(Quest { event: 0, god: 1, quest: 0, hero: 3, state: QuestState::Waiting });
+    let quest = Goal { kind: GoalKind::Quest, values: [0, 0, 0] };
+    let slay = Goal { kind: GoalKind::Slay, values: [1, 0, 0] };
+    // Sans temple, Ulysse ne vient pas.
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(slay.status(&world), Status::Pending(None));
+    let hall = world.kinds.len();
+    world.kinds.push(Kind::simple("temple d'Ulysse".into(), 0, 4, 1460, Function::HeroHall(3), 0));
+    assert!(world.place_building(hall, x, y));
+    assert!(!world.can_place(hall, x + 5, y), "un seul temple par héros");
+    // Ses exigences (huile, vin, logements luxueux…) ne sont pas remplies.
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(!world.heroes[3]);
+    let checks: Vec<_> = zeus::heroes::requirements(3).map(|r| r.check(&world, (x as usize, y as usize, 4))).collect();
+    assert_eq!(checks[0], zeus::heroes::Check::Unsimulated, "popularité");
+    assert_eq!(checks[3], zeus::heroes::Check::Missing { current: 0, wanted: 32 }, "huile");
+    // Une fois là, il affronte d'abord le monstre, puis part en quête.
+    world.heroes[3] = true;
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(slay.status(&world), Status::Met);
+    assert!(matches!(world.quests[0].state, QuestState::Away { .. }));
+    (0..7 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(quest.status(&world), Status::Met);
+    // L'état passe par la sauvegarde.
+    let (mut other, ..) = self::world(&data);
+    other.kinds = world.kinds.clone();
+    other.load(&world.save()).unwrap();
+    assert!(other.heroes[3] && other.quest_done(0) && other.monster_slain(1));
 }
