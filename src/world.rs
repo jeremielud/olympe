@@ -154,8 +154,10 @@ pub const BECOMES_VASSAL: u8 = 11;
 pub const VASSAL_REBELS: u8 = 13;
 pub const MILITARY_BUILDUP: u8 = 15;
 pub const MILITARY_DECLINE: u8 = 16;
-/// Nature des événements programmés qui sont des invasions armées.
+/// Nature des événements programmés qui sont des invasions armées, et des cadeaux
+/// (`GIFT` + ressource).
 pub const INVASION: u8 = 99;
+pub const GIFT: u8 = 130;
 
 /// Issue d'une invasion armée.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -780,6 +782,10 @@ pub struct World {
     pub blessings: Vec<(u8, u8, i32)>,
     /// Invasions armées livrées depuis la dernière lecture.
     pub battles: Vec<Battle>,
+    /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
+    /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
+    pub carried: [i32; RESOURCES],
+    pub gifts: Vec<(usize, u8, i32)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -827,6 +833,8 @@ impl World {
             tributes: Vec::new(),
             blessings: Vec::new(),
             battles: Vec::new(),
+            carried: [0; RESOURCES],
+            gifts: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1503,6 +1511,28 @@ impl World {
                 let (a, b) = (event.amount.0.max(0) as u32, event.amount.1.max(event.amount.0).max(0) as u32);
                 (a + self.next_random() % (b - a + 1)) as i32
             };
+            // Cadeau : de toute cité active, y compris la cité mère ; une quantité
+            // négative est ce qui a été mis de côté pour la cité.
+            if event.change >= GIFT {
+                let resource = (event.change - GIFT) as usize;
+                if !self.cities.get(city).is_some_and(|c| c.active) || resource >= RESOURCES {
+                    continue;
+                }
+                let amount = if event.amount.0 < 0 { self.carried[resource] } else { amount };
+                if amount <= 0 {
+                    continue;
+                }
+                let given = match resource as u8 {
+                    DRACHMAS => {
+                        self.money += amount;
+                        amount
+                    }
+                    ANY_FOOD => self.store(7, amount),
+                    _ => self.store(resource, amount),
+                };
+                self.gifts.push((city, resource as u8, given));
+                continue;
+            }
             let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
             // Invasion : seule une cité rivale attaque. Olympe compare les forces : un
             // envahisseur vaut un hoplite (deux points) ; vaincue, la cité perd un
@@ -1533,7 +1563,7 @@ impl World {
                 continue;
             }
             // Demande : seule une cité qui n'est pas rivale en fait.
-            if event.change >= REQUEST {
+            if (REQUEST..GIFT).contains(&event.change) {
                 if target.status != RIVAL {
                     let request = Request { city, resource: event.change - REQUEST, amount: amount.max(1), until: now + REQUEST_TICKS };
                     self.requests.push(request);
@@ -2846,6 +2876,7 @@ impl World {
         let _ = writeln!(out, "production {}", list(&self.produced));
         let _ = writeln!(out, "meilleure {}", list(&self.best_produced));
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
+        let _ = writeln!(out, "emporte {}", list(&self.carried));
         let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
         let _ = writeln!(out, "heros {}", present.join(" "));
         // Statut de chaque cité, plus 10 quand une route commerciale est ouverte.
@@ -2959,7 +2990,7 @@ impl World {
         let mut state = None;
         let mut profits = (0, None);
         // Compteurs des objectifs : absents des sauvegardes plus anciennes.
-        let mut counters = [[0; RESOURCES]; 3];
+        let mut counters = [[0; RESOURCES]; 4];
         // Héros, quêtes et monstres : absents des sauvegardes plus anciennes.
         let (mut heroes, mut quests, mut monsters) = ([false; crate::heroes::HEROES], Vec::new(), Vec::new());
         // Statuts des cités du monde : sans eux, ceux de la carte restent.
@@ -2985,8 +3016,8 @@ impl World {
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
                 }
-                "production" | "meilleure" | "reserve" => {
-                    let row = ["production", "meilleure", "reserve"].iter().position(|&k| k == kind).unwrap_or(0);
+                "production" | "meilleure" | "reserve" | "emporte" => {
+                    let row = ["production", "meilleure", "reserve", "emporte"].iter().position(|&k| k == kind).unwrap_or(0);
                     for (i, slot) in counters[row].iter_mut().enumerate() {
                         *slot = number_at(i)? as i32;
                     }
@@ -3199,7 +3230,7 @@ impl World {
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;
-        [self.produced, self.best_produced, self.set_aside] = counters;
+        [self.produced, self.best_produced, self.set_aside, self.carried] = counters;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;

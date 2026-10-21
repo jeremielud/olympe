@@ -627,3 +627,24 @@ fn rival_armies_sack_a_defenceless_city() {
     (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.battles.last().is_some_and(|b| b.repelled));
 }
+
+#[test]
+fn gifts_bring_the_goods_set_aside_by_the_previous_city() {
+    use zeus::map::{City, COLONY};
+    use zeus::world::GIFT;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    assert!(world.place_building(first, x, y));
+    world.cities = vec![City { active: true, kind: 0, name: 5, status: COLONY, military: 0, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
+    world.carried[14] = 12;
+    // Quantité « −1 » : la laine mise de côté ; puis 500 drachmes offertes.
+    world.schedule(GIFT + 14, (0, 0), (-1, -1), 1, (0, 0));
+    world.schedule(GIFT + 23, (0, 0), (500, 500), 1, (0, 0));
+    let money = world.money;
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.stored(14), 12);
+    assert_eq!(world.gifts, [(0, 14, 12), (0, 23, 500)]);
+    assert!(world.money >= money + 500 - 100);
+}

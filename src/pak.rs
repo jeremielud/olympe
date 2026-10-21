@@ -85,6 +85,10 @@ const EVENT_GOD_TYPE: u8 = 27;
 /// en 16 et 18), la cité qui attaque (intervalle en 32 et 34), la date comme pour
 /// un changement du monde.
 const EVENT_INVASION_TYPE: u8 = 2;
+/// Cadeau d'une cité (type 23) : la marchandise (octet 6), la quantité (−1 : ce qui
+/// a été mis de côté dans l'épisode précédent), la cité (0 : la cité mère), la date.
+/// Établi sur Troie, où la colonie reçoit ainsi les marchandises réservées.
+const EVENT_GIFT_TYPE: u8 = 23;
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -142,6 +146,9 @@ pub enum Event {
     Request { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Un dieu hostile vient en personne dans la cité.
     GodInvasion { god: u8, month: u8, years: (i16, i16) },
+    /// Une cité offre une marchandise ; une quantité négative désigne ce qui a été
+    /// mis de côté pour la cité.
+    Gift { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Une cité rivale envoie une armée de tant de soldats.
     Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
     Other,
@@ -236,12 +243,21 @@ impl Settings {
                                 years: either(EVENT_YEAR, EVENT_YEARS),
                             }
                         }
-                        kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE) => {
+                        kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE | EVENT_GIFT_TYPE) => {
                             let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
                             let either = |one: usize, range: usize| match short(one) {
                                 n if n >= 0 => (n, n),
                                 _ => (short(range), short(range + 2)),
                             };
+                            if kind == EVENT_GIFT_TYPE {
+                                return Event::Gift {
+                                    resource: resource(event[EVENT_GOOD]),
+                                    cities: either(EVENT_CITY, EVENT_CITIES),
+                                    amount: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                    month: event[EVENT_MONTH] % 12,
+                                    years: either(EVENT_YEAR, EVENT_YEARS),
+                                };
+                            }
                             if kind == EVENT_REQUEST_TYPE {
                                 return Event::Request {
                                     resource: resource(event[EVENT_GOOD]),

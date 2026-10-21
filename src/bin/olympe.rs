@@ -773,7 +773,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -1005,6 +1005,9 @@ fn begin_events(world: &mut World, episode: &Episode) {
             }
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
             Event::GodInvasion { god, month, years } => world.schedule_god(god, month, years),
+            Event::Gift { resource, cities, amount, month, years } => {
+                world.schedule(zeus::world::GIFT.saturating_add(resource), cities, amount, month, years)
+            }
             Event::Invasion { cities, soldiers, month, years } => world.schedule(zeus::world::INVASION, cities, soldiers, month, years),
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
@@ -2234,6 +2237,11 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if !world.gifts.is_empty() {
+                let gifts = std::mem::take(&mut world.gifts);
+                let lines: Vec<String> = gifts.iter().map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
+                notice = (format!("Cadeaux reçus : {}", lines.join(", ")), now);
+            }
             if let Some(battle) = world.battles.pop() {
                 let name = city_name(&text, &world, battle.city);
                 notice = if battle.repelled {
@@ -2297,6 +2305,9 @@ fn run(
                 won = false;
                 let next = journey.position + 1;
                 if next < journey.order.len() {
+                    // Ce qui a été mis de côté part avec le joueur : les cadeaux de
+                    // l'épisode suivant l'apportent.
+                    let carried = world.set_aside;
                     if journey.travel(&mut world, next) {
                         minimap_at = arrive(&world, &mut graphics, &mut view);
                         sanctuaries_built = world.sanctuaries().len();
@@ -2304,6 +2315,7 @@ fn run(
                     }
                     let step = journey.step();
                     world.start_episode();
+                    world.carried = carried;
                     if let Some(episode) = episode(step).filter(|_| !demo) {
                         lock_resources(&mut world, episode);
                         begin_events(&mut world, episode);

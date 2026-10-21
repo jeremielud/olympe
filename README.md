@@ -51,7 +51,9 @@ Ce qui fonctionne :
   (marchandises et quantités lues dans la carte, prix d'Olympe) ; les vassales
   paient un tribut annuel en drachmes (montant d'Olympe) ; les cités rivales
   envoient leurs armées à la date prévue : repoussées si l'armée de la cité
-  l'emporte en force, sinon elles pillent le trésor et brûlent des bâtiments ;
+  l'emporte en force, sinon elles pillent le trésor et brûlent des bâtiments ; les
+  cadeaux des cités arrivent à leur date, et ceux de la cité mère apportent à la
+  colonie ce qu'elle avait mis de côté ;
   les événements de l'épisode changent le monde à leur date (une cité devient
   rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
   demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
@@ -64,8 +66,7 @@ Ce qui fonctionne :
 
 Ce qui manque encore : animations de combat, batailles et colonies (une colonie
 part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
-; scierie et atelier de maçonnerie se posent sans forêt ni carrière, et les
-marchandises mises de côté ne parviennent pas à la cité suivante ; conseillers,
+; scierie et atelier de maçonnerie se posent sans forêt ni carrière ; conseillers,
 voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs
 réglages d'équilibre (rendements, consommations) sont approchés et non repris du
 jeu.
