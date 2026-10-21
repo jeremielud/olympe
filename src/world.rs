@@ -616,6 +616,8 @@ enum Role {
     /// Monstre en marche vers le bâtiment `target`, qu'il détruira ; il se repose
     /// ensuite jusqu'à `rest_until`.
     Monster { monster: u8, target: u16, rest_until: u64 },
+    /// Héros présent dans la cité, rattaché à son temple.
+    Hero { hero: u8, hall: u16 },
 }
 
 pub struct Figure {
@@ -1078,6 +1080,7 @@ impl World {
             Role::Fetch { source, vendor } => source != id && vendor != id,
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
             Role::Monster { .. } => true,
+            Role::Hero { hall, .. } => hall != id,
         });
         self.rebuild_appeal();
     }
@@ -1555,6 +1558,46 @@ impl World {
         }
     }
 
+    /// Où va un héros : vers le monstre vivant qu'il doit combattre, sinon devant son
+    /// temple.
+    fn hero_goal(&self, hero: u8, hall: u16) -> Option<(u16, u16)> {
+        let foe = self.monsters.iter().find(|m| !m.slain && m.arrives_at <= self.ticks && crate::heroes::hero_against(m.monster) == Some(hero));
+        if let Some(foe) = foe {
+            if let Some(f) = self.figures.iter().find(|f| matches!(f.role, Role::Monster { monster, .. } if monster == foe.monster)) {
+                return Some(f.from);
+            }
+        }
+        let building = self.buildings.get(hall as usize)?.as_ref()?;
+        self.road_next_to(hall as usize).or(Some((building.x as u16, building.y as u16)))
+    }
+
+    /// Héros à l'écran : chaque héros présent et qui n'est pas parti en quête se tient
+    /// près de son temple ; celui qui est en quête n'est plus dans la cité.
+    fn place_heroes(&mut self) {
+        let away: Vec<u8> = self.quests.iter().filter(|q| matches!(q.state, QuestState::Away { .. })).map(|q| q.hero).collect();
+        let present = self.heroes;
+        self.figures.retain(|f| !matches!(f.role, Role::Hero { hero, .. } if !present[hero as usize] || away.contains(&hero)));
+        for hero in 0..crate::heroes::HEROES as u8 {
+            if !present[hero as usize] || away.contains(&hero) || self.figures.iter().any(|f| matches!(f.role, Role::Hero { hero: h, .. } if h == hero)) {
+                continue;
+            }
+            let Some(hall) = (0..self.buildings.len()).find(|&i| self.buildings[i].as_ref().is_some_and(|b| self.kinds[b.kind].function == Function::HeroHall(hero))) else { continue };
+            let Some(at) = self.road_next_to(hall).or_else(|| self.buildings[hall].as_ref().map(|b| (b.x as u16, b.y as u16))) else { continue };
+            self.figures.push(Figure {
+                image_base: 1,
+                x: at.0 as f32,
+                y: at.1 as f32,
+                direction: 0,
+                frame: 0,
+                path: Vec::new(),
+                from: at,
+                came_from: None,
+                role: Role::Hero { hero, hall: hall as u16 },
+                source: Source::Hero(hero),
+            });
+        }
+    }
+
     /// La quête ou le monstre de cet événement est venu à bout.
     pub fn quest_done(&self, event: usize) -> bool {
         self.quests.iter().any(|q| q.event == event && q.state == QuestState::Done)
@@ -1729,6 +1772,7 @@ impl World {
         self.supply_sanctuaries();
         self.call_heroes();
         self.release_monsters();
+        self.place_heroes();
         self.change_world();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
@@ -2109,6 +2153,19 @@ impl World {
                 continue;
             }
             match role {
+                // Héros arrivé au bout de son chemin : il repart vers le monstre qu'il
+                // doit combattre, ou rentre à son temple.
+                Role::Hero { hero, hall } => {
+                    let goal = self.hero_goal(hero, hall);
+                    if let Some(goal) = goal.filter(|&g| g != at) {
+                        let path = straight_path(at, goal);
+                        let figure = &mut self.figures[index];
+                        if let Some(&next) = path.last() {
+                            figure.direction = direction(at, next);
+                        }
+                        figure.path = path;
+                    }
+                }
                 // Monstre arrivé : il détruit sa cible, se repose, puis en choisit une autre.
                 Role::Monster { monster, target, rest_until } => {
                     let now = self.ticks;
@@ -2583,6 +2640,7 @@ impl World {
                 Role::Deliver { to, load, from } => format!("livraison {to} {load} {from} 0 0"),
                 Role::Fetch { source, vendor } => format!("achat {source} {vendor} 0 0 0"),
                 Role::Monster { monster, target, rest_until } => format!("bete {monster} {target} {rest_until} 0 0"),
+                Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -2790,6 +2848,7 @@ impl World {
                         "livraison" => Role::Deliver { to: a as u16, load: b as i32, from: c as u16 },
                         "achat" => Role::Fetch { source: a as u16, vendor: b as u16 },
                         "bete" => Role::Monster { monster: a as u8, target: b as u16, rest_until: c as u64 },
+                        "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -2808,6 +2867,7 @@ impl World {
                         role,
                         source: match role {
                             Role::Monster { monster, .. } => Source::Monster(monster),
+                            Role::Hero { hero, .. } => Source::Hero(hero),
                             _ => Source::Figures,
                         },
                     });
@@ -2825,6 +2885,7 @@ impl World {
             Role::Fetch { source, vendor } => exists(source) && exists(vendor),
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
             Role::Monster { .. } => true,
+            Role::Hero { hall, .. } => exists(hall),
         });
         self.cells = cells;
         self.fires = fires;

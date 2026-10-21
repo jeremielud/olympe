@@ -491,3 +491,28 @@ fn an_invading_monster_waits_for_its_date() {
     assert!(world.figures.iter().any(|f| f.source == Source::Monster(0)));
     assert!(world.hero_news.contains(&HeroNews::Invaded(4)));
 }
+
+#[test]
+fn a_hero_walks_to_his_monster_then_leaves_on_his_quest() {
+    use zeus::map::Source;
+    use zeus::world::{Monster, Quest, QuestState};
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    let hall = world.kinds.len();
+    world.kinds.push(Kind::simple("temple d'Hercule".into(), 0, 4, 1460, Function::HeroHall(1), 0));
+    assert!(world.place_building(hall, x, y + 5));
+    world.heroes[1] = true;
+    let hero = |w: &World| w.figures.iter().find(|f| f.source == Source::Hero(1)).map(|f| (f.x, f.y));
+    (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    let home = hero(&world).expect("Hercule n'est pas à son temple");
+    // L'Hydre arrive : Hercule marche à sa rencontre.
+    world.monsters.push(Monster { event: 0, monster: 0, fight_until: None, slain: false, arrives_at: 0 });
+    (0..TICKS_PER_MONTH + 200).for_each(|_| world.tick());
+    assert_ne!(hero(&world), Some(home), "Hercule n'a pas bougé");
+    // Une fois en quête, il n'est plus dans la cité.
+    world.monsters[0].slain = true;
+    world.quests.push(Quest { event: 1, god: 3, quest: 0, hero: 1, state: QuestState::Away { until: world.ticks + 100 * TICKS_PER_MONTH } });
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(hero(&world), None);
+}

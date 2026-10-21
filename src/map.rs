@@ -95,6 +95,8 @@ pub enum Source {
     God(u8),
     /// Catalogue d'un monstre (numéro du groupe de textes 87).
     Monster(u8),
+    /// Catalogue d'un héros (numéro du groupe de textes 163).
+    Hero(u8),
 }
 
 /// Dans tous les catalogues, les 200 premières images sont communes (« système ») ;

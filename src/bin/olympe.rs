@@ -908,6 +908,10 @@ fn request_good(text: &Text, resource: u8) -> String {
     }
 }
 
+/// Catalogue de chaque héros, dans l'ordre du groupe de textes 163.
+const HERO_FILES: [&str; 8] =
+    ["zeus_achilles", "zeus_heracles", "zeus_jason", "zeus_odysseus", "zeus_perseus", "zeus_theseus", "poseidon_atalanta", "poseidon_bellerophon"];
+
 /// Catalogue de chaque monstre, dans l'ordre du groupe de textes 87.
 const MONSTER_FILES: [&str; 16] = [
     "zeus_hydra",
@@ -1088,8 +1092,9 @@ struct Graphics {
     /// dieux par rang, et catalogue vide pour ceux qui manquent.
     sanctuaries: Vec<Catalog>,
     gods: Vec<Catalog>,
-    /// Catalogues des monstres, chargés quand un monstre paraît.
+    /// Catalogues des monstres et des héros, chargés quand ils paraissent.
     monsters: HashMap<u8, Catalog>,
+    heroes: HashMap<u8, Catalog>,
     empty: Catalog,
     /// Teinte appliquée au texte (blanc = couleur propre de la police).
     ink: (u8, u8, u8),
@@ -1118,6 +1123,7 @@ impl Graphics {
             Source::Sanctuary(stage) => self.sanctuaries.get(stage as usize).unwrap_or(&self.empty),
             Source::God(rank) => self.gods.get(rank as usize).unwrap_or(&self.empty),
             Source::Monster(monster) => self.monsters.get(&monster).unwrap_or(&self.empty),
+            Source::Hero(hero) => self.heroes.get(&hero).unwrap_or(&self.empty),
         }
     }
 
@@ -1584,6 +1590,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             sanctuaries: Vec::new(),
             gods: Vec::new(),
             monsters: HashMap::new(),
+            heroes: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -1936,6 +1943,7 @@ fn run(
             sanctuaries: (1..=3).map(|n| Catalog::load(&data.join(format!("data/zeus_sanctuary{n}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
             gods: (1..=12).map(|n| Catalog::load(&data.join(format!("data/zeus_god{n:02}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
             monsters: HashMap::new(),
+            heroes: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -2557,10 +2565,14 @@ fn run(
             }
             // Catalogue d'un monstre qui vient de paraître.
             for figure in &world.figures {
-                let Source::Monster(monster) = figure.source else { continue };
-                if !graphics.monsters.contains_key(&monster) {
-                    let file = MONSTER_FILES.get(monster as usize).map_or(String::new(), |f| format!("data/{f}.sg3"));
-                    graphics.monsters.insert(monster, Catalog::load(&data.join(file)).unwrap_or_else(|_| Catalog::empty()));
+                let (loaded, files, id) = match figure.source {
+                    Source::Monster(monster) => (&mut graphics.monsters, &MONSTER_FILES[..], monster),
+                    Source::Hero(hero) => (&mut graphics.heroes, &HERO_FILES[..], hero),
+                    _ => continue,
+                };
+                if !loaded.contains_key(&id) {
+                    let file = files.get(id as usize).map_or(String::new(), |f| format!("data/{f}.sg3"));
+                    loaded.insert(id, Catalog::load(&data.join(file)).unwrap_or_else(|_| Catalog::empty()));
                 }
             }
             // Personnages : ancrés au centre de leur case, par-dessus le sol de même rang.
