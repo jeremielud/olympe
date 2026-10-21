@@ -390,3 +390,24 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     other.load(&world.save()).unwrap();
     assert_eq!((other.cities[0].status, other.cities[0].trade), (VASSAL, true));
 }
+
+#[test]
+fn world_changes_happen_on_their_date() {
+    use zeus::map::{ALLY, City, RIVAL};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: ALLY, military: 3, trade: false }];
+    // Troie devient rivale en mars de l'année suivante, puis renforce son armée.
+    world.schedule(zeus::world::BECOMES_RIVAL, (0, 0), (5, 10), 2, (1, 1));
+    world.schedule(zeus::world::MILITARY_BUILDUP, (0, 0), (2, 2), 6, (1, 1));
+    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.cities[0].status, ALLY);
+    // La sauvegarde garde ce qui reste à venir.
+    let (mut other, ..) = self::world(&data);
+    other.cities = world.cities.clone();
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.scheduled.len(), 2);
+    (0..8 * TICKS_PER_MONTH).for_each(|_| other.tick());
+    assert_eq!((other.cities[0].status, other.cities[0].military), (RIVAL, 5));
+    assert!(other.scheduled.is_empty());
+}

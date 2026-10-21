@@ -735,7 +735,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster } => heroes::hero_against(monster) == Some(hero),
-                Event::Other => false,
+                Event::World { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -897,6 +897,7 @@ const TEXT_CITIES: usize = 21;
 fn begin_events(world: &mut World, episode: &Episode) {
     world.quests.clear();
     world.monsters.clear();
+    world.scheduled.clear();
     for (event, &kind) in episode.events.iter().enumerate() {
         match kind {
             Event::Quest { god, quest, hero } => {
@@ -904,6 +905,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 world.quests.push(Quest { event, god, quest, hero, state: QuestState::Waiting });
             }
             Event::Monster { monster } => world.monsters.push(Monster { event, monster, fight_until: None, slain: false }),
+            Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
             Event::Other => {}
         }
     }
@@ -2095,6 +2097,20 @@ fn run(
                 let events = episode(journey.step()).map_or(&[][..], |e| &e.events[..]);
                 notice = (hero_news(&text, news, events), now);
                 world.hero_news.clear();
+            }
+            // Changements dans le monde.
+            if let Some((city, change)) = world.world_news.pop() {
+                let name = city_name(&text, &world, city);
+                let line = match change {
+                    zeus::world::BECOMES_ALLY => format!("{name} redevient votre alliée"),
+                    zeus::world::BECOMES_RIVAL => format!("{name} devient votre rivale"),
+                    zeus::world::BECOMES_VASSAL => format!("{name} devient votre vassale"),
+                    zeus::world::VASSAL_REBELS => format!("{name} se rebelle"),
+                    zeus::world::MILITARY_BUILDUP => format!("{name} renforce son armée"),
+                    _ => format!("L'armée de {name} s'affaiblit"),
+                };
+                notice = (line, now);
+                world.world_news.clear();
             }
             if let Some(disaster) = world.disasters.pop() {
                 let what = if disaster.fire { "Incendie" } else { "Effondrement" };

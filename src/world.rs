@@ -146,6 +146,24 @@ pub enum Soldier {
     Horseman,
 }
 
+/// Changements du monde qu'Olympe sait jouer (sous-types des événements du jeu ; sens
+/// établi sur les récits, provisoire pour certains).
+pub const BECOMES_ALLY: u8 = 9;
+pub const BECOMES_RIVAL: u8 = 10;
+pub const BECOMES_VASSAL: u8 = 11;
+pub const VASSAL_REBELS: u8 = 13;
+pub const MILITARY_BUILDUP: u8 = 15;
+pub const MILITARY_DECLINE: u8 = 16;
+
+/// Changement du monde à venir : quand, quoi, quelles cités, combien.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Scheduled {
+    pub at: u64,
+    pub change: u8,
+    pub cities: (i16, i16),
+    pub amount: (i16, i16),
+}
+
 /// Pourquoi une conquête n'a pas lieu.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Conquest {
@@ -638,6 +656,10 @@ pub struct World {
     /// Cités du monde et leur statut ; l'armée est en campagne jusqu'à ce pas.
     pub cities: Vec<City>,
     pub campaign_until: u64,
+    /// Changements du monde à venir dans l'épisode, et ceux qui viennent d'avoir lieu
+    /// (cité, changement) pour prévenir le joueur.
+    pub scheduled: Vec<Scheduled>,
+    pub world_news: Vec<(usize, u8)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -676,6 +698,8 @@ impl World {
             hero_news: Vec::new(),
             cities: Vec::new(),
             campaign_until: 0,
+            scheduled: Vec::new(),
+            world_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1262,6 +1286,50 @@ impl World {
             .sum()
     }
 
+    /// Programme un changement du monde : `month` (0 à 11) d'une année tirée entre
+    /// `years` (comptées depuis l'année en cours) ; tout de suite s'il est déjà passé.
+    pub fn schedule(&mut self, change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
+        let year_now = self.ticks / (TICKS_PER_MONTH * 12);
+        let (low, high) = (years.0.max(0) as u64, years.1.max(years.0).max(0) as u64);
+        let year = low + self.next_random() as u64 % (high - low + 1);
+        let at = ((year_now + year) * 12 + month as u64) * TICKS_PER_MONTH;
+        self.scheduled.push(Scheduled { at, change, cities, amount });
+    }
+
+    /// Changements du monde arrivés à échéance.
+    fn change_world(&mut self) {
+        let now = self.ticks;
+        let due: Vec<Scheduled> = self.scheduled.iter().filter(|s| s.at <= now).copied().collect();
+        self.scheduled.retain(|s| s.at > now);
+        for event in due {
+            let (low, high) = (event.cities.0.max(0) as u32, event.cities.1.max(event.cities.0).max(0) as u32);
+            let city = (low + self.next_random() % (high - low + 1)) as usize;
+            let amount = {
+                let (a, b) = (event.amount.0.max(0) as u32, event.amount.1.max(event.amount.0).max(0) as u32);
+                (a + self.next_random() % (b - a + 1)) as i32
+            };
+            let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
+            let changed = match event.change {
+                BECOMES_ALLY if target.status == RIVAL => std::mem::replace(&mut target.status, crate::map::ALLY) != crate::map::ALLY,
+                BECOMES_RIVAL if target.status == crate::map::ALLY => std::mem::replace(&mut target.status, RIVAL) != RIVAL,
+                BECOMES_VASSAL if target.status <= RIVAL => std::mem::replace(&mut target.status, VASSAL) != VASSAL,
+                VASSAL_REBELS if target.status == VASSAL => std::mem::replace(&mut target.status, RIVAL) != RIVAL,
+                MILITARY_BUILDUP => {
+                    target.military = (target.military as i32 + amount.max(1)).min(6) as u8;
+                    true
+                }
+                MILITARY_DECLINE => {
+                    target.military = (target.military as i32 - amount.max(1)).max(1) as u8;
+                    true
+                }
+                _ => false,
+            };
+            if changed {
+                self.world_news.push((city, event.change));
+            }
+        }
+    }
+
     /// Force de l'armée : un homme de piétaille compte pour un, un hoplite pour
     /// deux, un cavalier pour trois (barème d'Olympe).
     pub fn army(&self) -> i32 {
@@ -1485,6 +1553,7 @@ impl World {
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
         self.call_heroes();
+        self.change_world();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
         if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {
@@ -2237,6 +2306,13 @@ impl World {
         let cities: Vec<String> =
             std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| (c.status + 10 * c.trade as i32).to_string())).collect();
         let _ = writeln!(out, "cites {}", cities.join(" "));
+        for s in &self.scheduled {
+            let _ = writeln!(out, "changement {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1);
+        }
+        let military: Vec<String> = self.cities.iter().map(|c| c.military.to_string()).collect();
+        if !military.is_empty() {
+            let _ = writeln!(out, "forces {}", military.join(" "));
+        }
         for q in &self.quests {
             let (state, until) = match q.state {
                 QuestState::Waiting => (0, 0),
@@ -2328,6 +2404,7 @@ impl World {
         let (mut heroes, mut quests, mut monsters) = ([false; crate::heroes::HEROES], Vec::new(), Vec::new());
         // Statuts des cités du monde : sans eux, ceux de la carte restent.
         let (mut campaign, mut statuses): (u64, Vec<i32>) = (0, Vec::new());
+        let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2354,6 +2431,13 @@ impl World {
                     campaign = number_at(0)? as u64;
                     statuses = (1..rest.len()).map(|i| number_at(i).map(|s| s as i32)).collect::<Result<_, _>>()?;
                 }
+                "changement" => scheduled.push(Scheduled {
+                    at: number_at(0)? as u64,
+                    change: number_at(1)? as u8,
+                    cities: (number_at(2)? as i16, number_at(3)? as i16),
+                    amount: (number_at(4)? as i16, number_at(5)? as i16),
+                }),
+                "forces" => military = (0..rest.len()).map(|i| number_at(i).map(|m| m as u8)).collect::<Result<_, _>>()?,
                 "heros" => {
                     for (i, slot) in heroes.iter_mut().enumerate() {
                         *slot = number_at(i)? != 0;
@@ -2530,6 +2614,11 @@ impl World {
         [self.produced, self.best_produced, self.set_aside] = counters;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
+        self.scheduled = scheduled;
+        self.world_news.clear();
+        for (city, strength) in self.cities.iter_mut().zip(military) {
+            city.military = strength;
+        }
         for (city, status) in self.cities.iter_mut().zip(statuses) {
             (city.status, city.trade) = (status % 10, status >= 10);
         }
