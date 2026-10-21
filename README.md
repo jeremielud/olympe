@@ -25,7 +25,7 @@ Ce qui fonctionne :
 - objectifs de l'épisode, lus dans l'aventure (touche `O`) : population, trésor,
   logement, profit et production annuels sont suivis, et les marchandises à réserver
   pour la cité suivante se mettent de côté par la touche `R` (vivres du grenier,
-  laine, huile, vin et armement de l'entrepôt) ; l'épisode se termine sur son récit
+  laine, huile, vin, armement et bronze de l'entrepôt) ; l'épisode se termine sur son récit
   de victoire quand tous sont atteints ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
@@ -34,7 +34,7 @@ Ce qui fonctionne :
 
 Ce qui manque encore : sanctuaires, dieux, héros et monstres, armée, commerce et
 colonies (une colonie part de sa carte vierge, le trésor suit le joueur), les
-objectifs qui en dépendent ; bois, marbre, bronze et sculptures ne se rangent pas
+objectifs qui en dépendent ; bois, marbre et sculptures ne se rangent pas
 encore à l'entrepôt, et les marchandises mises de côté ne parviennent pas à la cité
 suivante ; conseillers, voix, vidéos, et l'interface d'origine
 (celle d'Olympe est provisoire). Plusieurs réglages d'équilibre (rendements,

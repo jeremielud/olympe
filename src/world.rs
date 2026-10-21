@@ -155,7 +155,7 @@ const AGORA_ROAD_IMAGES: usize = 3;
 pub const STOREHOUSE_BAYS: usize = 8;
 const BAY_LOADS: i32 = 4;
 const EMPTY_BAY_IMAGE: usize = 934;
-const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE];
+const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845];
 const WORKFORCE_PERCENT: i32 = 40;
 /// Impôt mensuel, en drachmes pour 100 habitants d'une maison visitée par un
 /// percepteur (multiplié par le coefficient du niveau de logement).
@@ -201,6 +201,8 @@ pub enum Good {
     Arms,
     /// Chevaux, exigés par le domaine ; ils ne passent pas par l'entrepôt.
     Horses,
+    /// Bronze de la fonderie que l'armurerie ne prend pas : il attend à l'entrepôt.
+    Bronze,
 }
 
 /// Matière première d'un atelier.
@@ -220,7 +222,7 @@ fn raw_for(good: Good) -> Raw {
     }
 }
 
-pub const GOODS: [Good; 6] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses];
+pub const GOODS: [Good; 7] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze];
 
 /// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
 /// objectifs des aventures) : 2 poisson, 7 blé, 14 laine, 20 huile d'olive…
@@ -236,6 +238,7 @@ pub fn resource_of(good: Good) -> Option<u8> {
         Good::Wine => Some(21),
         Good::Arms => Some(18),
         Good::Horses => Some(15),
+        Good::Bronze => Some(10),
         Good::Food => None,
     }
 }
@@ -1307,22 +1310,29 @@ impl World {
     /// pour une marchandise finie.
     fn send_harvest(&mut self, farm: usize, function: Function) {
         let Some(start) = self.road_next_to(farm) else { return };
-        let wanted = |world: &World, id: u16| {
-            let Some(building) = world.buildings[id as usize].as_ref() else { return false };
-            match (function, world.kinds[building.kind].function) {
-                (Function::Farm | Function::Producer(Good::Food) | Function::Fishery, Function::Granary) => building.stock < GRANARY_STORAGE,
-                (Function::Supplier(raw), Function::Workshop(made)) => raw == raw_for(made) && building.raw < WORKSHOP_RAW_STORAGE,
-                // Une baie entamée de la même marchandise, ou une baie libre.
-                (Function::Producer(good) | Function::Workshop(good), Function::Storehouse) if !matches!(good, Good::Horses | Good::Food) => {
-                    // Une marchandise n'occupe jamais plus de la moitié de l'entrepôt.
-                    let loads = building.goods[good as usize];
-                    loads < BAY_LOADS * (STOREHOUSE_BAYS as i32 / 2)
-                        && (loads % BAY_LOADS != 0 || bays_used(&building.goods) < STOREHOUSE_BAYS)
+        let wanted = |to_storehouse: bool| {
+            move |world: &World, id: u16| {
+                let Some(building) = world.buildings[id as usize].as_ref() else { return false };
+                match (function, world.kinds[building.kind].function) {
+                    (Function::Farm | Function::Producer(Good::Food) | Function::Fishery, Function::Granary) => building.stock < GRANARY_STORAGE,
+                    (Function::Supplier(raw), Function::Workshop(made)) => raw == raw_for(made) && building.raw < WORKSHOP_RAW_STORAGE,
+                    // Une baie entamée de la même marchandise, ou une baie libre.
+                    (_, Function::Storehouse) if to_storehouse => stored_good(function).is_some_and(|good| {
+                        // Une marchandise n'occupe jamais plus de la moitié de l'entrepôt.
+                        let loads = building.goods[good as usize];
+                        loads < BAY_LOADS * (STOREHOUSE_BAYS as i32 / 2)
+                            && (loads % BAY_LOADS != 0 || bays_used(&building.goods) < STOREHOUSE_BAYS)
+                    }),
+                    _ => false,
                 }
-                _ => false,
             }
         };
-        let Some((granary, path)) = self.road_path(start, wanted) else { return };
+        // Le bronze va d'abord à l'armurerie, et à l'entrepôt seulement faute de preneur.
+        let found = match function {
+            Function::Supplier(Raw::Bronze) => self.road_path(start, wanted(false)).or_else(|| self.road_path(start, wanted(true))),
+            _ => self.road_path(start, wanted(true)),
+        };
+        let Some((granary, path)) = found else { return };
         let building = self.buildings[farm].as_mut().unwrap();
         let load = building.stock.min(CARRIER_LOAD);
         building.stock -= load;
@@ -1547,8 +1557,8 @@ impl World {
                 Role::Deliver { to, load, from } => {
                     let raw = matches!(self.function(to as usize), Function::Workshop(_)) && from != to;
                     // Dans un entrepôt, la marchandise est celle que fabrique l'expéditeur.
-                    let stored = match (self.function(to as usize), self.function(from as usize)) {
-                        (Function::Storehouse, Function::Producer(good) | Function::Workshop(good)) => Some(good),
+                    let stored = match self.function(to as usize) {
+                        Function::Storehouse => stored_good(self.function(from as usize)),
                         _ => None,
                     };
                     // Au grenier, les vivres sont rangés selon ce que produit l'expéditeur.
@@ -1801,6 +1811,15 @@ fn bay_image(goods: &[i32; GOODS.len()], bay: usize) -> usize {
     EMPTY_BAY_IMAGE
 }
 
+/// Marchandise qu'un bâtiment de cette fonction range à l'entrepôt.
+fn stored_good(function: Function) -> Option<Good> {
+    match function {
+        Function::Producer(good) | Function::Workshop(good) if !matches!(good, Good::Horses | Good::Food) => Some(good),
+        Function::Supplier(Raw::Bronze) => Some(Good::Bronze),
+        _ => None,
+    }
+}
+
 /// Baies qu'occupe le contenu d'un entrepôt.
 fn bays_used(goods: &[i32; GOODS.len()]) -> usize {
     goods.iter().map(|&loads| ((loads + BAY_LOADS - 1) / BAY_LOADS) as usize).sum()
@@ -1811,7 +1830,7 @@ fn bays_used(goods: &[i32; GOODS.len()]) -> usize {
 fn units_per_load(good: Good) -> i32 {
     match good {
         Good::Food => PEOPLE_PER_LOAD,
-        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses => 1,
+        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze => 1,
     }
 }
 
@@ -1833,7 +1852,10 @@ fn direction(from: (u16, u16), to: (u16, u16)) -> usize {
 }
 
 /// En-tête des fichiers de sauvegarde ; le numéro change quand le format change.
-const SAVE_HEADER: &str = "zeus-sauvegarde 9";
+const SAVE_HEADER: &str = "zeus-sauvegarde 10";
+/// Version précédente, encore lue : elle ne connaissait pas le bronze, dernière des
+/// marchandises.
+const OLD_SAVE_HEADER: &str = "zeus-sauvegarde 9";
 
 impl World {
     /// État de la partie sous forme de texte : une ligne par route, bâtiment ou
@@ -1923,9 +1945,11 @@ impl World {
     /// Remplace l'état de la partie par celui d'une sauvegarde faite sur la même carte.
     pub fn load(&mut self, text: &str) -> Result<(), String> {
         let mut lines = text.lines();
-        if lines.next() != Some(SAVE_HEADER) {
-            return Err("ce n'est pas une sauvegarde de cette version".into());
-        }
+        let goods_len = match lines.next() {
+            Some(SAVE_HEADER) => GOODS.len(),
+            Some(OLD_SAVE_HEADER) => GOODS.len() - 1,
+            _ => return Err("ce n'est pas une sauvegarde de cette version".into()),
+        };
         let mut cells = vec![Cell::Terrain; GRID * GRID];
         let (mut buildings, mut figures, mut fires) = (Vec::new(), Vec::new(), Vec::new());
         let mut state = None;
@@ -1975,20 +1999,20 @@ impl World {
                     if x + size > GRID || y + depth > GRID {
                         return Err(bad());
                     }
-                    let house = match rest.get(12 + GOODS.len()) {
+                    let house = match rest.get(12 + goods_len) {
                         Some(&"maison") => {
                             let mut goods = [0; GOODS.len()];
-                            for (i, slot) in goods.iter_mut().enumerate() {
-                                *slot = number_at(16 + GOODS.len() + i)? as i32;
+                            for (i, slot) in goods.iter_mut().take(goods_len).enumerate() {
+                                *slot = number_at(16 + goods_len + i)? as i32;
                             }
                             let mut covered_until = [0; SERVICES.len()];
                             for (i, slot) in covered_until.iter_mut().enumerate() {
-                                *slot = number_at(16 + 2 * GOODS.len() + i)? as u64;
+                                *slot = number_at(16 + 2 * goods_len + i)? as u64;
                             }
                             Some(House {
-                                level: (number_at(13 + GOODS.len())? as usize).min(ELITE_FIRST_LEVEL + ELITE_LEVELS - 1),
-                                population: number_at(14 + GOODS.len())? as i32,
-                                arriving: number_at(15 + GOODS.len())? as i32,
+                                level: (number_at(13 + goods_len)? as usize).min(ELITE_FIRST_LEVEL + ELITE_LEVELS - 1),
+                                population: number_at(14 + goods_len)? as i32,
+                                arriving: number_at(15 + goods_len)? as i32,
                                 goods,
                                 covered_until,
                             })
@@ -2024,7 +2048,7 @@ impl World {
                         raw: number_at(8)? as i32,
                         goods: {
                             let mut goods = [0; GOODS.len()];
-                            for (i, slot) in goods.iter_mut().enumerate() {
+                            for (i, slot) in goods.iter_mut().take(goods_len).enumerate() {
                                 *slot = number_at(12 + i)? as i32;
                             }
                             goods

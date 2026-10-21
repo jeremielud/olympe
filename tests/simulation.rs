@@ -208,3 +208,24 @@ fn production_and_set_aside_goals() {
     other.start_episode();
     assert_eq!(set_aside.status(&other), Status::Pending(Some(0)));
 }
+
+#[test]
+fn bronze_without_armory_waits_at_the_storehouse() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    let mut foundry = Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0);
+    foundry.product = 10;
+    world.kinds.push(foundry);
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    assert!(world.place_building(first, x + 10, y + 3), "fonderie");
+    assert!(world.place_building(first + 1, x + 6, y + 5), "entrepôt");
+    let set_aside = Goal { kind: GoalKind::SetAside, values: [10, 8, 0] };
+    assert_eq!(set_aside.status(&world), Status::Pending(Some(0)));
+    (0..9600).for_each(|_| world.tick());
+    assert!(world.stored(10) >= 8, "{}", world.stored(10));
+    assert!(world.set_aside(10, 8));
+    assert_eq!(set_aside.status(&world), Status::Met);
+}

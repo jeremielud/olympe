@@ -203,7 +203,7 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
     (73, 455, 456, Good::Horses, GROUP_HORSE_TRAINER),
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
-const GOOD_TEXTS: [usize; 6] = [25, 14, 20, 21, 18, 15];
+const GOOD_TEXTS: [usize; 7] = [25, 14, 20, 21, 18, 15, 10];
 /// Logement luxueux : type, et image d'un quart de terrain vacant (pour l'aperçu).
 const TYPE_ELITE_HOUSE: usize = 9;
 const ELITE_LOT_IMAGE: usize = 1021;
@@ -254,7 +254,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Fleece) => "AGORA_FLEECE",
         Function::Vendor(Good::Oil) => "AGORA_OIL",
         Function::Vendor(Good::Wine) => "AGORA_WINE",
-        Function::Vendor(Good::Arms) => "AGORA_ARMS",
+        Function::Vendor(Good::Arms | Good::Bronze) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
         Function::None => "BEAUTIFICATION",
@@ -2445,7 +2445,7 @@ fn run(
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
                     lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
                     lines.push(format!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
-                    for good in GOODS {
+                    for good in GOODS.into_iter().filter(|&good| good != Good::Bronze) {
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
                     }
                     for service in SERVICES {
