@@ -343,6 +343,24 @@ const UI_SIDEBAR: usize = 1232;
 const SIDEBAR_WIDTH: f32 = 186.0;
 const UI_TABS: usize = 1319;
 const UI_TAB_STATES: usize = 4;
+/// Icône d'onglet de l'armée (grisée), et pioche de « Dégager » (quatre états).
+const MILITARY_TAB: usize = 9;
+const CLEAR_TAB: usize = 1753;
+/// Réserves transparentes du panneau latéral, relevées sur son image : (x, y,
+/// largeur, hauteur, premier état du bouton qui s'y loge, touche qu'il remplace).
+/// Grande réserve sous les onglets : « Dégager ». Puis l'aide, la mise de côté, un
+/// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
+/// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
+const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
+    (85.0, 435.0, 32.0, 37.0, Some(1279), Some(sdl::KEY_H)),
+    (118.0, 435.0, 32.0, 37.0, Some(1283), Some(sdl::KEY_R)),
+    (151.0, 435.0, 32.0, 37.0, Some(1279), None),
+    (146.0, 483.0, 33.0, 28.0, None, None),
+    (11.0, 565.0, 33.0, 33.0, Some(1291), Some(sdl::KEY_O)),
+    (45.0, 565.0, 69.0, 33.0, Some(1239), None),
+    (115.0, 565.0, 67.0, 33.0, Some(1271), Some(sdl::KEY_C)),
+];
 /// Emplacements des onglets dans le panneau latéral, relevés sur son image.
 const TAB_LEFT: f32 = 5.0;
 const TAB_TOP: f32 = 22.0;
@@ -529,6 +547,8 @@ enum MenuRow {
     Trade(usize),
     /// Satisfait la demande de ce rang.
     Fulfil(usize),
+    /// Bouton du panneau latéral : comme la touche donnée.
+    Key(u32),
 }
 
 /// Outil tenu par le joueur.
@@ -541,6 +561,19 @@ enum Tool {
 }
 
 fn main() {
+    // Sous X11, SDL ne donne un titre de fenêtre accentué correct qu'avec la locale
+    // de l'utilisateur ; un programme Rust reste sinon dans la locale « C ».
+    #[cfg(target_os = "linux")]
+    {
+        unsafe extern "C" {
+            fn setlocale(category: i32, locale: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+        }
+        const LC_ALL: i32 = 6;
+        // SAFETY : appelé au démarrage, avant tout autre fil ; la chaîne vide est valide.
+        unsafe {
+            setlocale(LC_ALL, c"".as_ptr());
+        }
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|first| first == "installer") {
         install(&args[1..]);
@@ -2430,6 +2463,11 @@ fn run(
                                 hovered = (-1, -1);
                                 continue;
                             }
+                            Some(MenuRow::Key(key)) => {
+                                let mut pressed = sdl::Event::key_down(0, key);
+                                sdl::SDL_PushEvent(&mut pressed);
+                                continue;
+                            }
                             Some(MenuRow::Fulfil(index)) => {
                                 let request = world.requests.get(index).copied();
                                 notice = match request {
@@ -2767,13 +2805,38 @@ fn run(
                 graphics.blit(UI_TABS + UI_TAB_STATES * icon + state, slot.0, slot.1);
                 menu_rows.push((slot, MenuRow::Category(index)));
             }
-            // « Dégager » occupe l'emplacement d'onglet suivant.
-            let clear_slot = (side + TAB_LEFT, TAB_TOP + TAB_STEP * CATEGORY_TABS.len() as f32, TAB_WIDTH, TAB_HEIGHT);
-            if tool == Tool::Demolish || inside(clear_slot) {
-                sdl::SDL_SetRenderDrawColor(renderer, 200, 160, 40, 140);
-                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: clear_slot.0, y: clear_slot.1, w: clear_slot.2, h: clear_slot.3 });
+            // Dixième onglet : l'armée, grisée tant qu'Olympe n'en a pas.
+            graphics.blit(UI_TABS + UI_TAB_STATES * MILITARY_TAB + 3, side + TAB_LEFT, TAB_TOP + TAB_STEP * CATEGORY_TABS.len() as f32);
+            // Les autres réserves du panneau reçoivent les boutons d'origine : un fond
+            // sombre, puis le bouton (repos, survol, enfoncé, inactif).
+            for &(x, y, w, h, image, key) in &SIDEBAR_BUTTONS {
+                let slot = (side + x, y, w, h);
+                sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
+                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                let Some(image) = image else { continue };
+                let open = match key {
+                    Some(sdl::KEY_O) => goals_panel,
+                    Some(sdl::KEY_C) => cities_panel,
+                    Some(sdl::KEY_H) => help,
+                    _ => false,
+                };
+                let state = match key {
+                    None => 3,
+                    Some(_) if open => 2,
+                    Some(_) if inside(slot) => 1,
+                    Some(_) => 0,
+                };
+                graphics.blit(image + state, slot.0, slot.1);
+                if let Some(key) = key {
+                    menu_rows.push((slot, MenuRow::Key(key)));
+                }
             }
-            graphics.draw_text(FONT_CHROME, "X", clear_slot.0 + 14.0, clear_slot.1 + (TAB_HEIGHT - line) / 2.0);
+            // « Dégager » : la pioche, dans la grande réserve sous les onglets.
+            let clear_slot = (side + CLEAR_SLOT.0, CLEAR_SLOT.1, CLEAR_SLOT.2, CLEAR_SLOT.3);
+            sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
+            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: clear_slot.0, y: clear_slot.1, w: clear_slot.2, h: clear_slot.3 });
+            let state = if tool == Tool::Demolish { 2 } else if inside(clear_slot) { 1 } else { 0 };
+            graphics.blit(CLEAR_TAB + state, clear_slot.0 + (clear_slot.2 - TAB_WIDTH) / 2.0, clear_slot.1);
             menu_rows.push((clear_slot, MenuRow::Pick(Tool::Demolish)));
             // Nom de la catégorie ouverte ou survolée, dans le haut du panneau.
             let named = open_category.or_else(|| menu_rows.iter().find_map(|&(slot, action)| match action {
