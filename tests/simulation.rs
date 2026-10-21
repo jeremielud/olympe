@@ -164,3 +164,47 @@ fn goals_follow_the_city() {
     other.load(&world.save()).unwrap();
     assert_eq!(other.best_year_profit, Some(0));
 }
+
+#[test]
+fn production_and_set_aside_goals() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Une laiterie livre son fromage (ressource 4) à un grenier.
+    let first = world.kinds.len();
+    let mut dairy = Kind::simple("laiterie".into(), 35, 2, 548, Function::Producer(zeus::world::Good::Food), 0);
+    dairy.product = 4;
+    world.kinds.push(dairy);
+    world.kinds.push(Kind::simple("grenier".into(), 100, 4, 473, Function::Granary, 0));
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    assert!(world.place_building(first, x + 10, y + 3), "laiterie");
+    assert!(world.place_building(first + 1, x + 6, y + 5), "grenier");
+    let goal = |kind, values| Goal { kind, values };
+    let production = goal(GoalKind::Production, [4, 6, 0]);
+    let set_aside = goal(GoalKind::SetAside, [4, 4, 0]);
+    // Rien que la cité ne sache produire ou ranger : objectifs hors d'atteinte.
+    assert_eq!(goal(GoalKind::Production, [10, 6, 0]).status(&world), Status::Unsupported);
+    assert_eq!(goal(GoalKind::SetAside, [7, 4, 0]).status(&world), Status::Unsupported);
+    assert_eq!(set_aside.status(&world), Status::Pending(Some(0)));
+    (0..9600).for_each(|_| world.tick());
+    // L'année est close : sa production reste acquise.
+    assert!(world.best_produced[4] >= 6, "{}", world.best_produced[4]);
+    assert_eq!(production.status(&world), Status::Met);
+    // Au grenier, le fromage est rangé comme tel.
+    let stored = world.stored(4);
+    assert!(stored >= 4, "{stored}");
+    let granary = world.buildings.iter().flatten().find(|b| b.kind == first + 1).unwrap();
+    assert_eq!(granary.foods[4], granary.stock);
+    // Tout ou rien : trop demander ne prend rien.
+    assert!(!world.set_aside(4, stored + 1));
+    assert!(world.set_aside(4, 4));
+    assert_eq!(world.stored(4), stored - 4);
+    assert_eq!(set_aside.status(&world), Status::Met);
+    // Les compteurs passent par la sauvegarde, et un nouvel épisode les remet à zéro.
+    let (mut other, ..) = self::world(&data);
+    other.kinds = world.kinds.clone();
+    other.load(&world.save()).unwrap();
+    assert_eq!((other.set_aside[4], other.best_produced[4], other.stored(4)), (4, world.best_produced[4], stored - 4));
+    other.start_episode();
+    assert_eq!(set_aside.status(&other), Status::Pending(Some(0)));
+}

@@ -222,6 +222,24 @@ fn raw_for(good: Good) -> Raw {
 
 pub const GOODS: [Good; 6] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses];
 
+/// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
+/// objectifs des aventures) : 2 poisson, 7 blé, 14 laine, 20 huile d'olive…
+pub const RESOURCES: usize = 24;
+/// Les ressources 1 à 7 sont des vivres, rangés au grenier.
+pub const FOODS: usize = 8;
+
+/// Numéro de ressource d'une marchandise rangée à l'entrepôt.
+pub fn resource_of(good: Good) -> Option<u8> {
+    match good {
+        Good::Fleece => Some(14),
+        Good::Oil => Some(20),
+        Good::Wine => Some(21),
+        Good::Arms => Some(18),
+        Good::Horses => Some(15),
+        Good::Food => None,
+    }
+}
+
 /// Rôle d'un type de bâtiment dans la simulation.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Function {
@@ -308,13 +326,16 @@ pub struct Kind {
     /// Risque d'incendie et d'effondrement gagné chaque mois sans visite de la maintenance.
     pub fire_risk: i32,
     pub damage_risk: i32,
+    /// Ressource que le bâtiment produit (numéro du jeu), 0 s'il n'en produit pas :
+    /// sert aux objectifs de production et à trier les vivres du grenier.
+    pub product: u8,
 }
 
 impl Kind {
     /// Bâtiment fait d'une seule image.
     pub fn simple(name: String, cost: i32, size: usize, image: usize, function: Function, walker: usize) -> Kind {
         let parts = vec![Part { dx: 0, dy: 0, size, image, crop: false, bay: None }];
-        Kind { name, cost, size, depth: size, parts, function, walker, stock_overlay: None, employees: 0, appeal: Appeal::default(), fire_risk: 0, damage_risk: 0 }
+        Kind { name, cost, size, depth: size, parts, function, walker, stock_overlay: None, employees: 0, appeal: Appeal::default(), fire_risk: 0, damage_risk: 0, product: 0 }
     }
 }
 
@@ -360,6 +381,9 @@ pub struct Building {
     pub raw: i32,
     /// Contenu d'un entrepôt, en chargements, dans l'ordre de `GOODS`.
     pub goods: [i32; GOODS.len()],
+    /// Vivres d'un grenier par ressource (le rang 0 reçoit ceux d'origine inconnue) ;
+    /// leur somme est `stock`.
+    pub foods: [i32; FOODS],
     /// Prochain départ d'un marcheur en tournée.
     next_walk: u64,
     /// Début de la pousse en cours (ferme).
@@ -480,6 +504,11 @@ pub struct World {
     /// Bénéfice de l'année civile en cours, et meilleur bénéfice d'une année achevée.
     pub year_profit: i32,
     pub best_year_profit: Option<i32>,
+    /// Production de l'année civile en cours et meilleure année achevée, par ressource.
+    pub produced: [i32; RESOURCES],
+    pub best_produced: [i32; RESOURCES],
+    /// Marchandises mises de côté pour la cité suivante, par ressource.
+    pub set_aside: [i32; RESOURCES],
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -508,6 +537,9 @@ impl World {
             last_month: (0, 0),
             year_profit: 0,
             best_year_profit: None,
+            produced: [0; RESOURCES],
+            best_produced: [0; RESOURCES],
+            set_aside: [0; RESOURCES],
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -742,6 +774,7 @@ impl World {
             stock: 0,
             raw: 0,
             goods: [0; GOODS.len()],
+            foods: [0; FOODS],
             walks: 0,
             fire: 0,
             damage: 0,
@@ -883,6 +916,89 @@ impl World {
         self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.level >= level).map(|h| h.population).sum()
     }
 
+    /// Meilleure production d'une année de cette ressource, l'année en cours comprise.
+    pub fn best_production(&self, resource: usize) -> i32 {
+        match (self.best_produced.get(resource), self.produced.get(resource)) {
+            (Some(&best), Some(&now)) => best.max(now),
+            _ => 0,
+        }
+    }
+
+    /// Un nouvel épisode commence : comme le jeu, on oublie les meilleures années et
+    /// ce qui a été mis de côté.
+    pub fn start_episode(&mut self) {
+        self.best_year_profit = None;
+        self.best_produced = [0; RESOURCES];
+        self.set_aside = [0; RESOURCES];
+    }
+
+    /// Un bâtiment de la cité sait produire cette ressource.
+    pub fn produces(&self, resource: i32) -> bool {
+        resource > 0 && self.kinds.iter().any(|k| k.product as i32 == resource)
+    }
+
+    /// La ressource se range au grenier ou à l'entrepôt (les chevaux restent au haras).
+    pub fn can_store(&self, resource: i32) -> bool {
+        (1..FOODS as i32).contains(&resource) && self.produces(resource)
+            || GOODS.iter().any(|&g| g != Good::Horses && resource_of(g).is_some_and(|r| r as i32 == resource))
+    }
+
+    /// Quantité d'une ressource en réserve : vivres des greniers, marchandises des entrepôts.
+    pub fn stored(&self, resource: usize) -> i32 {
+        let good = GOODS.iter().position(|&g| resource_of(g) == Some(resource as u8));
+        self.buildings
+            .iter()
+            .flatten()
+            .map(|b| match (self.kinds[b.kind].function, good) {
+                (Function::Granary, _) if (1..FOODS).contains(&resource) => b.foods[resource],
+                (Function::Storehouse, Some(good)) => b.goods[good],
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// Met de côté `amount` d'une ressource, prise dans les greniers ou les entrepôts.
+    /// Comme dans le jeu, tout ou rien : faux si la réserve ne suffit pas.
+    pub fn set_aside(&mut self, resource: usize, amount: i32) -> bool {
+        if amount <= 0 || resource >= RESOURCES || self.stored(resource) < amount {
+            return false;
+        }
+        let good = GOODS.iter().position(|&g| resource_of(g) == Some(resource as u8));
+        let mut left = amount;
+        for id in 0..self.buildings.len() {
+            let function = match &self.buildings[id] {
+                Some(b) => self.kinds[b.kind].function,
+                None => continue,
+            };
+            let Some(b) = self.buildings[id].as_mut() else { continue };
+            let taken = match (function, good) {
+                (Function::Granary, _) if resource < FOODS => {
+                    let taken = b.foods[resource].min(left);
+                    b.foods[resource] -= taken;
+                    b.stock -= taken;
+                    taken
+                }
+                (Function::Storehouse, Some(good)) => {
+                    let taken = b.goods[good].min(left);
+                    b.goods[good] -= taken;
+                    taken
+                }
+                _ => 0,
+            };
+            left -= taken;
+        }
+        self.set_aside[resource] += amount;
+        true
+    }
+
+    /// Compte la production d'un bâtiment pour les objectifs.
+    fn count_production(&mut self, kind: usize, amount: i32) {
+        let product = self.kinds[kind].product as usize;
+        if product != 0 && product < RESOURCES {
+            self.produced[product] += amount;
+        }
+    }
+
     /// Date courante : (jour du mois, mois, année), tous à partir de 0.
     pub fn date(&self) -> (u64, u64, u64) {
         let days = self.ticks / TICKS_PER_DAY;
@@ -1020,6 +1136,9 @@ impl World {
         if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {
             self.best_year_profit = Some(self.best_year_profit.map_or(self.year_profit, |best| best.max(self.year_profit)));
             self.year_profit = 0;
+            for (best, year) in self.best_produced.iter_mut().zip(&mut self.produced) {
+                *best = (*best).max(std::mem::take(year));
+            }
         }
     }
 
@@ -1101,7 +1220,10 @@ impl World {
                     if self.ticks - building.sown_at >= needed {
                         let building = self.buildings[id].as_mut().unwrap();
                         building.sown_at = self.ticks;
+                        let before = building.stock;
                         building.stock = (building.stock + 1).min(PRODUCER_STORAGE);
+                        let (kind, made) = (building.kind, building.stock - before);
+                        self.count_production(kind, made);
                     }
                     if stock >= CARRIER_LOAD && !errand_out {
                         self.send_harvest(id, function);
@@ -1115,6 +1237,8 @@ impl World {
                         building.sown_at = self.ticks;
                         building.raw -= 1;
                         building.stock += 1;
+                        let kind = building.kind;
+                        self.count_production(kind, 1);
                     }
                     if stock >= CARRIER_LOAD && !errand_out {
                         self.send_harvest(id, function);
@@ -1125,7 +1249,10 @@ impl World {
                     if self.ticks - building.sown_at >= HARVEST_TICKS {
                         let building = self.buildings[id].as_mut().unwrap();
                         building.sown_at = self.ticks;
+                        let before = building.stock;
                         building.stock = (building.stock + HARVEST_LOADS).min(FARM_STORAGE);
+                        let (kind, made) = (building.kind, building.stock - before);
+                        self.count_production(kind, made);
                     }
                     if stock > 0 && !errand_out {
                         self.send_harvest(id, function);
@@ -1424,12 +1551,18 @@ impl World {
                         (Function::Storehouse, Function::Producer(good) | Function::Workshop(good)) => Some(good),
                         _ => None,
                     };
+                    // Au grenier, les vivres sont rangés selon ce que produit l'expéditeur.
+                    let granary = self.function(to as usize) == Function::Granary;
+                    let food = self.buildings[from as usize].as_ref().map_or(0, |b| self.kinds[b.kind].product as usize);
                     if let Some(building) = self.buildings[to as usize].as_mut() {
                         // Un atelier reçoit de la matière première, les autres du stock.
                         match stored {
                             Some(good) => building.goods[good as usize] += load,
                             None if raw => building.raw += load,
                             None => building.stock += load,
+                        }
+                        if granary {
+                            building.foods[if food < FOODS { food } else { 0 }] += load;
                         }
                     }
                     if let Some(building) = self.buildings[from as usize].as_mut() {
@@ -1452,6 +1585,13 @@ impl World {
                         };
                         load = (*shelf).min(VENDOR_LOAD);
                         *shelf -= load;
+                        // Au grenier, l'acheteuse prend d'abord les vivres les plus abondants.
+                        let mut left = load;
+                        while left > 0 && wanted.is_none() {
+                            let Some(most) = (0..FOODS).max_by_key(|&f| building.foods[f]).filter(|&f| building.foods[f] > 0) else { break };
+                            building.foods[most] -= 1;
+                            left -= 1;
+                        }
                     }
                     let back = self.road_path(at, |_, id| id == vendor);
                     match back {
@@ -1714,6 +1854,10 @@ impl World {
             self.year_profit,
             self.best_year_profit.map_or("-".to_string(), |best| best.to_string())
         );
+        let list = |values: &[i32; RESOURCES]| values.iter().map(i32::to_string).collect::<Vec<_>>().join(" ");
+        let _ = writeln!(out, "production {}", list(&self.produced));
+        let _ = writeln!(out, "meilleure {}", list(&self.best_produced));
+        let _ = writeln!(out, "reserve {}", list(&self.set_aside));
         for (index, cell) in self.cells.iter().enumerate() {
             let _ = match *cell {
                 Cell::Road => writeln!(out, "route {} {}", index % GRID, index / GRID),
@@ -1746,6 +1890,9 @@ impl World {
                 let covered: Vec<String> = h.covered_until.iter().map(u64::to_string).collect();
                 let goods: Vec<String> = h.goods.iter().map(i32::to_string).collect();
                 let _ = write!(out, " maison {} {} {} {} {}", h.level, h.population, h.arriving, goods.join(" "), covered.join(" "));
+            }
+            if b.foods.iter().any(|&f| f != 0) {
+                let _ = write!(out, " vivres {}", b.foods.iter().map(i32::to_string).collect::<Vec<_>>().join(" "));
             }
             out.push('\n');
         }
@@ -1783,6 +1930,8 @@ impl World {
         let (mut buildings, mut figures, mut fires) = (Vec::new(), Vec::new(), Vec::new());
         let mut state = None;
         let mut profits = (0, None);
+        // Compteurs des objectifs : absents des sauvegardes plus anciennes.
+        let mut counters = [[0; RESOURCES]; 3];
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -1798,6 +1947,12 @@ impl World {
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
+                }
+                "production" | "meilleure" | "reserve" => {
+                    let row = ["production", "meilleure", "reserve"].iter().position(|&k| k == kind).unwrap_or(0);
+                    for (i, slot) in counters[row].iter_mut().enumerate() {
+                        *slot = number_at(i)? as i32;
+                    }
                 }
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
@@ -1840,6 +1995,19 @@ impl World {
                         }
                         _ => None,
                     };
+                    // Vivres du grenier par ressource : absents des sauvegardes plus
+                    // anciennes, où tout le stock passe pour d'origine inconnue.
+                    let stock = number_at(3)? as i32;
+                    let mut foods = [0; FOODS];
+                    match rest.iter().position(|&w| w == "vivres") {
+                        Some(at) => {
+                            for (i, slot) in foods.iter_mut().enumerate() {
+                                *slot = number_at(at + 1 + i)? as i32;
+                            }
+                        }
+                        None if self.kinds[kind].function == Function::Granary => foods[0] = stock,
+                        None => {}
+                    }
                     let id = buildings.len() as u16;
                     for dy in 0..depth {
                         for dx in 0..size {
@@ -1851,7 +2019,8 @@ impl World {
                         x,
                         y,
                         house,
-                        stock: number_at(3)? as i32,
+                        stock,
+                        foods,
                         raw: number_at(8)? as i32,
                         goods: {
                             let mut goods = [0; GOODS.len()];
@@ -1936,6 +2105,7 @@ impl World {
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;
+        [self.produced, self.best_produced, self.set_aside] = counters;
         self.rebuild_appeal();
         Ok(())
     }

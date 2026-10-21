@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use zeus::font::Font;
-use zeus::goals::{Goal, Status};
+use zeus::goals::{Goal, Kind as GoalKind, Status};
 use zeus::jpeg;
 use zeus::messages::{self, Messages};
 use zeus::map::{GRID, Map, Source};
@@ -44,7 +44,7 @@ options :
   --capture IMAGE    enregistre la première image rendue et quitte
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
-                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o,
+                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r,
                      t:n (pas), p:ms (pause), fin (termine l'épisode en cours)
 en jeu : H affiche l'aide";
 
@@ -160,6 +160,19 @@ const RESOURCE_BRONZE: u8 = 10;
 const RESOURCE_GRAPES: u8 = 12;
 const RESOURCE_OLIVES: u8 = 13;
 const RESOURCE_FLEECE: u8 = 14;
+/// Ce que produit chaque bâtiment d'une seule image (numéro de type, ressource), pour
+/// les objectifs de production et le tri des vivres au grenier.
+const PRODUCTS: [(usize, u8); 9] = [
+    (44, RESOURCE_FISH),
+    (46, RESOURCE_MEAT),
+    (42, RESOURCE_CHEESE),
+    (41, RESOURCE_FLEECE),
+    (TYPE_FOUNDRY, RESOURCE_BRONZE),
+    (135, 18),
+    (133, 15),
+    (54, 20),
+    (53, 21),
+];
 const FARM_FIELDS: [(usize, usize); 5] = [(2, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
 /// Entrepôt : type, cabane (choisie à l'œil parmi les groupes d'images de la planche
 /// de stockage) et baie vide.
@@ -270,7 +283,7 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 15] = [
+const HELP: [&str; 16] = [
     "Clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
@@ -284,6 +297,7 @@ const HELP: [&str; 15] = [
     "F : plein écran",
     "M : musique ; B : bruitages",
     "O : objectifs de l'épisode",
+    "R : mettre de côté les marchandises demandées",
     "Survoler un bâtiment : ses informations",
     "H : refermer cette aide",
 ];
@@ -781,6 +795,33 @@ impl Journey {
         self.position = position;
         Ok(())
     }
+}
+
+/// Met de côté les marchandises que demandent les objectifs, s'il y en a assez en
+/// stock ; rend le compte rendu à afficher.
+fn set_aside(world: &mut World, goals: &[Goal], text: &Text) -> String {
+    let mut report = Vec::new();
+    for goal in goals.iter().filter(|goal| goal.kind == GoalKind::SetAside) {
+        if goal.status(world) == Status::Met {
+            continue;
+        }
+        let [resource, amount, _] = goal.values;
+        let Ok(index) = usize::try_from(resource) else { continue };
+        if !world.can_store(resource) {
+            continue;
+        }
+        let name = text.get(23, index).to_lowercase();
+        let missing = amount - world.set_aside[index];
+        if world.set_aside(index, missing) {
+            report.push(format!("{missing} {name} mis de côté"));
+        } else {
+            report.push(format!("{name} : {} en stock sur {missing}", world.stored(index)));
+        }
+    }
+    if report.is_empty() {
+        return "Rien à mettre de côté".to_string();
+    }
+    report.join(" ; ")
 }
 
 /// Prépare l'affichage d'une cité où l'on arrive : son sol, la vue sur son terrain
@@ -1464,9 +1505,10 @@ fn run(
         entry.employees = rules(kind)?.employees;
         entry.appeal = appeal_of(kind)?;
         (entry.fire_risk, entry.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
+        entry.product = PRODUCTS.iter().find(|&&(k, _)| k == kind).map_or(0, |&(_, product)| product);
         kinds.push(entry);
     }
-    for (kind, crop) in FARMS {
+    for ((kind, crop), product) in FARMS.into_iter().zip(FARM_RESOURCES) {
         let mut parts = vec![Part { dx: 0, dy: 0, size: size_of(FARM_HOUSE_IMAGE)?, image: FARM_HOUSE_IMAGE, crop: false, bay: None }];
         parts.extend(FARM_FIELDS.map(|(dx, dy)| Part { dx, dy, size: 1, image: crop, crop: true, bay: None }));
         kinds.push(Kind {
@@ -1482,6 +1524,7 @@ fn run(
             appeal: appeal_of(kind)?,
             fire_risk: rules(kind)?.fire_risk,
             damage_risk: rules(kind)?.damage_risk,
+            product,
         });
     }
     // Entrepôt : une cabane au coin du fond et huit baies.
@@ -1501,6 +1544,7 @@ fn run(
         appeal: appeal_of(TYPE_STOREHOUSE)?,
         fire_risk: rules(TYPE_STOREHOUSE)?.fire_risk,
         damage_risk: rules(TYPE_STOREHOUSE)?.damage_risk,
+        product: 0,
     });
     let mut plot_appeal = appeal_of(TYPE_AGORA)?;
     plot_appeal.value /= AGORA_PLOTS;
@@ -1519,6 +1563,7 @@ fn run(
         appeal: appeal_of(TYPE_ELITE_HOUSE)?,
         fire_risk: rules(TYPE_ELITE_HOUSE)?.fire_risk,
         damage_risk: rules(TYPE_ELITE_HOUSE)?.damage_risk,
+        product: 0,
     });
     // Palais : la disposition est celle de `model/palace.txt` — deux moitiés 4 × 4
     // l'une derrière l'autre, bordées de dalles sur trois côtés et de deux dalles
@@ -1545,6 +1590,7 @@ fn run(
         appeal: appeal_of(TYPE_PALACE)?,
         fire_risk: rules(TYPE_PALACE)?.fire_risk,
         damage_risk: rules(TYPE_PALACE)?.damage_risk,
+        product: 0,
     });
     for (kind, grand) in [(TYPE_AGORA, false), (TYPE_GRAND_AGORA, true)] {
         kinds.push(Kind::simple(text.get(TEXT_BUILDINGS, kind), rules(kind)?.cost, 2, PLOT_IMAGE, Function::Agora { grand }, 0));
@@ -1776,6 +1822,7 @@ fn run(
                         "f9" => Some(sdl::Event::key_down(0, sdl::KEY_F9)),
                         "h" => Some(sdl::Event::key_down(0, sdl::KEY_H)),
                         "o" => Some(sdl::Event::key_down(0, sdl::KEY_O)),
+                        "r" => Some(sdl::Event::key_down(0, sdl::KEY_R)),
                         _ => None,
                     },
                     // Pause en temps réel, pour laisser vivre ce qui en dépend (son).
@@ -1839,6 +1886,7 @@ fn run(
                         lock_resources(&mut world, &episode.resources);
                     }
                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
+                    world.start_episode();
                     intro = story(data, map_path, settings.as_ref(), step, Moment::Opening);
                 } else {
                     journey.position = journey.order.len();
@@ -1937,6 +1985,7 @@ fn run(
                         }
                         sdl::KEY_H => help = !help,
                         sdl::KEY_O => goals_panel = !goals_panel,
+                        sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
                                 ambience.enabled = !ambience.enabled;
@@ -2463,15 +2512,21 @@ fn run(
                         // La police du jeu n'a pas de tiret long : l'état va entre parenthèses.
                         let state = match status {
                             Status::Met => text.get(194, 62).to_lowercase(),
+                            Status::Pending(Some(done)) if goal.kind == GoalKind::SetAside => {
+                                format!("{done} mis de côté, {} en stock", world.stored(goal.values[0] as usize))
+                            }
                             Status::Pending(Some(current)) => format!("actuellement {current}"),
                             Status::Pending(None) => text.get(194, 52),
                             Status::Unsupported => "pas encore simulé par Olympe".to_string(),
                         };
-                        format!("{} ({state})", goal.describe(&text, &level_names))
+                        format!("{} ({state})", goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_))))
                     })
                     .collect();
                 if lines.is_empty() {
                     lines.push(text.get(44, 280));
+                }
+                if goals.iter().zip(&statuses).any(|(goal, status)| goal.kind == GoalKind::SetAside && *status != Status::Met) {
+                    lines.push("R : mettre de côté ce qui est en stock".to_string());
                 }
                 let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * lines.len() as f32;

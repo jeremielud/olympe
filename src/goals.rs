@@ -172,6 +172,11 @@ impl Goal {
                 Some(best) => against(best, first),
                 None => Status::Pending(None),
             },
+            // Meilleure année, l'année en cours comprise.
+            Kind::Production if world.produces(first) => against(world.best_production(first as usize), second),
+            // Le jeu tient pour atteint un objectif sans marchandise.
+            Kind::SetAside if first == 0 => Status::Met,
+            Kind::SetAside if world.can_store(first) => against(world.set_aside[first as usize], second),
             _ => Status::Unsupported,
         }
     }
@@ -188,8 +193,10 @@ impl Goal {
         text.get(TEXT_GROUP, index)
     }
 
-    /// Libellé du jeu, complété. `levels` donne le nom de chaque niveau de logement.
-    pub fn describe(&self, text: &Text, levels: &[String]) -> String {
+    /// Libellé du jeu, complété. `levels` donne le nom de chaque niveau de logement ;
+    /// `in_colony` dit si l'épisode se joue dans une colonie, d'où les marchandises mises
+    /// de côté partent pour la cité mère (et inversement).
+    pub fn describe(&self, text: &Text, levels: &[String], in_colony: bool) -> String {
         let [first, second, third] = self.values;
         let line = |index: usize| text.get(TEXT_GROUP, index);
         let resource = |id: i32| usize::try_from(id).map_or(String::new(), |id| text.get(TEXT_RESOURCES, id).to_lowercase());
@@ -204,9 +211,7 @@ impl Goal {
                 amount(line(33), second).replace("[house_level]", &level.to_lowercase())
             }
             Kind::Partners => amount(line(34), first),
-            // Le jeu choisit le libellé selon que l'épisode se joue dans la cité mère
-            // ou dans une colonie ; sans cette information, on garde le plus général.
-            Kind::SetAside => format!("{} : {second} {}", line(61), resource(first)),
+            Kind::SetAside => amount(line(if in_colony { 35 } else { 36 }), second).replace("[item]", &resource(first)),
             Kind::Sanctuary if first == -1 => match (second >= 2, third != 0) {
                 (false, false) => line(20),
                 (false, true) => line(21),
