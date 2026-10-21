@@ -188,9 +188,30 @@ pub const LAVA: u8 = 91;
 pub const TIDAL_WAVE: u8 = 92;
 /// Raz-de-marée dont les eaux ne se retirent pas.
 pub const FLOOD: u8 = 93;
-/// Images du terrain : morceaux de fissure posés sur le sol, lave refroidie.
-const CHASM_FIRST_IMAGE: usize = 1107;
-const CHASM_IMAGES: usize = 16;
+/// Morceaux de fissure posés sur le sol, selon les côtés par où la fissure se
+/// prolonge (bits dans l'ordre de `NEIGHBOURS` : nord-est, sud-est, sud-ouest,
+/// nord-ouest), relevés sur les images 1139 à 1178 du terrain ; plusieurs variantes
+/// par forme.
+const CHASM_PIECES: [&[usize]; 16] = [
+    &[1178],
+    &[1143, 1165, 1172],
+    &[1144],
+    &[1149, 1158, 1163, 1174],
+    &[1145, 1166, 1171],
+    &[1141, 1142, 1154, 1156],
+    &[1150, 1159, 1168, 1175],
+    &[1167],
+    &[1146, 1169],
+    &[1157, 1177],
+    &[1139, 1140, 1153],
+    &[1164],
+    &[1160, 1176],
+    &[1151, 1152, 1173],
+    &[1155, 1170],
+    &[1161],
+];
+const CHASM_VARIANTS: usize = 12;
+/// Lave refroidie.
 const LAVA_FIRST_IMAGE: usize = 1101;
 const LAVA_IMAGES: usize = 6;
 /// Les eaux d'un raz-de-marée se retirent au bout de six mois (durée d'Olympe).
@@ -1254,7 +1275,15 @@ impl World {
             }),
             Cell::Chasm(variant) => Some(Draw {
                 source: Source::Terrain,
-                image: CHASM_FIRST_IMAGE + variant as usize % CHASM_IMAGES,
+                image: {
+                    let open = |dx: i32, dy: i32| {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        Self::in_grid(nx, ny) && matches!(self.cell(nx as usize, ny as usize), Cell::Chasm(_))
+                    };
+                    let shape = NEIGHBOURS.iter().enumerate().filter(|&(_, &(dx, dy))| open(dx, dy)).fold(0, |mask, (bit, _)| mask | 1 << bit);
+                    let pieces = CHASM_PIECES[shape];
+                    pieces[variant as usize % pieces.len()]
+                },
                 burning: false,
                 overlay: None,
                 ground: self.map.resolve(self.map.image(x, y)),
@@ -2244,7 +2273,7 @@ impl World {
         for (i, _) in zone.iter().enumerate().filter(|&(_, &z)| z) {
             let (x, y) = (i % GRID, i / GRID);
             self.cells[i] = match change {
-                EARTHQUAKE => Cell::Chasm(((x * 31 + y * 17) % CHASM_IMAGES) as u8),
+                EARTHQUAKE => Cell::Chasm(((x * 31 + y * 17) % CHASM_VARIANTS) as u8),
                 LAVA => Cell::Lava(((x * 7 + y * 3) % LAVA_IMAGES) as u8),
                 _ => Cell::Flood,
             };
