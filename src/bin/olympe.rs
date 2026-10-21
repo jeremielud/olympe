@@ -26,7 +26,7 @@ use zeus::sdl;
 use zeus::sg::Catalog;
 use zeus::text::Text;
 use zeus::world::{TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
-use zeus::world::{Appeal, Function, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World};
+use zeus::world::{Appeal, Function, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
   olympe                              lance le jeu (écran de choix d'aventure)
@@ -99,7 +99,7 @@ const GROUP_PHILOSOPHER: usize = 240;
 const TYPE_FOUNDRY: usize = 50;
 const DAIRY_IMAGE: usize = 548;
 const HUNTING_LODGE_IMAGE: usize = 544;
-const SIMPLE_KINDS: [(usize, usize, Function, usize); 34] = [
+const SIMPLE_KINDS: [(usize, usize, Function, usize); 36] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
     (121, 1075, Function::Service(Service::Maintenance), GROUP_SUPERINTENDENT),
@@ -125,6 +125,10 @@ const SIMPLE_KINDS: [(usize, usize, Function, usize); 34] = [
     // Fonderie et armurerie : images attribuées à l'œil.
     (TYPE_FOUNDRY, 618, Function::Supplier(Raw::Bronze), 0),
     (135, 740, Function::Workshop(Good::Arms), 0),
+    // Scierie et atelier de maçonnerie : posés n'importe où, sans bûcherons ni carrière
+    // (raccourci, comme la fonderie) ; images attribuées à l'œil.
+    (51, 598, Function::Producer(Good::Wood), 0),
+    (49, 609, Function::Producer(Good::Marble), 0),
     // Haras : le groupe d'images voisin de celui de l'enclos à chevaux.
     (133, 723, Function::Producer(Good::Horses), 0),
     // Stade : deux moitiés 5 × 5 ; l'outil pose l'annexe (au fond) puis celle-ci.
@@ -156,18 +160,22 @@ const FARM_RESOURCES: [u8; 3] = [7, 5, 6];
 const RESOURCE_FISH: u8 = 2;
 const RESOURCE_MEAT: u8 = 3;
 const RESOURCE_CHEESE: u8 = 4;
+const RESOURCE_WOOD: u8 = 9;
 const RESOURCE_BRONZE: u8 = 10;
+const RESOURCE_MARBLE: u8 = 11;
 const RESOURCE_GRAPES: u8 = 12;
 const RESOURCE_OLIVES: u8 = 13;
 const RESOURCE_FLEECE: u8 = 14;
 /// Ce que produit chaque bâtiment d'une seule image (numéro de type, ressource), pour
 /// les objectifs de production et le tri des vivres au grenier.
-const PRODUCTS: [(usize, u8); 9] = [
+const PRODUCTS: [(usize, u8); 11] = [
     (44, RESOURCE_FISH),
     (46, RESOURCE_MEAT),
     (42, RESOURCE_CHEESE),
     (41, RESOURCE_FLEECE),
     (TYPE_FOUNDRY, RESOURCE_BRONZE),
+    (51, RESOURCE_WOOD),
+    (49, RESOURCE_MARBLE),
     (135, 18),
     (133, 15),
     (54, 20),
@@ -203,7 +211,7 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
     (73, 455, 456, Good::Horses, GROUP_HORSE_TRAINER),
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
-const GOOD_TEXTS: [usize; 7] = [25, 14, 20, 21, 18, 15, 10];
+const GOOD_TEXTS: [usize; 9] = [25, 14, 20, 21, 18, 15, 10, 9, 11];
 /// Logement luxueux : type, et image d'un quart de terrain vacant (pour l'aperçu).
 const TYPE_ELITE_HOUSE: usize = 9;
 const ELITE_LOT_IMAGE: usize = 1021;
@@ -244,6 +252,8 @@ fn sound_category(function: Function) -> &'static str {
         Function::Farm => "FARMING",
         Function::Granary | Function::Storehouse => "STORAGE",
         Function::Producer(Good::Horses) => "HORSE_RANCH",
+        Function::Producer(Good::Wood) => "TIMBER_MILL",
+        Function::Producer(Good::Marble) => "MARBLE_QUARRY",
         Function::Producer(Good::Food) => "GOAT_FARM",
         Function::Fishery => "SEA",
         Function::Producer(_) => "SHEEP_FARM",
@@ -254,7 +264,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Fleece) => "AGORA_FLEECE",
         Function::Vendor(Good::Oil) => "AGORA_OIL",
         Function::Vendor(Good::Wine) => "AGORA_WINE",
-        Function::Vendor(Good::Arms | Good::Bronze) => "AGORA_ARMS",
+        Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
         Function::None => "BEAUTIFICATION",
@@ -341,8 +351,8 @@ const CATEGORY_NAMES: [(Option<usize>, &str); 8] = [
 fn category_of(function: Function) -> usize {
     match function {
         Function::House => 0,
+        Function::Supplier(Raw::Bronze) | Function::Producer(Good::Wood | Good::Marble) => 2,
         Function::Farm | Function::Producer(_) | Function::Fishery | Function::Supplier(Raw::Crops) => 1,
-        Function::Supplier(Raw::Bronze) => 2,
         Function::Workshop(_) => 2,
         Function::Granary | Function::Storehouse | Function::Agora { .. } | Function::Vendor(_) => 3,
         // Les emplacements ne se bâtissent qu'à travers l'agora.
@@ -708,6 +718,8 @@ fn lock_resources(world: &mut World, resources: &[u8]) {
             Function::Workshop(Good::Oil) => !has(RESOURCE_OLIVES),
             Function::Workshop(Good::Wine) => !has(RESOURCE_GRAPES),
             Function::Supplier(Raw::Bronze) => !has(RESOURCE_BRONZE),
+            Function::Producer(Good::Wood) => !has(RESOURCE_WOOD),
+            Function::Producer(Good::Marble) => !has(RESOURCE_MARBLE),
             _ => false,
         })
         .collect();
@@ -2445,7 +2457,7 @@ fn run(
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
                     lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
                     lines.push(format!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
-                    for good in GOODS.into_iter().filter(|&good| good != Good::Bronze) {
+                    for good in GOODS.into_iter().filter(|&good| for_houses(good)) {
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
                     }
                     for service in SERVICES {

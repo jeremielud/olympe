@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use zeus::goals::{Goal, Kind as GoalKind, Status};
 use zeus::map::{GRID, Map};
 use zeus::model::Model;
-use zeus::world::{Function, Kind, Service, WalkerImages, World};
+use zeus::world::{Function, Good, Kind, Service, WalkerImages, World};
 
 const HOUSE: usize = 0;
 const FOUNTAIN: usize = 1;
@@ -228,4 +228,25 @@ fn bronze_without_armory_waits_at_the_storehouse() {
     assert!(world.stored(10) >= 8, "{}", world.stored(10));
     assert!(world.set_aside(10, 8));
     assert_eq!(set_aside.status(&world), Status::Met);
+}
+
+#[test]
+fn wood_and_marble_reach_the_storehouse() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    for (name, good, product) in [("scierie", Good::Wood, 9), ("maçonnerie", Good::Marble, 11)] {
+        let mut kind = Kind::simple(name.into(), 40, 2, 598, Function::Producer(good), 0);
+        kind.product = product;
+        world.kinds.push(kind);
+    }
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    assert!(world.place_building(first, x + 10, y + 3), "scierie");
+    assert!(world.place_building(first + 1, x + 4, y + 5), "maçonnerie");
+    assert!(world.place_building(first + 2, x + 6, y + 5), "entrepôt");
+    (0..4800).for_each(|_| world.tick());
+    assert!(world.stored(9) > 0 && world.stored(11) > 0, "{} {}", world.stored(9), world.stored(11));
+    assert!(world.best_production(9) > 0);
 }

@@ -155,7 +155,7 @@ const AGORA_ROAD_IMAGES: usize = 3;
 pub const STOREHOUSE_BAYS: usize = 8;
 const BAY_LOADS: i32 = 4;
 const EMPTY_BAY_IMAGE: usize = 934;
-const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845];
+const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849];
 const WORKFORCE_PERCENT: i32 = 40;
 /// Impôt mensuel, en drachmes pour 100 habitants d'une maison visitée par un
 /// percepteur (multiplié par le coefficient du niveau de logement).
@@ -203,6 +203,9 @@ pub enum Good {
     Horses,
     /// Bronze de la fonderie que l'armurerie ne prend pas : il attend à l'entrepôt.
     Bronze,
+    /// Bois de la scierie et marbre de l'atelier de maçonnerie, rangés à l'entrepôt.
+    Wood,
+    Marble,
 }
 
 /// Matière première d'un atelier.
@@ -222,13 +225,19 @@ fn raw_for(good: Good) -> Raw {
     }
 }
 
-pub const GOODS: [Good; 7] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze];
+pub const GOODS: [Good; 9] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze, Good::Wood, Good::Marble];
 
 /// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
 /// objectifs des aventures) : 2 poisson, 7 blé, 14 laine, 20 huile d'olive…
 pub const RESOURCES: usize = 24;
 /// Les ressources 1 à 7 sont des vivres, rangés au grenier.
 pub const FOODS: usize = 8;
+
+/// Marchandise que les maisons consomment (les autres ne servent qu'à l'industrie
+/// ou aux objectifs).
+pub fn for_houses(good: Good) -> bool {
+    !matches!(good, Good::Bronze | Good::Wood | Good::Marble)
+}
 
 /// Numéro de ressource d'une marchandise rangée à l'entrepôt.
 pub fn resource_of(good: Good) -> Option<u8> {
@@ -239,6 +248,8 @@ pub fn resource_of(good: Good) -> Option<u8> {
         Good::Arms => Some(18),
         Good::Horses => Some(15),
         Good::Bronze => Some(10),
+        Good::Wood => Some(9),
+        Good::Marble => Some(11),
         Good::Food => None,
     }
 }
@@ -1830,7 +1841,7 @@ fn bays_used(goods: &[i32; GOODS.len()]) -> usize {
 fn units_per_load(good: Good) -> i32 {
     match good {
         Good::Food => PEOPLE_PER_LOAD,
-        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze => 1,
+        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze | Good::Wood | Good::Marble => 1,
     }
 }
 
@@ -1852,10 +1863,10 @@ fn direction(from: (u16, u16), to: (u16, u16)) -> usize {
 }
 
 /// En-tête des fichiers de sauvegarde ; le numéro change quand le format change.
-const SAVE_HEADER: &str = "zeus-sauvegarde 10";
-/// Version précédente, encore lue : elle ne connaissait pas le bronze, dernière des
-/// marchandises.
-const OLD_SAVE_HEADER: &str = "zeus-sauvegarde 9";
+const SAVE_HEADER: &str = "zeus-sauvegarde 11";
+/// Versions précédentes, encore lues, et nombre de marchandises qu'elles connaissaient
+/// (les plus récentes s'ajoutent à la fin de `GOODS`).
+const OLD_SAVE_HEADERS: [(&str, usize); 2] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7)];
 
 impl World {
     /// État de la partie sous forme de texte : une ligne par route, bâtiment ou
@@ -1947,8 +1958,8 @@ impl World {
         let mut lines = text.lines();
         let goods_len = match lines.next() {
             Some(SAVE_HEADER) => GOODS.len(),
-            Some(OLD_SAVE_HEADER) => GOODS.len() - 1,
-            _ => return Err("ce n'est pas une sauvegarde de cette version".into()),
+            Some(header) => OLD_SAVE_HEADERS.iter().find(|(old, _)| *old == header).map(|&(_, len)| len).ok_or("ce n'est pas une sauvegarde de cette version")?,
+            None => return Err("sauvegarde vide".into()),
         };
         let mut cells = vec![Cell::Terrain; GRID * GRID];
         let (mut buildings, mut figures, mut fires) = (Vec::new(), Vec::new(), Vec::new());
