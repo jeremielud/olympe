@@ -299,6 +299,38 @@ fn a_sanctuary_is_built_from_storehouse_materials() {
 }
 
 #[test]
+fn a_pyramid_rises_with_its_materials() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let layout = zeus::monument::Layout::parse(&String::from_utf8_lossy(&fs::read(data.join("model/poseidon_pyramid_02.txt")).unwrap())).unwrap();
+    let needs = layout.materials();
+    let first = world.kinds.len();
+    let mut pyramid = Kind::simple("pyramide".into(), 0, layout.width, 663, Function::Monument { model: 1, needs }, 0);
+    pyramid.depth = layout.depth;
+    world.kinds.push(pyramid);
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    world.monument_layouts = vec![layout.clone(), layout];
+    assert!(world.place_building(first + 1, x, y), "entrepôt");
+    assert!(world.place_building(first, x + 4, y), "pyramide");
+    // Une pyramide traditionnelle (101), comme dans « La naissance de l'Atlantide ».
+    let goal = Goal { kind: GoalKind::Pyramid, values: [1, 101, 0] };
+    let any = Goal { kind: GoalKind::Pyramid, values: [2, -1, 0] };
+    assert_eq!(goal.status(&world), Status::Pending(Some(0)));
+    // Le sommet n'est d'abord que le sol du chantier ; la moitié du marbre élève la
+    // moitié des étapes.
+    let top = (x as usize + 4 + 3, y as usize + 2);
+    assert!(world.draw(top.0, top.1).is_some_and(|d| d.above.is_none()));
+    let storehouse = world.buildings.iter_mut().flatten().find(|b| b.kind == first + 1).unwrap();
+    storehouse.goods[Good::Marble as usize] = needs[0] as i32;
+    storehouse.goods[Good::Wood as usize] = needs[1] as i32;
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(goal.status(&world), Status::Met);
+    assert_eq!(any.status(&world), Status::Pending(Some(1)));
+    // Achevée, elle porte son sommet quatre niveaux plus haut.
+    assert!(world.draw(top.0, top.1).is_some_and(|d| d.above.is_some_and(|(_, _, lift)| lift == 60)));
+}
+
+#[test]
 fn heroes_fight_monsters_then_leave_on_quests() {
     use zeus::world::{Monster, Quest, QuestState};
     let Some(data) = data() else { return };

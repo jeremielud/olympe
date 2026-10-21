@@ -24,6 +24,7 @@ use zeus::pak::{Campaign, Episode, Event, Settings, Step};
 use zeus::paths;
 use zeus::png;
 use zeus::sdl;
+use zeus::monument;
 use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
@@ -232,6 +233,8 @@ const GOD_STATUE_IMAGE: usize = 201;
 const SMALL_STATUE_IMAGE: usize = 1399;
 const SANCTUARY_TILE_IMAGE: usize = 1447;
 const SANCTUARY_PLAIN_IMAGES: usize = 1453;
+/// Sol d'un chantier de monument (`poseidon_loaded.sg3`).
+const MONUMENT_FLOOR_IMAGE: usize = 663;
 const ALTAR_IMAGE: usize = 1459;
 /// Logement luxueux : type, et image d'un quart de terrain vacant (pour l'aperçu).
 const TYPE_ELITE_HOUSE: usize = 9;
@@ -288,7 +291,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
-        Function::Sanctuary { .. } | Function::HeroHall(_) => "SANCTUARY",
+        Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
         Function::None => "BEAUTIFICATION",
     }
 }
@@ -403,7 +406,7 @@ fn category_of(function: Function) -> usize {
         Function::Service(Service::Philosophy | Service::Athletics | Service::Drama) | Function::School(_) | Function::Stadium => 6,
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
-        Function::Sanctuary { .. } | Function::HeroHall(_) => 7,
+        Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
         Function::None => 8,
     }
 }
@@ -769,6 +772,11 @@ fn lock_resources(world: &mut World, episode: &Episode) {
         .map(|kind| match kind.function {
             // Seuls les dieux favorables que l'épisode désigne reçoivent un sanctuaire.
             Function::Sanctuary { god, .. } => !episode.sanctuaries.contains(&god),
+            // Un monument, seulement si un objectif le demande (n'importe lequel pour
+            // « n'importe quelle pyramide »).
+            Function::Monument { model, .. } => !episode.goals.iter().any(|goal| {
+                goal.kind == GoalKind::Pyramid && (goal.values[1] == -1 || goal.values[1] == (monument::FIRST_TYPE + model as usize) as i32)
+            }),
             // Un temple de héros, seulement si une quête ou un monstre le demande.
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
@@ -1958,12 +1966,38 @@ fn run(
             product: 0,
         });
     }
+    // Monuments de Poséidon, ajoutés en dernier pour que les sauvegardes antérieures
+    // gardent leurs numéros de types.
+    let mut monument_layouts = Vec::new();
+    for model in 0..monument::MONUMENTS {
+        let kind = monument::FIRST_TYPE + model;
+        let layout = fs::read(data.join(format!("model/poseidon_pyramid_{:02}.txt", model + 1))).ok();
+        let (Some(layout), Ok(rule)) = (layout.and_then(|t| monument::Layout::parse(&String::from_utf8_lossy(&t))), rules(kind)) else { break };
+        let parts = layout.tiles.iter().map(|t| Part { dx: t.dx, dy: t.dy, size: 1, image: MONUMENT_FLOOR_IMAGE, crop: false, bay: None, source: Source::Poseidon }).collect();
+        kinds.push(Kind {
+            name: text.get(TEXT_BUILDINGS, kind),
+            cost: rule.cost,
+            size: layout.width,
+            depth: layout.depth,
+            parts,
+            function: Function::Monument { model: model as u8, needs: layout.materials() },
+            walker: 0,
+            stock_overlay: None,
+            employees: rule.employees,
+            appeal: appeal_of(kind)?,
+            fire_risk: rule.fire_risk,
+            damage_risk: rule.damage_risk,
+            product: 0,
+        });
+        monument_layouts.push(layout);
+    }
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
     let mut world = World::new(map, kinds, model.houses.clone(), walkers, settings.as_ref().map_or(STARTING_MONEY, |s| s.funds));
     world.cities = world.map.cities();
+    world.monument_layouts = monument_layouts;
     let start_year = settings.as_ref().map_or(0, |s| s.start_year);
     let mut journey = Journey { order: settings.as_ref().map(Settings::order).unwrap_or_default(), position: 0, home: None, colony_maps };
     let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
@@ -2682,7 +2716,7 @@ fn run(
                         let height = graphics.catalog(draw.source).images.get(draw.image).map_or(0, |i| i.height) as f32;
                         // L'image part du bord gauche de sa case ; son bas est celui de l'emprise.
                         let (ox, oy) = tile_origin(tile.0, tile.1);
-                        let top = oy + (n as f32 + 1.0) * HALF_HEIGHT - height;
+                        let top = oy + (n as f32 + 1.0) * HALF_HEIGHT - height - draw.lift as f32;
                         if let Some((source, image)) = draw.ground {
                             let ground_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
                             draw_list.push((sum, tile.0 * 3, ox, oy + 2.0 * HALF_HEIGHT - ground_height, source, image));
@@ -2698,6 +2732,11 @@ fn run(
                             false => draw.image,
                         };
                         draw_list.push((sum + n - 1, tile.0 * 3 + 1, ox, top, draw.source, image));
+                        // Pièce qui couronne un étage de monument.
+                        if let Some((source, image, lift)) = draw.above {
+                            let above_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
+                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ox, oy + 2.0 * HALF_HEIGHT - above_height - lift as f32, source, image));
+                        }
                         // Incendie : une flamme animée, le pied au centre de la case, décalée
                         // d'une case à l'autre pour ne pas battre à l'unisson.
                         if draw.burning {
@@ -3006,6 +3045,18 @@ fn run(
                     }
                     for requirement in heroes::requirements(hero) {
                         lines.push(requirement_line(&text, requirement, requirement.check(&world, hall)));
+                    }
+                }
+                // Chantier de sanctuaire ou de monument : matériaux livrés sur demandés.
+                if let Function::Sanctuary { needs, .. } | Function::Monument { needs, .. } = world.kinds[building.kind].function {
+                    if !world.is_complete(building) {
+                        let delivered: Vec<String> = zeus::world::SANCTUARY_MATERIALS
+                            .iter()
+                            .zip(needs)
+                            .filter(|&(_, need)| need > 0)
+                            .map(|(&good, need)| format!("{} {} / {need}", good_names[good as usize], building.goods[good as usize].min(need as i32)))
+                            .collect();
+                        lines.push(format!("Chantier : {}", delivered.join(", ")));
                     }
                 }
                 if world.kinds[building.kind].function == Function::Storehouse {

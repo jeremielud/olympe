@@ -348,6 +348,18 @@ const QUEST_TICKS: u64 = TICKS_PER_MONTH * 6;
 pub const MAX_SANCTUARIES: usize = 4;
 /// Marchandises qu'on livre à un sanctuaire en chantier, dans l'ordre de ses besoins.
 pub const SANCTUARY_MATERIALS: [Good; 3] = [Good::Marble, Good::Wood, Good::Sculpture];
+/// Images des monuments dans `poseidon_loaded.sg3` : blocs de marbre blanc de un à
+/// quatre niveaux (quinze pixels chacun), sommet de pyramide, obélisque (pour les
+/// statues et édifices qu'Olympe ne dessine pas encore), dalle, sol du chantier et
+/// aire d'accès.
+const MONUMENT_BLOCK_IMAGE: usize = 654;
+const MONUMENT_BLOCK_LEVELS: u8 = 4;
+const MONUMENT_LEVEL_PIXELS: u16 = 15;
+const MONUMENT_TOPPER_IMAGE: usize = 620;
+const MONUMENT_STATUE_IMAGE: usize = 628;
+const MONUMENT_TILE_IMAGE: usize = 658;
+const MONUMENT_FLOOR_IMAGE: usize = 663;
+const MONUMENT_PAD_IMAGE: usize = 664;
 /// Images de `zeus_general.sg3` qu'un sanctuaire montre dès son chantier : dalles
 /// décorées et dallage uni ; le reste (autel, statues) n'apparaît qu'une fois achevé.
 const SANCTUARY_FLOOR_IMAGES: std::ops::RangeInclusive<usize> = 1447..=1458;
@@ -536,6 +548,9 @@ pub enum Function {
     Sanctuary { god: u8, needs: [u16; 3] },
     /// Temple d'un héros : le héros y vient quand ses exigences sont remplies.
     HeroHall(u8),
+    /// Monument de Poséidon (rang 0 à 14, type de bâtiment 100 + rang), et ce qu'il
+    /// faut y livrer : marbre, bois, sculptures.
+    Monument { model: u8, needs: [u16; 3] },
 }
 
 /// Quête de l'épisode, désignée par son événement.
@@ -801,6 +816,10 @@ pub struct Draw {
     pub overlay: Option<usize>,
     /// Sol à dessiner d'abord, quand l'image ne couvre pas toute la case (jeunes pousses).
     pub ground: Option<(Source, usize)>,
+    /// Hauteur, en pixels à l'échelle 1, dont l'image est soulevée (étages d'un
+    /// monument), et image posée au-dessus, soulevée de tant de pixels.
+    pub lift: u16,
+    pub above: Option<(Source, usize, u16)>,
 }
 
 pub struct World {
@@ -871,6 +890,8 @@ pub struct World {
     pub wage_news: Vec<i32>,
     /// Catastrophes survenues depuis la dernière lecture : (nature, bâtiments détruits).
     pub disaster_news: Vec<(u8, i32)>,
+    /// Disposition de chaque monument, par rang (fournie avec les types de bâtiments).
+    pub monument_layouts: Vec<crate::monument::Layout>,
     /// Cases inondées dont l'eau se retire à ce pas de simulation.
     floods: Vec<(u16, u16, u64)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
@@ -929,6 +950,7 @@ impl World {
             wage_news: Vec::new(),
             disaster_news: Vec::new(),
             floods: Vec::new(),
+            monument_layouts: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -942,6 +964,7 @@ impl World {
         let mut city = World::new(map, self.kinds.clone(), self.house_levels.clone(), self.walkers, money);
         city.ticks = self.ticks;
         city.cities = self.cities.clone();
+        city.monument_layouts = self.monument_layouts.clone();
         city
     }
 
@@ -1264,7 +1287,7 @@ impl World {
                 if id == 0 || self.map.edge(x, y) & EDGE_DRAW_TILE == 0 {
                     return None;
                 }
-                self.map.resolve(id).map(|(source, image)| Draw { source, image, burning: false, overlay: None, ground: None })
+                self.map.resolve(id).map(|(source, image)| Draw { source, image, burning: false, overlay: None, ground: None, lift: 0, above: None })
             }
             Cell::Rubble(variant) | Cell::Fire(variant) => Some(Draw {
                 source: Source::Terrain,
@@ -1272,6 +1295,8 @@ impl World {
                 burning: matches!(self.cell(x, y), Cell::Fire(_)),
                 overlay: None,
                 ground: None,
+                lift: 0,
+                above: None,
             }),
             Cell::Chasm(variant) => Some(Draw {
                 source: Source::Terrain,
@@ -1287,6 +1312,8 @@ impl World {
                 burning: false,
                 overlay: None,
                 ground: self.map.resolve(self.map.image(x, y)),
+                lift: 0,
+                above: None,
             }),
             Cell::Lava(variant) => Some(Draw {
                 source: Source::Terrain,
@@ -1294,14 +1321,18 @@ impl World {
                 burning: false,
                 overlay: None,
                 ground: None,
+                lift: 0,
+                above: None,
             }),
-            Cell::Flood => Some(Draw { source: self.water_image().0, image: self.water_image().1, burning: false, overlay: None, ground: None }),
+            Cell::Flood => Some(Draw { source: self.water_image().0, image: self.water_image().1, burning: false, overlay: None, ground: None, lift: 0, above: None }),
             Cell::AgoraRoad => Some(Draw {
                 source: Source::General,
                 image: AGORA_ROAD_FIRST_IMAGE + (x + y) % AGORA_ROAD_IMAGES,
                 burning: false,
                 overlay: None,
                 ground: None,
+                lift: 0,
+                above: None,
             }),
             Cell::Road => {
                 let mut borders = 0;
@@ -1310,7 +1341,7 @@ impl World {
                         borders |= 1 << bit;
                     }
                 }
-                Some(Draw { source: Source::Terrain, image: ROAD_FIRST_IMAGE + ROAD_VARIANT[borders], burning: false, overlay: None, ground: None })
+                Some(Draw { source: Source::Terrain, image: ROAD_FIRST_IMAGE + ROAD_VARIANT[borders], burning: false, overlay: None, ground: None, lift: 0, above: None })
             }
             Cell::Building(id) => {
                 let building = self.buildings[id as usize].as_ref()?;
@@ -1327,8 +1358,14 @@ impl World {
                     });
                     if hidden {
                         let image = SANCTUARY_PLAIN_IMAGE + (x + y) % 6;
-                        return Some(Draw { source: Source::General, image, burning: false, overlay: None, ground: None });
+                        return Some(Draw { source: Source::General, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
                     }
+                }
+                if let Function::Monument { model, needs } = kind.function {
+                    let layout = self.monument_layouts.get(model as usize)?;
+                    let tile = layout.tiles.iter().find(|t| (building.x + t.dx, building.y + t.dy) == (x, y))?;
+                    let stage = self.monument_stage(building, needs, layout.stages());
+                    return Some(self.monument_draw(tile, tile.order <= stage));
                 }
                 // Chaque élément est porté par sa case la plus à gauche à l'écran.
                 let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
@@ -1358,7 +1395,7 @@ impl World {
                     }
                     _ => (part.source, image),
                 };
-                Some(Draw { source, image, burning: false, overlay, ground })
+                Some(Draw { source, image, burning: false, overlay, ground, lift: 0, above: None })
             }
         }
     }
@@ -1465,8 +1502,59 @@ impl World {
     /// Le sanctuaire a reçu tous ses matériaux.
     pub fn is_complete(&self, building: &Building) -> bool {
         match self.kinds[building.kind].function {
-            Function::Sanctuary { needs, .. } => SANCTUARY_MATERIALS.iter().zip(needs).all(|(&good, need)| building.goods[good as usize] >= need as i32),
+            Function::Sanctuary { needs, .. } | Function::Monument { needs, .. } => {
+                SANCTUARY_MATERIALS.iter().zip(needs).all(|(&good, need)| building.goods[good as usize] >= need as i32)
+            }
             _ => true,
+        }
+    }
+
+    /// Monuments achevés de ce rang, ou de tous les rangs.
+    pub fn monuments_built(&self, model: Option<u8>) -> i32 {
+        let built = self.buildings.iter().flatten().filter(|b| self.is_complete(b));
+        built.filter(|b| matches!(self.kinds[b.kind].function, Function::Monument { model: m, .. } if model.is_none_or(|wanted| wanted == m))).count() as i32
+    }
+
+    /// Étapes d'un monument déjà élevées, d'après la part des matériaux livrée.
+    fn monument_stage(&self, building: &Building, needs: [u16; 3], stages: u16) -> u16 {
+        if self.is_complete(building) {
+            return stages;
+        }
+        let delivered: i32 = SANCTUARY_MATERIALS.iter().zip(needs).map(|(&good, need)| building.goods[good as usize].min(need as i32)).sum();
+        let needed = needs.iter().map(|&n| n as i32).sum::<i32>().max(1);
+        (delivered * stages as i32 / needed) as u16
+    }
+
+    /// Case d'un monument : la pierre empilée jusqu'à sa hauteur (blocs de un à
+    /// quatre niveaux de `poseidon_loaded.sg3`), et la pièce qui la couronne. Olympe
+    /// dessine les pentes comme des blocs ; une case pas encore élevée montre le
+    /// dallage du chantier.
+    fn monument_draw(&self, tile: &crate::monument::Tile, built: bool) -> Draw {
+        use crate::monument::*;
+        let plain = |image: usize| Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift: 0, above: None };
+        if tile.piece == ACCESS_PAD {
+            return plain(MONUMENT_PAD_IMAGE);
+        }
+        if !built || tile.piece == 0 {
+            return plain(MONUMENT_FLOOR_IMAGE);
+        }
+        let (stone, cap) = match tile.piece {
+            STEEP_FIRST..=STEEP_LAST | LIFT => (tile.top(), None),
+            TOPPER => (tile.elevation, Some(MONUMENT_TOPPER_IMAGE)),
+            TILE_PLAIN | TILE_ORICHALC | 55 => (tile.elevation, Some(MONUMENT_TILE_IMAGE)),
+            _ => (tile.elevation, Some(MONUMENT_STATUE_IMAGE)),
+        };
+        let block = |levels: u8| MONUMENT_BLOCK_IMAGE + levels.clamp(1, MONUMENT_BLOCK_LEVELS) as usize - 1;
+        let above = cap.map(|image| (Source::Poseidon, image, stone as u16 * MONUMENT_LEVEL_PIXELS));
+        match stone {
+            0 => plain(cap.unwrap_or(MONUMENT_FLOOR_IMAGE)),
+            s if s <= MONUMENT_BLOCK_LEVELS => Draw { above, ..plain(block(s)) },
+            s => Draw {
+                ground: Some((Source::Poseidon, block(MONUMENT_BLOCK_LEVELS))),
+                lift: MONUMENT_BLOCK_LEVELS as u16 * MONUMENT_LEVEL_PIXELS,
+                above,
+                ..plain(block(s - MONUMENT_BLOCK_LEVELS))
+            },
         }
     }
 
@@ -2114,7 +2202,7 @@ impl World {
     fn supply_sanctuaries(&mut self) {
         for id in 0..self.buildings.len() {
             let Some(building) = &self.buildings[id] else { continue };
-            let Function::Sanctuary { needs, .. } = self.kinds[building.kind].function else { continue };
+            let (Function::Sanctuary { needs, .. } | Function::Monument { needs, .. }) = self.kinds[building.kind].function else { continue };
             if !building.staffed {
                 continue;
             }
@@ -3328,7 +3416,8 @@ impl World {
             let number_at = |i: usize| rest.get(i).and_then(|w| w.parse::<i64>().ok()).ok_or_else(bad);
             match kind {
                 "etat" => {
-                    if number_at(6)? as usize != self.kinds.len() {
+                    // Les types ajoutés depuis (en fin de liste) ne changent pas les numéros.
+                    if number_at(6)? as usize > self.kinds.len() {
                         return Err("sauvegarde faite avec une autre liste de bâtiments".into());
                     }
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));

@@ -32,6 +32,11 @@ Ce qui fonctionne :
   (quantités provisoires), et les objectifs de sanctuaire sont suivis ; achevés, ceux
   d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze, et
   chaque année le dieu vient en personne laisser un bienfait (choix d'Olympe) ;
+- monuments de Poséidon (pyramides, monuments, sanctuaires mineurs, autel et temple
+  de l'Olympe…), proposés quand un objectif les demande : disposés et élevés étape
+  par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
+  arrivent de l'entrepôt (quantités provisoires) ; les pentes sont dessinées en
+  blocs, les statues en obélisques ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont

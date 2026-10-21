@@ -26,6 +26,8 @@ const WORKING_MAP_AREA: usize = 500_000;
 
 /// Groupe de `zeus_text.eng` qui décrit les objectifs.
 const TEXT_GROUP: usize = 194;
+/// Noms des types de bâtiments (les monuments de 100 à 114).
+const TEXT_BUILDINGS: usize = 28;
 /// Nom des marchandises, numérotées comme les ressources des aventures.
 const TEXT_RESOURCES: usize = 23;
 
@@ -216,6 +218,15 @@ impl Goal {
             // Le jeu tient pour atteint un objectif sans marchandise.
             Kind::SetAside if first == 0 => Status::Met,
             Kind::SetAside if world.can_store(first) => against(world.set_aside[first as usize], second),
+            // Monuments achevés : `first` d'entre eux, du type `second` (100 à 114),
+            // ou de n'importe quel type (−1).
+            Kind::Pyramid => {
+                let model = (second >= 0).then(|| (second - crate::monument::FIRST_TYPE as i32) as u8);
+                if model.is_some_and(|m| m as usize >= crate::monument::MONUMENTS) {
+                    return Status::Unsupported;
+                }
+                against(world.monuments_built(model), first.max(1))
+            }
             _ => Status::Unsupported,
         }
     }
@@ -269,7 +280,12 @@ impl Goal {
             Kind::Sanctuary => line(19).replace("[god]", &text.get(crate::sanctuary::TEXT_GODS, first.max(0) as usize)),
             Kind::Quest => line(26),
             Kind::Slay => line(27),
-            Kind::Pyramid if first == -1 => line(39),
+            Kind::Pyramid if second == -1 && first > 1 => amount(line(40), first),
+            Kind::Pyramid if second == -1 => line(39),
+            Kind::Pyramid => {
+                let name = text.get(TEXT_BUILDINGS, second.max(0) as usize);
+                if first > 1 { format!("{first} × {name}") } else { name }
+            }
             Kind::Hippodrome => amount(line(if first == 1 { 42 } else { 41 }), first),
             // Le reste nomme un dieu, une unité ou une cité : on s'en tient au type.
             kind => line(kind as usize),

@@ -12,6 +12,7 @@ pub mod jpeg;
 pub mod map;
 pub mod messages;
 pub mod model;
+pub mod monument;
 pub mod music;
 pub mod ogg;
 pub mod opus;
