@@ -191,6 +191,13 @@ fn quest_and_monster_goals_name_their_events() {
     // Troie : Ulysse doit rapporter le Palladium de Poséidon.
     let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().settings.unwrap();
     assert_eq!(troy.parent[2].events[0], Event::Quest { god: 1, quest: 0, hero: 3 });
+    // Jason, d'après les récits : Hercule sauve Thésée et affronte Cerbère, puis
+    // Thésée sert Dionysos contre le sanglier d'Artémis, puis Jason rapporte la
+    // Toison d'or.
+    let jason = Campaign::parse(&fs::read(data.join("adventures/[les aventures de jason.pak")).unwrap()).unwrap().settings.unwrap();
+    assert_eq!((jason.parent[0].events[0], jason.parent[0].events[12]), (Event::Quest { god: 3, quest: 0, hero: 1 }, Event::Monster { monster: 2 }));
+    assert_eq!((jason.parent[1].events[0], jason.parent[1].events[1]), (Event::Quest { god: 10, quest: 0, hero: 5 }, Event::Monster { monster: 6 }));
+    assert_eq!(jason.parent[2].events[0], Event::Quest { god: 0, quest: 0, hero: 2 });
 }
 
 #[test]

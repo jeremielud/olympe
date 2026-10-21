@@ -48,13 +48,25 @@ const PROXIMATE_PROPONENTS: usize = 6;
 const EVENT_SIZE: usize = 124;
 const EVENTS_PER_EPISODE: usize = 150;
 const EVENT_COUNTS_GAP: usize = 1 + 4 + 20 + 500_000;
-/// Dans un événement : son type (octet 2), puis pour une quête le héros (octet 3), le
-/// dieu (octet 96) et le rang de la quête parmi les deux du dieu (octet 122) ; pour
-/// une invasion de monstre, le monstre (octet 3).
+/// Dans un événement : son type (octet 2), son mois (octet 3) ; pour une quête, le
+/// héros (octet 54 : celui du premier monstre, du deuxième ou du monstre
+/// indépendant), le dieu (octet 96) et le rang de la quête parmi les deux du dieu
+/// (octet 122) ; pour une invasion de monstre, le monstre (octet 6 : 0 et 1 ceux des
+/// deux premiers dieux hostiles proches, 2 l'indépendant, 3 à 8 ceux des dieux
+/// favorables proches, comme 0x586b40). Rangs établis sur les récits des épisodes.
 const EVENT_TYPE: usize = 2;
-const EVENT_SUBJECT: usize = 3;
+const EVENT_HERO: usize = 54;
+const EVENT_MONSTER: usize = 6;
 const EVENT_GOD: usize = 96;
 const EVENT_QUEST: usize = 122;
+/// Dans la table de mythologie : dieux hostiles proches (entiers 0 à 3) et monstre
+/// indépendant (entier 24).
+const OPPONENT_GODS: usize = 0;
+const INDEPENDENT_MONSTER: usize = 96;
+/// Monstre de chaque dieu (0x586c90), et de ceux des dieux favorables qui en prêtent
+/// un (0x586d50).
+const GOD_MONSTER: [i32; 14] = [3, 1, 5, 10, 6, 7, 9, 4, 0, 8, 11, 2, 12, 13];
+const ALLY_MONSTER: [(i32, i32); 4] = [(1, 1), (5, 7), (9, 8), (11, 2)];
 const EVENT_QUEST_TYPE: u8 = 4;
 const EVENT_MONSTER_TYPE: u8 = 26;
 
@@ -131,13 +143,35 @@ impl Settings {
         let event_counts = events_start + 14 * EVENTS_PER_EPISODE * EVENT_SIZE + EVENT_COUNTS_GAP;
         let events_of = |table: usize| -> Vec<Event> {
             let count = int(event_counts + 4 * table).unwrap_or(0).clamp(0, EVENTS_PER_EPISODE as i32) as usize;
+            // Monstre désigné par un choix de l'éditeur : 0 et 1 les monstres des dieux
+            // hostiles, 2 l'indépendant, 3 à 8 ceux des dieux favorables.
+            let mythology = MYTHOLOGY + table * table_size;
+            let monster_of = |choice: u8| -> Option<u8> {
+                let god = |at: usize| int(mythology + at);
+                let monster = match choice {
+                    0 | 1 => GOD_MONSTER.get(usize::try_from(god(OPPONENT_GODS + 4 * choice as usize)?).ok()?).copied()?,
+                    2 => god(INDEPENDENT_MONSTER)?,
+                    3..=8 => {
+                        let ally = god(PROPONENT_GODS + 4 * (choice as usize - 3))?;
+                        ALLY_MONSTER.iter().find(|&&(g, _)| g == ally)?.1
+                    }
+                    _ => return None,
+                };
+                u8::try_from(monster).ok()
+            };
             (0..count)
                 .map(|i| {
                     let at = events_start + (table * EVENTS_PER_EPISODE + i) * EVENT_SIZE;
                     let Some(event) = file.get(at..at + EVENT_SIZE) else { return Event::Other };
                     match event[EVENT_TYPE] {
-                        EVENT_QUEST_TYPE => Event::Quest { god: event[EVENT_GOD], quest: event[EVENT_QUEST], hero: event[EVENT_SUBJECT] },
-                        EVENT_MONSTER_TYPE => Event::Monster { monster: event[EVENT_SUBJECT] },
+                        EVENT_QUEST_TYPE => match monster_of(event[EVENT_HERO]).and_then(crate::heroes::hero_against) {
+                            Some(hero) => Event::Quest { god: event[EVENT_GOD], quest: event[EVENT_QUEST], hero },
+                            None => Event::Other,
+                        },
+                        EVENT_MONSTER_TYPE => match monster_of(event[EVENT_MONSTER]) {
+                            Some(monster) => Event::Monster { monster },
+                            None => Event::Other,
+                        },
                         _ => Event::Other,
                     }
                 })
