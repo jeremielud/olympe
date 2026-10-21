@@ -30,7 +30,8 @@ Ce qui fonctionne :
 - sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
   comme dans le jeu ; le chantier prend marbre, bois et sculptures à l'entrepôt
   (quantités provisoires), et les objectifs de sanctuaire sont suivis ; achevés, ceux
-  d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze ;
+  d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze, et
+  chaque année le dieu vient en personne laisser un bienfait (choix d'Olympe) ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont
@@ -59,13 +60,13 @@ Ce qui fonctionne :
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : bienfaits des dieux favorables, animations de combat,
-batailles et colonies (une colonie part de sa carte vierge, le
-trésor suit le joueur), les objectifs qui en dépendent ; scierie et atelier de
-maçonnerie se posent sans forêt ni carrière, et les marchandises mises de côté ne
-parviennent pas à la cité suivante ; conseillers, voix, vidéos, et l'interface
-d'origine (celle d'Olympe est provisoire). Plusieurs réglages d'équilibre
-(rendements, consommations) sont approchés et non repris du jeu.
+Ce qui manque encore : animations de combat, batailles et colonies (une colonie
+part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
+; scierie et atelier de maçonnerie se posent sans forêt ni carrière, et les
+marchandises mises de côté ne parviennent pas à la cité suivante ; conseillers,
+voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs
+réglages d'équilibre (rendements, consommations) sont approchés et non repris du
+jeu.
 
 ## Installation
 

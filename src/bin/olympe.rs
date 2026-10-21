@@ -2200,6 +2200,11 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if let Some((god, resource, amount)) = world.blessings.pop() {
+                let name = text.get(sanctuary::TEXT_GODS, god as usize);
+                notice = (format!("{name} vous rend visite et vous offre {amount} {}", request_good(&text, resource)), now);
+                world.blessings.clear();
+            }
             if !world.tributes.is_empty() {
                 let tributes = std::mem::take(&mut world.tributes);
                 let lines: Vec<String> = tributes.into_iter().map(|(city, amount)| format!("{} {amount} dr.", city_name(&text, &world, city))).collect();

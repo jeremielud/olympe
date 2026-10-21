@@ -648,6 +648,8 @@ enum Role {
     Monster { monster: u8, target: u16, rest_until: u64 },
     /// Héros présent dans la cité, rattaché à son temple.
     Hero { hero: u8, hall: u16 },
+    /// Dieu favorable en visite : il flâne près de son sanctuaire, puis repart.
+    Visit { god: u8, leaves_at: u64 },
     /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
     God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
 }
@@ -761,6 +763,8 @@ pub struct World {
     pub god_news: Vec<(u8, bool)>,
     /// Tributs reçus depuis la dernière lecture : (cité, drachmes).
     pub tributes: Vec<(usize, i32)>,
+    /// Bienfaits des dieux depuis la dernière lecture : (dieu, ressource, quantité).
+    pub blessings: Vec<(u8, u8, i32)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -806,6 +810,7 @@ impl World {
             invasions: Vec::new(),
             god_news: Vec::new(),
             tributes: Vec::new(),
+            blessings: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1122,7 +1127,7 @@ impl World {
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
             Role::Monster { .. } => true,
             Role::Hero { hall, .. } => hall != id,
-            Role::God { .. } => true,
+            Role::God { .. } | Role::Visit { .. } => true,
         });
         self.rebuild_appeal();
     }
@@ -1697,6 +1702,41 @@ impl World {
         (target, rest_until)
     }
 
+    /// Visite d'un dieu favorable : il paraît un mois près de son sanctuaire et laisse
+    /// un bienfait (Olympe : vivres de Déméter, huile d'Athéna, vin de Dionysos, armes
+    /// d'Héphaïstos, drachmes des autres).
+    fn bless(&mut self, god: u8) {
+        let (resource, amount) = match god {
+            2 => (7, 32),
+            8 => (20, 16),
+            10 => (21, 16),
+            9 => (18, 8),
+            _ => (DRACHMAS as usize, 300),
+        };
+        let given = if resource == DRACHMAS as usize {
+            self.money += amount;
+            amount
+        } else {
+            self.store(resource, amount)
+        };
+        self.blessings.push((god, resource as u8, given));
+        let sanctuary = self.buildings.iter().flatten().find(|b| matches!(self.kinds[b.kind].function, Function::Sanctuary { god: g, .. } if g == god));
+        let Some(at) = sanctuary.map(|b| (b.x as u16, b.y as u16)) else { return };
+        let now = self.ticks;
+        self.figures.push(Figure {
+            image_base: 1,
+            x: at.0 as f32,
+            y: at.1 as f32,
+            direction: 0,
+            frame: 0,
+            path: Vec::new(),
+            from: at,
+            came_from: None,
+            role: Role::Visit { god, leaves_at: now + TICKS_PER_MONTH },
+            source: Source::Deity(god),
+        });
+    }
+
     /// Programme la venue d'un dieu hostile.
     pub fn schedule_god(&mut self, god: u8, month: u8, years: (i16, i16)) {
         let at = self.date_in(month, years);
@@ -1965,6 +2005,10 @@ impl World {
             self.year_profit = 0;
             for (best, year) in self.best_produced.iter_mut().zip(&mut self.produced) {
                 *best = (*best).max(std::mem::take(year));
+            }
+            // Visite annuelle des dieux favorables qui ont un sanctuaire achevé.
+            for god in self.sanctuaries() {
+                self.bless(god);
             }
             // Tribut annuel des vassales.
             for city in 0..self.cities.len() {
@@ -2363,6 +2407,21 @@ impl World {
                 Role::Monster { monster, target, rest_until } => {
                     let (target, rest_until) = self.rampage(index, at, target, rest_until, MONSTER_REST_TICKS);
                     self.figures[index].role = Role::Monster { monster, target, rest_until };
+                }
+                // Dieu en visite : il fait quelques pas autour de son sanctuaire.
+                Role::Visit { leaves_at, .. } => {
+                    if self.ticks >= leaves_at {
+                        finished.push(index);
+                    } else if self.next_random() % 40 == 0 {
+                        let (dx, dy) = ((self.next_random() % 7) as i32 - 3, (self.next_random() % 7) as i32 - 3);
+                        let goal = ((at.0 as i32 + dx).clamp(0, GRID as i32 - 1) as u16, (at.1 as i32 + dy).clamp(0, GRID as i32 - 1) as u16);
+                        let path = straight_path(at, goal);
+                        let figure = &mut self.figures[index];
+                        if let Some(&next) = path.last() {
+                            figure.direction = direction(at, next);
+                        }
+                        figure.path = path;
+                    }
                 }
                 // Dieu hostile : il ravage de même, plus vite, jusqu'à son départ.
                 Role::God { god, target, rest_until, leaves_at } => {
@@ -2830,6 +2889,7 @@ impl World {
                 Role::Monster { monster, target, rest_until } => format!("bete {monster} {target} {rest_until} 0 0"),
                 Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
                 Role::God { god, target, rest_until, leaves_at } => format!("dieu {god} {target} {rest_until} {leaves_at} 0"),
+                Role::Visit { god, leaves_at } => format!("visite {god} {leaves_at} 0 0 0"),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -3043,6 +3103,7 @@ impl World {
                         "bete" => Role::Monster { monster: a as u8, target: b as u16, rest_until: c as u64 },
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
                         "dieu" => Role::God { god: a as u8, target: b as u16, rest_until: c as u64, leaves_at: d as u64 },
+                        "visite" => Role::Visit { god: a as u8, leaves_at: b as u64 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -3062,7 +3123,7 @@ impl World {
                         source: match role {
                             Role::Monster { monster, .. } => Source::Monster(monster),
                             Role::Hero { hero, .. } => Source::Hero(hero),
-                            Role::God { god, .. } => Source::Deity(god),
+                            Role::God { god, .. } | Role::Visit { god, .. } => Source::Deity(god),
                             _ => Source::Figures,
                         },
                     });
@@ -3081,7 +3142,7 @@ impl World {
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
             Role::Monster { .. } => true,
             Role::Hero { hall, .. } => exists(hall),
-            Role::God { .. } => true,
+            Role::God { .. } | Role::Visit { .. } => true,
         });
         self.cells = cells;
         self.fires = fires;

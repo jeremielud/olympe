@@ -581,3 +581,18 @@ fn vassals_pay_a_yearly_tribute() {
     (0..12 * TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     assert_eq!(world.tributes, [(0, 350)]);
 }
+
+#[test]
+fn friendly_gods_visit_once_a_year() {
+    use zeus::map::Source;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("refuge d'Hermès".into(), 0, 3, 1460, Function::Sanctuary { god: 7, needs: [0, 0, 0] }, 0));
+    assert!(world.place_building(first, x, y));
+    (0..12 * TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    assert_eq!(world.blessings, [(7, 23, 300)]);
+    assert!(world.figures.iter().any(|f| f.source == Source::Deity(7)), "Hermès n'est pas venu");
+    (0..TICKS_PER_MONTH + 20).for_each(|_| world.tick());
+    assert!(world.figures.iter().all(|f| f.source != Source::Deity(7)), "Hermès n'est pas reparti");
+}
