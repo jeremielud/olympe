@@ -304,7 +304,7 @@ fn heroes_fight_monsters_then_leave_on_quests() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
     // Ulysse (3) contre le Cyclope (3), puis le Palladium de Poséidon.
-    world.monsters.push(Monster { event: 1, monster: 3, fight_until: None, slain: false });
+    world.monsters.push(Monster { event: 1, monster: 3, fight_until: None, slain: false, arrives_at: 0 });
     world.quests.push(Quest { event: 0, god: 1, quest: 0, hero: 3, state: QuestState::Waiting });
     let quest = Goal { kind: GoalKind::Quest, values: [0, 0, 0] };
     let slay = Goal { kind: GoalKind::Slay, values: [1, 0, 0] };
@@ -463,7 +463,7 @@ fn a_living_monster_wrecks_the_city_until_slain() {
     street(&mut world, x, y);
     let standing = |w: &World| w.buildings.iter().flatten().count();
     let before = standing(&world);
-    world.monsters.push(Monster { event: 0, monster: 3, fight_until: None, slain: false });
+    world.monsters.push(Monster { event: 0, monster: 3, fight_until: None, slain: false, arrives_at: 0 });
     (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     assert_eq!(world.figures.iter().filter(|f| f.source == Source::Monster(3)).count(), 1);
     (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
@@ -475,4 +475,19 @@ fn a_living_monster_wrecks_the_city_until_slain() {
     world.monsters[0].slain = true;
     (0..TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.figures.iter().all(|f| f.source != Source::Monster(3)));
+}
+
+#[test]
+fn an_invading_monster_waits_for_its_date() {
+    use zeus::map::Source;
+    use zeus::world::{HeroNews, Monster};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    let arrives_at = world.date_in(5, (1, 1));
+    world.monsters.push(Monster { event: 4, monster: 0, fight_until: None, slain: false, arrives_at });
+    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.figures.iter().all(|f| f.source != Source::Monster(0)), "l'Hydre est venue trop tôt");
+    (0..7 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.figures.iter().any(|f| f.source == Source::Monster(0)));
+    assert!(world.hero_news.contains(&HeroNews::Invaded(4)));
 }

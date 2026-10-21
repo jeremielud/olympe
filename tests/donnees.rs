@@ -195,8 +195,8 @@ fn quest_and_monster_goals_name_their_events() {
     // Thésée sert Dionysos contre le sanglier d'Artémis, puis Jason rapporte la
     // Toison d'or.
     let jason = Campaign::parse(&fs::read(data.join("adventures/[les aventures de jason.pak")).unwrap()).unwrap().settings.unwrap();
-    assert_eq!((jason.parent[0].events[0], jason.parent[0].events[12]), (Event::Quest { god: 3, quest: 0, hero: 1 }, Event::Monster { monster: 2 }));
-    assert_eq!((jason.parent[1].events[0], jason.parent[1].events[1]), (Event::Quest { god: 10, quest: 0, hero: 5 }, Event::Monster { monster: 6 }));
+    assert_eq!((jason.parent[0].events[0], jason.parent[0].events[12]), (Event::Quest { god: 3, quest: 0, hero: 1 }, Event::Monster { monster: 2, arrives: None }));
+    assert_eq!((jason.parent[1].events[0], jason.parent[1].events[1]), (Event::Quest { god: 10, quest: 0, hero: 5 }, Event::Monster { monster: 6, arrives: None }));
     assert_eq!(jason.parent[2].events[0], Event::Quest { god: 0, quest: 0, hero: 2 });
     // Troie devient rivale entre la première et la deuxième année de la guerre.
     assert_eq!(troy.parent[0].events[20], Event::World { change: 10, cities: (6, 6), amount: (5, 10), month: 0, years: (1, 2) });

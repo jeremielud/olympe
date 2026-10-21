@@ -123,8 +123,10 @@ pub struct Episode {
 pub enum Event {
     /// Quête qu'un dieu confie à un héros ; `quest` vaut 0 ou 1 (chaque dieu en a deux).
     Quest { god: u8, quest: u8, hero: u8 },
-    /// Monstre qui s'en prend à la cité (numéro du groupe de textes 87).
-    Monster { monster: u8 },
+    /// Monstre qui s'en prend à la cité (numéro du groupe de textes 87) : présent dès
+    /// le début de l'épisode, ou arrivant le mois et entre les années donnés (monstre
+    /// lâché par un dieu, ou envahisseur : sous-type 1 ou 2, octet 96).
+    Monster { monster: u8, arrives: Option<(u8, (i16, i16))> },
     /// Changement dans le monde : sa nature (sous-type du jeu), les cités entre
     /// lesquelles il tombe, la quantité, le mois et les années (depuis le début de
     /// l'épisode) entre lesquelles il a lieu.
@@ -191,7 +193,15 @@ impl Settings {
                             None => Event::Other,
                         },
                         EVENT_MONSTER_TYPE => match monster_of(event[EVENT_MONSTER]) {
-                            Some(monster) => Event::Monster { monster },
+                            Some(monster) => {
+                                let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                                let years = match short(EVENT_YEAR) {
+                                    n if n >= 0 => (n, n),
+                                    _ => (short(EVENT_YEARS), short(EVENT_YEARS + 2)),
+                                };
+                                let arrives = (event[EVENT_GOD] != 0).then_some((event[EVENT_MONTH] % 12, years));
+                                Event::Monster { monster, arrives }
+                            }
                             None => Event::Other,
                         },
                         kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE) => {

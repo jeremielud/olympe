@@ -739,7 +739,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             // Un temple de héros, seulement si une quête ou un monstre le demande.
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
-                Event::Monster { monster } => heroes::hero_against(monster) == Some(hero),
+                Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
                 Event::World { .. } | Event::Request { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
@@ -943,7 +943,10 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 let hero = hero.min(heroes::HEROES as u8 - 1);
                 world.quests.push(Quest { event, god, quest, hero, state: QuestState::Waiting });
             }
-            Event::Monster { monster } => world.monsters.push(Monster { event, monster, fight_until: None, slain: false }),
+            Event::Monster { monster, arrives } => {
+                let arrives_at = arrives.map_or(0, |(month, years)| world.date_in(month, years).max(1));
+                world.monsters.push(Monster { event, monster, fight_until: None, slain: false, arrives_at });
+            }
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
@@ -962,7 +965,7 @@ fn quest_name(text: &Text, god: u8, quest: u8) -> String {
 fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
     let hero_name = |hero: u8| text.get(heroes::TEXT_HEROES, hero as usize);
     let monster_name = |event: usize| match events.get(event) {
-        Some(&Event::Monster { monster }) => text.get(heroes::TEXT_MONSTERS, monster as usize),
+        Some(&Event::Monster { monster, .. }) => text.get(heroes::TEXT_MONSTERS, monster as usize),
         _ => String::new(),
     };
     let quest = |event: usize| match events.get(event) {
@@ -978,6 +981,7 @@ fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
         HeroNews::QuestDone(event) => format!("Quête accomplie : {}", quest(event).1),
         HeroNews::Fighting(event) => format!("Un héros affronte {}", monster_name(event)),
         HeroNews::Slain(event) => format!("{} est vaincu", capitalized(&monster_name(event))),
+        HeroNews::Invaded(event) => format!("{} entre dans la cité !", capitalized(&monster_name(event))),
     }
 }
 
@@ -2900,7 +2904,7 @@ fn run(
                                 format!("{} ({})", quest_name(&text, god, quest), text.get(heroes::TEXT_HEROES, hero as usize))
                             }
                             (GoalKind::Rule, _) => text.get(194, 31).replace("[city]", &city_name(&text, &world, goal.values[0].max(0) as usize)),
-                            (GoalKind::Slay, Some(Event::Monster { monster })) => {
+                            (GoalKind::Slay, Some(Event::Monster { monster, .. })) => {
                                 text.get(194, 28).replace("[monster]", &text.get(heroes::TEXT_MONSTERS, monster as usize))
                             }
                             _ => goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_))),

@@ -452,6 +452,8 @@ pub struct Monster {
     /// Le héros l'affronte jusqu'à ce pas de simulation.
     pub fight_until: Option<u64>,
     pub slain: bool,
+    /// Pas de simulation où il arrive dans la cité (0 : dès le début).
+    pub arrives_at: u64,
 }
 
 /// Ce qui vient d'arriver aux héros, pour prévenir le joueur.
@@ -462,6 +464,8 @@ pub enum HeroNews {
     QuestDone(usize),
     Fighting(usize),
     Slain(usize),
+    /// Un monstre arrive dans la cité.
+    Invaded(usize),
 }
 
 /// Attrait qu'un bâtiment donne à son voisinage, tel que décrit dans les règles.
@@ -1299,7 +1303,7 @@ impl World {
             }
         }
         let mut busy = [false; crate::heroes::HEROES];
-        for monster in self.monsters.iter_mut().filter(|m| !m.slain) {
+        for monster in self.monsters.iter_mut().filter(|m| !m.slain && m.arrives_at <= now) {
             let Some(hero) = crate::heroes::hero_against(monster.monster).filter(|&h| self.heroes[h as usize]) else { continue };
             busy[hero as usize] = true;
             match monster.fight_until {
@@ -1346,13 +1350,19 @@ impl World {
             .sum()
     }
 
-    /// Programme un changement du monde : `month` (0 à 11) d'une année tirée entre
-    /// `years` (comptées depuis l'année en cours) ; tout de suite s'il est déjà passé.
-    pub fn schedule(&mut self, change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
+    /// Pas de simulation de `month` (0 à 11) d'une année tirée entre `years`, comptées
+    /// depuis l'année en cours.
+    pub fn date_in(&mut self, month: u8, years: (i16, i16)) -> u64 {
         let year_now = self.ticks / (TICKS_PER_MONTH * 12);
         let (low, high) = (years.0.max(0) as u64, years.1.max(years.0).max(0) as u64);
         let year = low + self.next_random() as u64 % (high - low + 1);
-        let at = ((year_now + year) * 12 + month as u64) * TICKS_PER_MONTH;
+        ((year_now + year) * 12 + month as u64) * TICKS_PER_MONTH
+    }
+
+    /// Programme un changement du monde : `month` (0 à 11) d'une année tirée entre
+    /// `years` (comptées depuis l'année en cours) ; tout de suite s'il est déjà passé.
+    pub fn schedule(&mut self, change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
+        let at = self.date_in(month, years);
         self.scheduled.push(Scheduled { at, change, cities, amount });
     }
 
@@ -1511,7 +1521,11 @@ impl World {
     /// Monstres dans la cité : chaque monstre vivant (sauf ceux de la mer) y marche ;
     /// un monstre tué disparaît.
     fn release_monsters(&mut self) {
-        let alive: Vec<u8> = self.monsters.iter().filter(|m| !m.slain && !SEA_MONSTERS.contains(&m.monster)).map(|m| m.monster).collect();
+        let now = self.ticks;
+        // Monstres arrivés depuis le dernier passage.
+        let arriving: Vec<usize> = self.monsters.iter().filter(|m| !m.slain && m.arrives_at > 0 && m.arrives_at <= now && m.arrives_at + TICKS_PER_MONTH > now).map(|m| m.event).collect();
+        self.hero_news.extend(arriving.into_iter().map(HeroNews::Invaded));
+        let alive: Vec<u8> = self.monsters.iter().filter(|m| !m.slain && m.arrives_at <= now && !SEA_MONSTERS.contains(&m.monster)).map(|m| m.monster).collect();
         self.figures.retain(|f| !matches!(f.role, Role::Monster { monster, .. } if !alive.contains(&monster)));
         for monster in alive {
             if self.figures.iter().any(|f| matches!(f.role, Role::Monster { monster: m, .. } if m == monster)) {
@@ -2516,7 +2530,7 @@ impl World {
             let _ = writeln!(out, "quete {} {} {} {} {state} {until}", q.event, q.god, q.quest, q.hero);
         }
         for m in &self.monsters {
-            let _ = writeln!(out, "monstre {} {} {} {}", m.event, m.monster, m.fight_until.map_or(-1, |t| t as i64), m.slain as u8);
+            let _ = writeln!(out, "monstre {} {} {} {} {}", m.event, m.monster, m.fight_until.map_or(-1, |t| t as i64), m.slain as u8, m.arrives_at);
         }
         for (index, cell) in self.cells.iter().enumerate() {
             let _ = match *cell {
@@ -2663,6 +2677,8 @@ impl World {
                     monster: number_at(1)? as u8,
                     fight_until: u64::try_from(number_at(2)?).ok(),
                     slain: number_at(3)? != 0,
+                    // Absent des sauvegardes plus anciennes : déjà là.
+                    arrives_at: rest.get(4).and_then(|w| w.parse().ok()).unwrap_or(0),
                 }),
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
