@@ -41,7 +41,9 @@ Ce qui fonctionne :
   des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
   des routes commerciales (partenaires commerciaux, sans échanges de marchandises) ;
   les événements de l'épisode changent le monde à leur date (une cité devient
-  rivale, alliée, vassale, se rebelle, renforce ou perd son armée) ;
+  rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
+  demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
+  depuis le panneau `C` (sans effet encore sur la faveur des cités) ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;

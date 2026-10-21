@@ -74,6 +74,11 @@ const EVENT_MONSTER_TYPE: u8 = 26;
 /// entiers courts en 16 et 18 ; quand : le mois (octet 3) et l'année depuis le début
 /// de l'épisode (entier court en 22, ou à défaut un intervalle en 24 et 26).
 const EVENT_WORLD_TYPE: u8 = 19;
+/// Demande d'une cité (type 1) : la marchandise (octet 6, numérotée comme les
+/// ressources, avec 23 drachmes, 24 troupes et 25 vivres), la quantité, la cité et
+/// la date comme pour un changement du monde.
+const EVENT_REQUEST_TYPE: u8 = 1;
+const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
 const EVENT_YEAR: usize = 22;
@@ -124,6 +129,8 @@ pub enum Event {
     /// lesquelles il tombe, la quantité, le mois et les années (depuis le début de
     /// l'épisode) entre lesquelles il a lieu.
     World { change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
+    /// Demande d'une cité : la ressource voulue et sa quantité.
+    Request { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     Other,
 }
 
@@ -187,12 +194,21 @@ impl Settings {
                             Some(monster) => Event::Monster { monster },
                             None => Event::Other,
                         },
-                        EVENT_WORLD_TYPE => {
+                        kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE) => {
                             let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
                             let either = |one: usize, range: usize| match short(one) {
                                 n if n >= 0 => (n, n),
                                 _ => (short(range), short(range + 2)),
                             };
+                            if kind == EVENT_REQUEST_TYPE {
+                                return Event::Request {
+                                    resource: resource(event[EVENT_GOOD]),
+                                    cities: either(EVENT_CITY, EVENT_CITIES),
+                                    amount: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                    month: event[EVENT_MONTH] % 12,
+                                    years: either(EVENT_YEAR, EVENT_YEARS),
+                                };
+                            }
                             Event::World {
                                 change: event[EVENT_GOD],
                                 cities: either(EVENT_CITY, EVENT_CITIES),

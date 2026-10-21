@@ -155,7 +155,33 @@ pub const VASSAL_REBELS: u8 = 13;
 pub const MILITARY_BUILDUP: u8 = 15;
 pub const MILITARY_DECLINE: u8 = 16;
 
-/// Changement du monde à venir : quand, quoi, quelles cités, combien.
+/// Demande d'une cité : la ressource (23 drachmes, 24 troupes, 25 vivres, sinon une
+/// marchandise), la quantité, et le pas de simulation où elle expire.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Request {
+    pub city: usize,
+    pub resource: u8,
+    pub amount: i32,
+    pub until: u64,
+}
+
+pub const DRACHMAS: u8 = 23;
+pub const TROOPS: u8 = 24;
+pub const ANY_FOOD: u8 = 25;
+/// Délai laissé pour satisfaire une demande (valeur d'Olympe).
+const REQUEST_TICKS: u64 = TICKS_PER_MONTH * 12;
+/// Nature des événements programmés qui sont des demandes.
+pub const REQUEST: u8 = 100;
+
+/// Nouvelles des demandes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RequestNews {
+    Arrived(Request),
+    Expired(Request),
+}
+
+/// Changement du monde à venir : quand, quoi, quelles cités, combien. Une demande
+/// y figure avec `change` = `REQUEST + ressource`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Scheduled {
     pub at: u64,
@@ -660,6 +686,9 @@ pub struct World {
     /// (cité, changement) pour prévenir le joueur.
     pub scheduled: Vec<Scheduled>,
     pub world_news: Vec<(usize, u8)>,
+    /// Demandes des cités en attente, et leurs nouvelles.
+    pub requests: Vec<Request>,
+    pub request_news: Vec<RequestNews>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -700,6 +729,8 @@ impl World {
             campaign_until: 0,
             scheduled: Vec::new(),
             world_news: Vec::new(),
+            requests: Vec::new(),
+            request_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1296,9 +1327,55 @@ impl World {
         self.scheduled.push(Scheduled { at, change, cities, amount });
     }
 
+    /// Satisfait la demande de ce rang : paie, envoie l'armée ou prend les
+    /// marchandises en réserve ; faux si la cité ne peut pas être servie.
+    pub fn fulfil(&mut self, index: usize) -> bool {
+        let Some(request) = self.requests.get(index).copied() else { return false };
+        let done = match request.resource {
+            DRACHMAS if self.money >= request.amount => {
+                self.money -= request.amount;
+                true
+            }
+            TROOPS if self.army() >= request.amount && self.ticks >= self.campaign_until => {
+                self.campaign_until = self.ticks + CAMPAIGN_TICKS;
+                true
+            }
+            ANY_FOOD if (1..FOODS).map(|r| self.stored(r)).sum::<i32>() >= request.amount => {
+                let mut left = request.amount;
+                for food in 1..FOODS {
+                    left -= self.take(food, left);
+                }
+                true
+            }
+            r if (r as usize) < RESOURCES && r != DRACHMAS && r != TROOPS && r != ANY_FOOD && self.stored(r as usize) >= request.amount => {
+                self.take(r as usize, request.amount);
+                true
+            }
+            _ => false,
+        };
+        if done {
+            self.requests.remove(index);
+        }
+        done
+    }
+
+    /// Ce qu'il y a pour une demande : drachmes, armée, vivres ou marchandise en réserve.
+    pub fn available_for(&self, resource: u8) -> i32 {
+        match resource {
+            DRACHMAS => self.money,
+            TROOPS => self.army(),
+            ANY_FOOD => (1..FOODS).map(|r| self.stored(r)).sum(),
+            r => self.stored(r as usize),
+        }
+    }
+
     /// Changements du monde arrivés à échéance.
     fn change_world(&mut self) {
         let now = self.ticks;
+        // Demandes restées sans réponse.
+        let expired: Vec<Request> = self.requests.iter().filter(|r| r.until <= now).copied().collect();
+        self.requests.retain(|r| r.until > now);
+        self.request_news.extend(expired.into_iter().map(RequestNews::Expired));
         let due: Vec<Scheduled> = self.scheduled.iter().filter(|s| s.at <= now).copied().collect();
         self.scheduled.retain(|s| s.at > now);
         for event in due {
@@ -1309,6 +1386,15 @@ impl World {
                 (a + self.next_random() % (b - a + 1)) as i32
             };
             let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
+            // Demande : seule une cité qui n'est pas rivale en fait.
+            if event.change >= REQUEST {
+                if target.status != RIVAL {
+                    let request = Request { city, resource: event.change - REQUEST, amount: amount.max(1), until: now + REQUEST_TICKS };
+                    self.requests.push(request);
+                    self.request_news.push(RequestNews::Arrived(request));
+                }
+                continue;
+            }
             let changed = match event.change {
                 BECOMES_ALLY if target.status == RIVAL => std::mem::replace(&mut target.status, crate::map::ALLY) != crate::map::ALLY,
                 BECOMES_RIVAL if target.status == crate::map::ALLY => std::mem::replace(&mut target.status, RIVAL) != RIVAL,
@@ -2309,6 +2395,9 @@ impl World {
         for s in &self.scheduled {
             let _ = writeln!(out, "changement {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1);
         }
+        for r in &self.requests {
+            let _ = writeln!(out, "demande {} {} {} {}", r.city, r.resource, r.amount, r.until);
+        }
         let military: Vec<String> = self.cities.iter().map(|c| c.military.to_string()).collect();
         if !military.is_empty() {
             let _ = writeln!(out, "forces {}", military.join(" "));
@@ -2405,6 +2494,7 @@ impl World {
         // Statuts des cités du monde : sans eux, ceux de la carte restent.
         let (mut campaign, mut statuses): (u64, Vec<i32>) = (0, Vec::new());
         let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
+        let mut requests = Vec::new();
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2436,6 +2526,12 @@ impl World {
                     change: number_at(1)? as u8,
                     cities: (number_at(2)? as i16, number_at(3)? as i16),
                     amount: (number_at(4)? as i16, number_at(5)? as i16),
+                }),
+                "demande" => requests.push(Request {
+                    city: number_at(0)? as usize,
+                    resource: number_at(1)? as u8,
+                    amount: number_at(2)? as i32,
+                    until: number_at(3)? as u64,
                 }),
                 "forces" => military = (0..rest.len()).map(|i| number_at(i).map(|m| m as u8)).collect::<Result<_, _>>()?,
                 "heros" => {
@@ -2616,6 +2712,7 @@ impl World {
         self.campaign_until = campaign;
         self.scheduled = scheduled;
         self.world_news.clear();
+        (self.requests, self.request_news) = (requests, Vec::new());
         for (city, strength) in self.cities.iter_mut().zip(military) {
             city.military = strength;
         }

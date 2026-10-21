@@ -200,6 +200,8 @@ fn quest_and_monster_goals_name_their_events() {
     assert_eq!(jason.parent[2].events[0], Event::Quest { god: 0, quest: 0, hero: 2 });
     // Troie devient rivale entre la première et la deuxième année de la guerre.
     assert_eq!(troy.parent[0].events[20], Event::World { change: 10, cities: (6, 6), amount: (5, 10), month: 0, years: (1, 2) });
+    // Une cité demande entre 1000 et 2000 drachmes (19 dans la numérotation de Zeus).
+    assert!(matches!(troy.parent[2].events[4], Event::Request { resource: 23, amount: (1000, 2000), .. }));
 }
 
 #[test]

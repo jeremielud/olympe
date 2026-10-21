@@ -527,6 +527,8 @@ enum MenuRow {
     /// Envoie l'armée soumettre cette cité du monde, ou y ouvre une route commerciale.
     Conquer(usize),
     Trade(usize),
+    /// Satisfait la demande de ce rang.
+    Fulfil(usize),
 }
 
 /// Outil tenu par le joueur.
@@ -736,7 +738,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -891,6 +893,15 @@ fn city_name(text: &Text, world: &World, city: usize) -> String {
     world.cities.get(city).map_or(String::new(), |c| text.get(TEXT_CITIES, c.name as usize))
 }
 
+/// Ce qu'une cité demande : drachmes, troupes, vivres ou une marchandise.
+fn request_good(text: &Text, resource: u8) -> String {
+    match resource {
+        zeus::world::TROOPS => "soldats".to_string(),
+        zeus::world::ANY_FOOD => "vivres".to_string(),
+        r => text.get(23, r as usize).to_lowercase(),
+    }
+}
+
 /// Noms des cités du monde.
 const TEXT_CITIES: usize = 21;
 
@@ -899,6 +910,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
     world.quests.clear();
     world.monsters.clear();
     world.scheduled.clear();
+    world.requests.clear();
     for (event, &kind) in episode.events.iter().enumerate() {
         match kind {
             Event::Quest { god, quest, hero } => {
@@ -907,6 +919,9 @@ fn begin_events(world: &mut World, episode: &Episode) {
             }
             Event::Monster { monster } => world.monsters.push(Monster { event, monster, fight_until: None, slain: false }),
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
+            Event::Request { resource, cities, amount, month, years } => {
+                world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
+            }
             Event::Other => {}
         }
     }
@@ -2100,6 +2115,15 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if let Some(news) = world.request_news.pop() {
+                let (zeus::world::RequestNews::Arrived(r) | zeus::world::RequestNews::Expired(r)) = news;
+                let (name, good) = (city_name(&text, &world, r.city), request_good(&text, r.resource));
+                notice = match news {
+                    zeus::world::RequestNews::Arrived(_) => (format!("{name} demande {} {good} (touche C)", r.amount), now),
+                    zeus::world::RequestNews::Expired(_) => (format!("La demande de {name} n'a pas été satisfaite"), now),
+                };
+                world.request_news.clear();
+            }
             if let Some((city, change)) = world.world_news.pop() {
                 let name = city_name(&text, &world, city);
                 let line = match change {
@@ -2297,6 +2321,15 @@ fn run(
                             Some(MenuRow::Pick(picked)) => {
                                 tool = picked;
                                 hovered = (-1, -1);
+                                continue;
+                            }
+                            Some(MenuRow::Fulfil(index)) => {
+                                let request = world.requests.get(index).copied();
+                                notice = match request {
+                                    Some(r) if world.fulfil(index) => (format!("Demande de {} satisfaite", city_name(&text, &world, r.city)), now),
+                                    Some(r) => (format!("Pas assez de {} : {} sur {}", request_good(&text, r.resource), world.available_for(r.resource), r.amount), now),
+                                    None => continue,
+                                };
                                 continue;
                             }
                             Some(MenuRow::Trade(city)) => {
@@ -2866,6 +2899,23 @@ fn run(
                 graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
                 if rows.is_empty() {
                     graphics.draw_text(FONT_TEXT, "Aucune cité étrangère", px + 24.0, py + title_line + 24.0);
+                }
+                // Demandes en attente, sous les cités : un clic les satisfait.
+                let months_left = |until: u64| until.saturating_sub(world.ticks) / zeus::world::TICKS_PER_MONTH;
+                for (i, request) in world.requests.iter().enumerate() {
+                    let y = py + height + 8.0 + row * i as f32;
+                    let line = format!(
+                        "{} demande {} {} (vous avez {}, encore {} mois) [envoyer]",
+                        city_name(&text, &world, request.city),
+                        request.amount,
+                        request_good(&text, request.resource),
+                        world.available_for(request.resource),
+                        months_left(request.until)
+                    );
+                    let line_width = graphics.text_width(FONT_TEXT, &line) + 48.0;
+                    graphics.panel(px, y, line_width.max(width), row);
+                    graphics.draw_text(FONT_TEXT, &line, px + 24.0, y + 4.0);
+                    menu_rows.push(((px, y, line_width.max(width), row), MenuRow::Fulfil(i)));
                 }
                 for (i, (city, line, trade)) in rows.iter().enumerate() {
                     let y = py + title_line + 24.0 + row * i as f32;

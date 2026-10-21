@@ -411,3 +411,24 @@ fn world_changes_happen_on_their_date() {
     assert_eq!((other.cities[0].status, other.cities[0].military), (RIVAL, 5));
     assert!(other.scheduled.is_empty());
 }
+
+#[test]
+fn cities_ask_for_goods_and_drachmas() {
+    use zeus::map::{ALLY, City};
+    use zeus::world::{DRACHMAS, REQUEST};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    world.cities = vec![City { active: true, kind: 2, name: 57, status: ALLY, military: 3, trade: false }; 2];
+    world.schedule(REQUEST + DRACHMAS, (0, 0), (1500, 1500), 1, (0, 0));
+    world.schedule(REQUEST + 14, (1, 1), (8, 8), 1, (0, 0));
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.requests.len(), 2);
+    // Pas de laine en réserve : la demande reste ; les drachmes, elles, sont là.
+    let money = world.money;
+    assert!(!world.fulfil(1));
+    assert!(world.fulfil(0));
+    assert_eq!(world.money, money - 1500);
+    // Sans réponse, la demande finit par expirer.
+    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.requests.is_empty());
+}
