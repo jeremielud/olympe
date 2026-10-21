@@ -57,6 +57,8 @@ pub struct Image {
     external: bool,
     offset: usize,
     length: usize,
+    /// Masque de transparence (catalogues récents) : sa longueur ; il suit les pixels.
+    alpha_length: usize,
     /// Pour une image isométrique : taille de la base non compressée.
     base_length: usize,
 }
@@ -127,6 +129,7 @@ impl Catalog {
                 animation_frames: le16(record, 30) as usize,
                 offset_x: le16(record, 34) as i16 as i32,
                 offset_y: le16(record, 36) as i16 as i32,
+                alpha_length: if record_size == 72 { le32(record, 68) as usize } else { 0 },
                 mirror_of: match le32(record, 16) as i32 {
                     0 => None,
                     delta => i.checked_add_signed(delta as isize),
@@ -189,6 +192,43 @@ impl Catalog {
                 canvas.runs(&data[image.base_length..]);
             }
             Kind::Unknown(kind) => return Err(format!("type d'image {kind} inconnu")),
+        }
+        // Masque de transparence : des plages comme celles des sprites, une valeur de
+        // 1 à 31 par pixel ; les pixels sautés sont transparents.
+        if image.alpha_length > 0 {
+            let start = offset + image.length;
+            if let Some(mask) = source.get(start..start + image.alpha_length) {
+                let mut alpha = vec![0u8; image.width * image.height];
+                let (mut pos, mut i) = (0, 0);
+                while pos < mask.len() {
+                    let count = mask[pos] as usize;
+                    pos += 1;
+                    if count == 255 {
+                        i += mask.get(pos).copied().unwrap_or(0) as usize;
+                        pos += 1;
+                    } else {
+                        for &value in mask[pos..].iter().take(count) {
+                            if let Some(a) = alpha.get_mut(i) {
+                                *a = ((value as u32 & 31) * 255 / 31) as u8;
+                            }
+                            i += 1;
+                        }
+                        pos += count;
+                    }
+                }
+                for (pixel, a) in canvas.rgba.chunks_exact_mut(4).zip(alpha) {
+                    pixel[3] = pixel[3].min(a);
+                    // Les bords translucides ont été fondus sur un fond vert : on les
+                    // ramène à l'ombre.
+                    let greenish = pixel[1] > pixel[0].saturating_add(16) && pixel[1] > pixel[2];
+                    // Le vert vif du fond lui-même (même opaque) n'appartient pas au dessin.
+                    let backdrop = pixel[1] >= 140 && pixel[0] < 110 && pixel[2] < 40;
+                    if (pixel[3] < 255 && greenish) || backdrop {
+                        pixel[..3].copy_from_slice(&[0, 0, 0]);
+                        pixel[3] = pixel[3].min(96);
+                    }
+                }
+            }
         }
         Ok(canvas.rgba)
     }
