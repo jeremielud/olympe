@@ -217,6 +217,8 @@ const SEA_MONSTERS: [u8; 2] = [1, 10];
 /// Un dieu hostile reste six mois et détruit un bâtiment par mois (valeurs d'Olympe).
 const GOD_STAY_TICKS: u64 = TICKS_PER_MONTH * 6;
 const GOD_REST_TICKS: u64 = TICKS_PER_MONTH;
+/// Séjour d'un dieu hostile quand un dieu favorable protège la cité (Olympe).
+const GOD_REPELLED_TICKS: u64 = TICKS_PER_MONTH;
 
 /// Chemin en ligne droite, case par case (diagonales permises), rangé à l'envers.
 fn straight_path(from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
@@ -1605,6 +1607,8 @@ impl World {
         let now = self.ticks;
         let due: Vec<u8> = self.invasions.iter().filter(|&&(at, _)| at <= now).map(|&(_, god)| god).collect();
         self.invasions.retain(|&(at, _)| at > now);
+        // Un dieu favorable dont le sanctuaire est achevé chasse vite l'envahisseur.
+        let stay = if self.sanctuaries().is_empty() { GOD_STAY_TICKS } else { GOD_REPELLED_TICKS };
         for god in due {
             let at = self.city_entrance();
             self.figures.push(Figure {
@@ -1616,7 +1620,7 @@ impl World {
                 path: Vec::new(),
                 from: at,
                 came_from: None,
-                role: Role::God { god, target: NO_TARGET, rest_until: now, leaves_at: now + GOD_STAY_TICKS },
+                role: Role::God { god, target: NO_TARGET, rest_until: now, leaves_at: now + stay },
                 source: Source::Deity(god),
             });
             self.god_news.push((god, true));

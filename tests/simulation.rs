@@ -536,3 +536,19 @@ fn a_hostile_god_ravages_then_leaves() {
     assert!(world.figures.iter().all(|f| f.source != Source::Deity(5)), "Arès n'est pas reparti");
     assert!(world.buildings.iter().flatten().count() < before);
 }
+
+#[test]
+fn a_friendly_god_drives_a_hostile_god_away() {
+    use zeus::map::Source;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("refuge d'Hermès".into(), 0, 3, 1460, Function::Sanctuary { god: 7, needs: [0, 0, 0] }, 0));
+    assert!(world.place_building(first, x, y));
+    assert_eq!(world.sanctuaries(), [7]);
+    world.schedule_god(5, 1, (0, 0));
+    (0..2 * TICKS_PER_MONTH + 10).for_each(|_| world.tick());
+    assert!(world.figures.iter().any(|f| f.source == Source::Deity(5)));
+    (0..TICKS_PER_MONTH + 10).for_each(|_| world.tick());
+    assert!(world.figures.iter().all(|f| f.source != Source::Deity(5)), "Arès est resté malgré Hermès");
+}

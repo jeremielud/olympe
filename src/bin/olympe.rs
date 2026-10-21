@@ -2202,7 +2202,12 @@ fn run(
             // Changements dans le monde.
             if let Some((god, arrived)) = world.god_news.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
-                notice = if arrived { (format!("{name} s'abat sur la cité !"), now) } else { (format!("{name} quitte la cité"), now) };
+                let defenders: Vec<String> = world.sanctuaries().iter().map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
+                notice = match (arrived, defenders.is_empty()) {
+                    (true, true) => (format!("{name} s'abat sur la cité !"), now),
+                    (true, false) => (format!("{name} s'abat sur la cité, mais {} le chassera bientôt", defenders.join(" et ")), now),
+                    (false, _) => (format!("{name} quitte la cité"), now),
+                };
                 world.god_news.clear();
             }
             if let Some(news) = world.request_news.pop() {
