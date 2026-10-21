@@ -49,7 +49,9 @@ Ce qui fonctionne :
   des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
   (marchandises et quantités lues dans la carte, prix d'Olympe) ; les vassales
-  paient un tribut annuel en drachmes (montant d'Olympe) ;
+  paient un tribut annuel en drachmes (montant d'Olympe) ; les cités rivales
+  envoient leurs armées à la date prévue : repoussées si l'armée de la cité
+  l'emporte en force, sinon elles pillent le trésor et brûlent des bâtiments ;
   les événements de l'épisode changent le monde à leur date (une cité devient
   rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
   demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait

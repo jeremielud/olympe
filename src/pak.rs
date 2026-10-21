@@ -81,6 +81,10 @@ const EVENT_REQUEST_TYPE: u8 = 1;
 /// Invasion d'un dieu hostile (type 27) : le dieu (octet 6), la date comme pour un
 /// changement du monde.
 const EVENT_GOD_TYPE: u8 = 27;
+/// Invasion d'une armée rivale (type 2) : nombre de soldats (entre les entiers courts
+/// en 16 et 18), la cité qui attaque (intervalle en 32 et 34), la date comme pour
+/// un changement du monde.
+const EVENT_INVASION_TYPE: u8 = 2;
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -138,6 +142,8 @@ pub enum Event {
     Request { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Un dieu hostile vient en personne dans la cité.
     GodInvasion { god: u8, month: u8, years: (i16, i16) },
+    /// Une cité rivale envoie une armée de tant de soldats.
+    Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
     Other,
 }
 
@@ -216,6 +222,19 @@ impl Settings {
                                 _ => (short(EVENT_YEARS), short(EVENT_YEARS + 2)),
                             };
                             Event::GodInvasion { god: event[EVENT_GOOD], month: event[EVENT_MONTH] % 12, years }
+                        }
+                        EVENT_INVASION_TYPE => {
+                            let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                            let either = |one: usize, range: usize| match short(one) {
+                                n if n >= 0 => (n, n),
+                                _ => (short(range), short(range + 2)),
+                            };
+                            Event::Invasion {
+                                cities: either(EVENT_CITY, EVENT_CITIES),
+                                soldiers: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                month: event[EVENT_MONTH] % 12,
+                                years: either(EVENT_YEAR, EVENT_YEARS),
+                            }
                         }
                         kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE) => {
                             let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);

@@ -596,3 +596,34 @@ fn friendly_gods_visit_once_a_year() {
     (0..TICKS_PER_MONTH + 20).for_each(|_| world.tick());
     assert!(world.figures.iter().all(|f| f.source != Source::Deity(7)), "Hermès n'est pas reparti");
 }
+
+#[test]
+fn rival_armies_sack_a_defenceless_city() {
+    use zeus::map::{ALLY, City, RIVAL};
+    use zeus::world::INVASION;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    let city = |status| City { active: true, kind: 2, name: 68, status, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 };
+    world.cities = vec![city(RIVAL), city(ALLY)];
+    world.schedule(INVASION, (0, 0), (32, 32), 1, (0, 0));
+    world.schedule(INVASION, (1, 1), (32, 32), 1, (0, 0));
+    let (money, standing) = (world.money, world.buildings.iter().flatten().count());
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    // Seule la rivale attaque ; sans armée, la cité est pillée.
+    assert_eq!(world.battles.len(), 1);
+    let battle = world.battles[0];
+    assert!(!battle.repelled && battle.buildings == 2 && battle.drachmas > 0);
+    assert!(world.money < money && world.buildings.iter().flatten().count() == standing - 2);
+    // Avec une armée assez forte, elle est repoussée.
+    world.battles.clear();
+    for building in world.buildings.iter_mut().flatten() {
+        if let Some(house) = building.house.as_mut() {
+            (house.level, house.population) = (6, 1000);
+        }
+    }
+    assert!(world.army() >= 30);
+    world.schedule(INVASION, (0, 0), (5, 5), 4, (0, 0));
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.battles.last().is_some_and(|b| b.repelled));
+}

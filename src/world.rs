@@ -154,6 +154,19 @@ pub const BECOMES_VASSAL: u8 = 11;
 pub const VASSAL_REBELS: u8 = 13;
 pub const MILITARY_BUILDUP: u8 = 15;
 pub const MILITARY_DECLINE: u8 = 16;
+/// Nature des événements programmés qui sont des invasions armées.
+pub const INVASION: u8 = 99;
+
+/// Issue d'une invasion armée.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Battle {
+    pub city: usize,
+    pub soldiers: i32,
+    pub repelled: bool,
+    /// Pertes en cas de défaite : bâtiments détruits et drachmes pillées.
+    pub buildings: i32,
+    pub drachmas: i32,
+}
 
 /// Demande d'une cité : la ressource (23 drachmes, 24 troupes, 25 vivres, sinon une
 /// marchandise), la quantité, et le pas de simulation où elle expire.
@@ -765,6 +778,8 @@ pub struct World {
     pub tributes: Vec<(usize, i32)>,
     /// Bienfaits des dieux depuis la dernière lecture : (dieu, ressource, quantité).
     pub blessings: Vec<(u8, u8, i32)>,
+    /// Invasions armées livrées depuis la dernière lecture.
+    pub battles: Vec<Battle>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -811,6 +826,7 @@ impl World {
             god_news: Vec::new(),
             tributes: Vec::new(),
             blessings: Vec::new(),
+            battles: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1488,6 +1504,34 @@ impl World {
                 (a + self.next_random() % (b - a + 1)) as i32
             };
             let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
+            // Invasion : seule une cité rivale attaque. Olympe compare les forces : un
+            // envahisseur vaut un hoplite (deux points) ; vaincue, la cité perd un
+            // bâtiment par tranche de seize soldats et un cinquième de son trésor.
+            if event.change == INVASION {
+                if target.status == RIVAL {
+                    let soldiers = amount.max(1);
+                    let repelled = self.army() >= 2 * soldiers;
+                    let (mut buildings, mut drachmas) = (0, 0);
+                    if !repelled {
+                        drachmas = self.money.max(0) / 5;
+                        self.money -= drachmas;
+                        for _ in 0..(soldiers / 16).max(1) {
+                            let standing: Vec<usize> = (0..self.buildings.len()).filter(|&i| self.buildings[i].is_some()).collect();
+                            if standing.is_empty() {
+                                break;
+                            }
+                            let id = standing[self.next_random() as usize % standing.len()];
+                            let b = self.buildings[id].as_ref().unwrap();
+                            let (kind, x, y) = (b.kind, b.x, b.y);
+                            self.remove_building(id as u16, Cell::Rubble(0));
+                            self.disasters.push(Disaster { fire: true, kind, x, y });
+                            buildings += 1;
+                        }
+                    }
+                    self.battles.push(Battle { city, soldiers, repelled, buildings, drachmas });
+                }
+                continue;
+            }
             // Demande : seule une cité qui n'est pas rivale en fait.
             if event.change >= REQUEST {
                 if target.status != RIVAL {

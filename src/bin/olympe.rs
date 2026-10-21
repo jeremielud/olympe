@@ -773,7 +773,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::GodInvasion { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -1005,6 +1005,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
             }
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
             Event::GodInvasion { god, month, years } => world.schedule_god(god, month, years),
+            Event::Invasion { cities, soldiers, month, years } => world.schedule(zeus::world::INVASION, cities, soldiers, month, years),
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
             }
@@ -2233,6 +2234,15 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if let Some(battle) = world.battles.pop() {
+                let name = city_name(&text, &world, battle.city);
+                notice = if battle.repelled {
+                    (format!("L'armée de {name} ({} soldats) est repoussée", battle.soldiers), now)
+                } else {
+                    (format!("L'armée de {name} pille la cité : {} drachmes et {} bâtiments perdus", battle.drachmas, battle.buildings), now)
+                };
+                world.battles.clear();
+            }
             if let Some((god, resource, amount)) = world.blessings.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
                 notice = (format!("{name} vous rend visite et vous offre {amount} {}", request_good(&text, resource)), now);
