@@ -5,7 +5,7 @@
 //! d'origine. L'échoppe est ici un bâtiment autonome, alors que le jeu la place
 //! dans une agora.
 
-use crate::map::{EDGE_DRAW_TILE, GRID, Map, Source};
+use crate::map::{City, EDGE_DRAW_TILE, FOREIGN, GRID, Map, RIVAL, Source, VASSAL};
 use crate::model::HouseModel;
 use std::collections::VecDeque;
 
@@ -145,6 +145,18 @@ pub enum Soldier {
     Hoplite,
     Horseman,
 }
+
+/// Pourquoi une conquête n'a pas lieu.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Conquest {
+    NotForeign,
+    AlreadyRuled,
+    Away,
+    TooWeak { army: i32, defence: i32 },
+}
+
+const CONQUEST_PER_SHIELD: i32 = 24;
+const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 
 /// Durée d'un combat de héros contre un monstre, et d'une quête (valeurs d'Olympe).
 const HERO_FIGHT_TICKS: u64 = TICKS_PER_MONTH;
@@ -621,6 +633,9 @@ pub struct World {
     pub monsters: Vec<Monster>,
     pub heroes: [bool; crate::heroes::HEROES],
     pub hero_news: Vec<HeroNews>,
+    /// Cités du monde et leur statut ; l'armée est en campagne jusqu'à ce pas.
+    pub cities: Vec<City>,
+    pub campaign_until: u64,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -657,6 +672,8 @@ impl World {
             monsters: Vec::new(),
             heroes: [false; crate::heroes::HEROES],
             hero_news: Vec::new(),
+            cities: Vec::new(),
+            campaign_until: 0,
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -669,6 +686,7 @@ impl World {
     pub fn new_city(&self, map: Map, money: i32) -> World {
         let mut city = World::new(map, self.kinds.clone(), self.house_levels.clone(), self.walkers, money);
         city.ticks = self.ticks;
+        city.cities = self.cities.clone();
         city
     }
 
@@ -1240,6 +1258,38 @@ impl World {
                 (soldier >= at_least).then(|| full * house.population.min(capacity) / capacity)
             })
             .sum()
+    }
+
+    /// Force de l'armée : un homme de piétaille compte pour un, un hoplite pour
+    /// deux, un cavalier pour trois (barème d'Olympe).
+    pub fn army(&self) -> i32 {
+        let (rabble, hoplites, horsemen) = (self.soldiers(Soldier::Rabble), self.soldiers(Soldier::Hoplite), self.soldiers(Soldier::Horseman));
+        (rabble - hoplites) + 2 * (hoplites - horsemen) + 3 * horsemen
+    }
+
+    /// Force qu'il faut opposer à une cité : 24 par bouclier (barème d'Olympe).
+    pub fn defence(&self, city: usize) -> i32 {
+        self.cities.get(city).map_or(0, |c| c.military as i32 * CONQUEST_PER_SHIELD)
+    }
+
+    /// Envoie l'armée soumettre une cité étrangère, alliée ou rivale : si elle est
+    /// assez forte, la cité devient vassale et l'armée rentre six mois plus tard. Le
+    /// jeu livre bataille ; Olympe se contente de comparer les forces.
+    pub fn conquer(&mut self, city: usize) -> Result<(), Conquest> {
+        let Some(target) = self.cities.get(city).copied().filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
+        if target.status > RIVAL {
+            return Err(Conquest::AlreadyRuled);
+        }
+        if self.ticks < self.campaign_until {
+            return Err(Conquest::Away);
+        }
+        let (army, defence) = (self.army(), self.defence(city));
+        if army < defence {
+            return Err(Conquest::TooWeak { army, defence });
+        }
+        self.cities[city].status = VASSAL;
+        self.campaign_until = self.ticks + CAMPAIGN_TICKS;
+        Ok(())
     }
 
     /// La quête ou le monstre de cet événement est venu à bout.
@@ -2163,6 +2213,8 @@ impl World {
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
         let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
         let _ = writeln!(out, "heros {}", present.join(" "));
+        let cities: Vec<String> = std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| c.status.to_string())).collect();
+        let _ = writeln!(out, "cites {}", cities.join(" "));
         for q in &self.quests {
             let (state, until) = match q.state {
                 QuestState::Waiting => (0, 0),
@@ -2252,6 +2304,8 @@ impl World {
         let mut counters = [[0; RESOURCES]; 3];
         // Héros, quêtes et monstres : absents des sauvegardes plus anciennes.
         let (mut heroes, mut quests, mut monsters) = ([false; crate::heroes::HEROES], Vec::new(), Vec::new());
+        // Statuts des cités du monde : sans eux, ceux de la carte restent.
+        let (mut campaign, mut statuses): (u64, Vec<i32>) = (0, Vec::new());
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2273,6 +2327,10 @@ impl World {
                     for (i, slot) in counters[row].iter_mut().enumerate() {
                         *slot = number_at(i)? as i32;
                     }
+                }
+                "cites" => {
+                    campaign = number_at(0)? as u64;
+                    statuses = (1..rest.len()).map(|i| number_at(i).map(|s| s as i32)).collect::<Result<_, _>>()?;
                 }
                 "heros" => {
                     for (i, slot) in heroes.iter_mut().enumerate() {
@@ -2449,6 +2507,10 @@ impl World {
         (self.year_profit, self.best_year_profit) = profits;
         [self.produced, self.best_produced, self.set_aside] = counters;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
+        self.campaign_until = campaign;
+        for (city, status) in self.cities.iter_mut().zip(statuses) {
+            city.status = status;
+        }
         self.hero_news.clear();
         self.rebuild_appeal();
         Ok(())

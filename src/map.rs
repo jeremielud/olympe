@@ -36,6 +36,34 @@ const TERRAIN: usize = 6;
 const SCENARIO: usize = 14;
 const ENTRY_POINTS_OFFSET: usize = 908;
 
+/// Cités du monde : un bloc de 22 enregistrements, de 476 octets dans les cartes de
+/// Zeus et de 572 dans celles de Poséidon (la forme qu'ils ont en mémoire). Les
+/// cartes de colonie n'en ont pas : elles partagent le monde de la cité mère.
+const CITIES: usize = 22;
+const CITY_SIZES: [usize; 2] = [476, 572];
+/// Dans un enregistrement : active (octet 0), genre (octet 2 : 0 la cité du joueur,
+/// 1 une colonie à fonder, 2 une cité étrangère), nom (octet 3, groupe de textes 21),
+/// statut (entier en 212 : 0 alliée, 1 rivale, 2 vassale, 3 colonie, comme le groupe
+/// de textes 253) et force militaire (octet 220, de 1 à 6 boucliers).
+const CITY_KIND: usize = 2;
+const CITY_NAME: usize = 3;
+const CITY_STATUS: usize = 212;
+const CITY_MILITARY: usize = 220;
+pub const FOREIGN: u8 = 2;
+pub const ALLY: i32 = 0;
+pub const RIVAL: i32 = 1;
+pub const VASSAL: i32 = 2;
+pub const COLONY: i32 = 3;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct City {
+    pub active: bool,
+    pub kind: u8,
+    pub name: u8,
+    pub status: i32,
+    pub military: u8,
+}
+
 /// Catalogue d'où provient une image de terrain.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Source {
@@ -146,6 +174,22 @@ impl Map {
             .into_iter()
             .filter(|&(x, y)| in_grid(x) && in_grid(y))
             .map(|(x, y)| (x as usize, y as usize))
+            .collect()
+    }
+
+    /// Cités du monde, vide pour une carte qui n'en décrit pas.
+    pub fn cities(&self) -> Vec<City> {
+        let Some(block) = self.blocks.iter().find(|b| b.count == CITIES && CITY_SIZES.contains(&b.element_size)) else { return Vec::new() };
+        block
+            .data
+            .chunks_exact(block.element_size)
+            .map(|r| City {
+                active: r[0] != 0,
+                kind: r[CITY_KIND],
+                name: r[CITY_NAME],
+                status: le32(r, CITY_STATUS) as i32,
+                military: r[CITY_MILITARY],
+            })
             .collect()
     }
 

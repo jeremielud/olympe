@@ -192,3 +192,24 @@ fn quest_and_monster_goals_name_their_events() {
     let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().settings.unwrap();
     assert_eq!(troy.parent[2].events[0], Event::Quest { god: 1, quest: 0, hero: 3 });
 }
+
+#[test]
+fn rule_goals_name_foreign_cities() {
+    let Some(data) = data() else { return };
+    let mut checked = 0;
+    for file in files(&data.join("adventures"), "pak") {
+        let campaign = Campaign::parse(&fs::read(&file).unwrap()).unwrap();
+        let Some(settings) = &campaign.settings else { continue };
+        let cities = campaign.parent().cities();
+        for goal in settings.parent.iter().chain(&settings.colonies).flat_map(|e| &e.goals).filter(|g| g.kind == Kind::Rule) {
+            let city = cities.get(goal.values[0] as usize).unwrap_or_else(|| panic!("{} : cité {}", file.display(), goal.values[0]));
+            assert!(city.active && city.kind == zeus::map::FOREIGN, "{} : {city:?}", file.display());
+            checked += 1;
+        }
+    }
+    assert!(checked > 50, "{checked}");
+    // Troie : la cité du joueur est Aulis ; Troie elle-même est encore alliée.
+    let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap();
+    let cities = troy.parent().cities();
+    assert_eq!((cities[0].name, cities[6].name, cities[6].status, cities[6].military), (5, 68, zeus::map::ALLY, 6));
+}

@@ -36,13 +36,16 @@ Ce qui fonctionne :
   suivis (les monstres ne paraissent pas encore dans la cité) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
+- cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
+  l'on soumet une cité en un clic quand l'armée est assez forte (simple comparaison
+  des forces, sans bataille), ce qui suit les objectifs « Régner » ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
 Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), monstres
-et héros à l'écran, armée, commerce et colonies (une colonie part de sa carte
+et héros à l'écran, batailles, commerce, tributs et colonies (une colonie part de sa carte
 vierge, le trésor suit le joueur), les objectifs qui en dépendent ; scierie et
 atelier de maçonnerie se posent sans forêt ni carrière, et les marchandises mises
 de côté ne parviennent pas à la cité suivante ; conseillers, voix, vidéos, et

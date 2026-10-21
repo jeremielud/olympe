@@ -355,3 +355,32 @@ fn elite_houses_support_soldiers() {
     assert_eq!(hoplites.status(&world), Status::Met);
     assert_eq!(Goal { kind: GoalKind::Support, values: [57, 1, 0] }.status(&world), Status::Unsupported);
 }
+
+#[test]
+fn a_strong_enough_army_makes_a_city_vassal() {
+    use zeus::map::{City, RIVAL, VASSAL};
+    use zeus::world::Conquest;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1 }];
+    let rule = Goal { kind: GoalKind::Rule, values: [0, 0, 0] };
+    assert_eq!(rule.status(&world), Status::Pending(None));
+    assert_eq!(world.conquer(0), Err(Conquest::TooWeak { army: 0, defence: 24 }));
+    // Quatre maisons de ville pleines : 60 hommes de piétaille.
+    for building in world.buildings.iter_mut().flatten() {
+        if let Some(house) = building.house.as_mut() {
+            (house.level, house.population) = (6, 1000);
+        }
+    }
+    assert_eq!(world.army(), 60);
+    assert_eq!(world.conquer(0), Ok(()));
+    assert_eq!(world.cities[0].status, VASSAL);
+    assert_eq!(rule.status(&world), Status::Met);
+    assert_eq!(world.conquer(0), Err(Conquest::AlreadyRuled));
+    // Le statut passe par la sauvegarde.
+    let (mut other, ..) = self::world(&data);
+    other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1 }];
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.cities[0].status, VASSAL);
+}

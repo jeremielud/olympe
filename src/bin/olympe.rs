@@ -28,7 +28,7 @@ use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
 use zeus::world::{TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
-use zeus::world::{Appeal, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
+use zeus::world::{Appeal, Conquest, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
   olympe                              lance le jeu (écran de choix d'aventure)
@@ -327,7 +327,7 @@ const HELP: [&str; 16] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
-    "O : objectifs de l'épisode",
+    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre)",
     "R : mettre de côté les marchandises demandées",
     "Survoler un bâtiment : ses informations",
     "H : refermer cette aide",
@@ -523,6 +523,8 @@ enum MenuRow {
     /// Ouvre ou referme une catégorie.
     Category(usize),
     Pick(Tool),
+    /// Envoie l'armée soumettre cette cité du monde.
+    Conquer(usize),
 }
 
 /// Outil tenu par le joueur.
@@ -881,6 +883,14 @@ fn sanctuary_part(dx: usize, dy: usize, piece: Piece) -> Part {
     };
     Part { dx, dy, size: piece.size(), image, crop: false, bay: None, source }
 }
+
+/// Nom d'une cité du monde.
+fn city_name(text: &Text, world: &World, city: usize) -> String {
+    world.cities.get(city).map_or(String::new(), |c| text.get(TEXT_CITIES, c.name as usize))
+}
+
+/// Noms des cités du monde.
+const TEXT_CITIES: usize = 21;
 
 /// Quêtes et monstres d'un épisode qui commence.
 fn begin_events(world: &mut World, episode: &Episode) {
@@ -1817,6 +1827,7 @@ fn run(
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
     let mut world = World::new(map, kinds, model.houses.clone(), walkers, settings.as_ref().map_or(STARTING_MONEY, |s| s.funds));
+    world.cities = world.map.cities();
     let start_year = settings.as_ref().map_or(0, |s| s.start_year);
     let mut journey = Journey { order: settings.as_ref().map(Settings::order).unwrap_or_default(), position: 0, home: None, colony_maps };
     let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
@@ -1919,6 +1930,8 @@ fn run(
         let mut goals: Vec<Goal> = episode(Step::Parent(0)).map(|e| e.goals.clone()).unwrap_or_default();
         let mut goals_met = vec![false; goals.len()];
         let (mut goals_panel, mut won) = (false, false);
+        // Panneau des cités du monde, ouvert par C.
+        let mut cities_panel = false;
         // Étape « fin » d'un essai scripté : l'épisode se termine comme si ses objectifs
         // étaient atteints.
         let mut force_end = false;
@@ -2033,6 +2046,7 @@ fn run(
                         "h" => Some(sdl::Event::key_down(0, sdl::KEY_H)),
                         "o" => Some(sdl::Event::key_down(0, sdl::KEY_O)),
                         "r" => Some(sdl::Event::key_down(0, sdl::KEY_R)),
+                        "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
                         _ => None,
                     },
                     // Pause en temps réel, pour laisser vivre ce qui en dépend (son).
@@ -2206,6 +2220,7 @@ fn run(
                         }
                         sdl::KEY_H => help = !help,
                         sdl::KEY_O => goals_panel = !goals_panel,
+                        sdl::KEY_C => cities_panel = !cities_panel,
                         sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
@@ -2264,6 +2279,16 @@ fn run(
                             Some(MenuRow::Pick(picked)) => {
                                 tool = picked;
                                 hovered = (-1, -1);
+                                continue;
+                            }
+                            Some(MenuRow::Conquer(city)) => {
+                                let name = city_name(&text, &world, city);
+                                notice = match world.conquer(city) {
+                                    Ok(()) => (format!("{name} devient vassale"), now),
+                                    Err(Conquest::TooWeak { army, defence }) => (format!("Armée trop faible contre {name} : {army} sur {defence}"), now),
+                                    Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
+                                    Err(_) => (format!("{name} ne peut pas être soumise"), now),
+                                };
                                 continue;
                             }
                             None => {}
@@ -2755,6 +2780,7 @@ fn run(
                             (GoalKind::Quest, Some(Event::Quest { god, quest, hero })) => {
                                 format!("{} ({})", quest_name(&text, god, quest), text.get(heroes::TEXT_HEROES, hero as usize))
                             }
+                            (GoalKind::Rule, _) => text.get(194, 31).replace("[city]", &city_name(&text, &world, goal.values[0].max(0) as usize)),
                             (GoalKind::Slay, Some(Event::Monster { monster })) => {
                                 text.get(194, 28).replace("[monster]", &text.get(heroes::TEXT_MONSTERS, monster as usize))
                             }
@@ -2778,6 +2804,38 @@ fn run(
                 graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
                 for (i, l) in lines.iter().enumerate() {
                     graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 24.0 + row * i as f32);
+                }
+            }
+
+            // Cités du monde : statut, force, et conquête d'un clic.
+            if cities_panel {
+                let heading = "Cités du monde".to_string();
+                let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();
+                let rows: Vec<(usize, String)> = world
+                    .cities
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.active && c.kind == zeus::map::FOREIGN)
+                    .map(|(i, c)| {
+                        let status = statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default();
+                        let action = if c.status <= zeus::map::RIVAL { format!(", soumettre : {} sur {}", world.army(), world.defence(i)) } else { String::new() };
+                        (i, format!("{} ({status}, force {}{action})", city_name(&text, &world, i), c.military))
+                    })
+                    .collect();
+                let width = rows.iter().map(|(_, l)| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
+                let height = title_line + 32.0 + row * rows.len().max(1) as f32;
+                let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
+                graphics.panel(px, py, width, height);
+                graphics.panel(px, py, width, height);
+                let heading_width = graphics.text_width(FONT_TITLE, &heading);
+                graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
+                if rows.is_empty() {
+                    graphics.draw_text(FONT_TEXT, "Aucune cité étrangère", px + 24.0, py + title_line + 24.0);
+                }
+                for (i, (city, line)) in rows.iter().enumerate() {
+                    let y = py + title_line + 24.0 + row * i as f32;
+                    graphics.draw_text(FONT_TEXT, line, px + 24.0, y);
+                    menu_rows.push(((px, y, width, row), MenuRow::Conquer(*city)));
                 }
             }
 
