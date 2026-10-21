@@ -25,11 +25,14 @@ Ce qui fonctionne :
 - objectifs de l'épisode, lus dans l'aventure (touche `O`) : population, trésor,
   logement et profit annuel sont suivis, et l'épisode se termine sur son récit de
   victoire quand tous sont atteints ;
+- enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
+  objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
+  à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
 Ce qui manque encore : sanctuaires, dieux, héros et monstres, armée, commerce et
-colonies, les objectifs qui en dépendent (et la production annuelle), les épisodes
-suivant le premier, conseillers, voix, vidéos, et l'interface d'origine
+colonies (une colonie part de sa carte vierge, le trésor suit le joueur), les
+objectifs qui en dépendent (et la production annuelle), conseillers, voix, vidéos, et l'interface d'origine
 (celle d'Olympe est provisoire). Plusieurs réglages d'équilibre (rendements,
 consommations) sont approchés et non repris du jeu.
 

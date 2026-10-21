@@ -19,7 +19,7 @@ use zeus::map::{GRID, Map, Source};
 use zeus::model::Model;
 use zeus::ambience::Ambience;
 use zeus::music::Music;
-use zeus::pak::{Campaign, Settings};
+use zeus::pak::{Campaign, Settings, Step};
 use zeus::paths;
 use zeus::png;
 use zeus::sdl;
@@ -45,7 +45,7 @@ options :
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
                      d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o,
-                     t:n (pas), p:ms (pause)
+                     t:n (pas), p:ms (pause), fin (termine l'épisode en cours)
 en jeu : H affiche l'aide";
 
 /// Demi-largeur et demi-hauteur d'une case à l'écran, à l'échelle 1.
@@ -572,19 +572,33 @@ fn main() {
     }
 }
 
-/// Charge une carte seule ou la cité mère d'une campagne, avec les réglages de
-/// l'aventure quand on les trouve (dans le `.pak`, ou dans un `.set` voisin de la carte).
-fn load_map(path: &Path) -> Result<(Map, Option<Settings>), String> {
+/// Charge une carte seule ou une campagne : la carte de la cité mère, celles des
+/// colonies dans l'ordre de leurs épisodes, et les réglages de l'aventure quand on les
+/// trouve (dans le `.pak`, ou dans un `.set` voisin de la carte).
+fn load_map(path: &Path) -> Result<(Map, Vec<Map>, Option<Settings>), String> {
     let file = fs::read(path).map_err(|e| format!("{} : {e}", path.display()))?;
     if file.starts_with(b"MAPS") {
         let neighbours = path.parent().and_then(|dir| fs::read_dir(dir).ok());
         let set = neighbours.into_iter().flatten().flatten().map(|entry| entry.path()).find(|p| p.extension().is_some_and(|e| e == "set"));
         let settings = set.and_then(|p| fs::read(p).ok()).and_then(|data| Settings::parse(&data));
-        return Ok((Map::parse(&file)?, settings));
+        // Aventure en dossier : la cité mère est « …p.map », les colonies « …c1.map »,
+        // « …c2.map »…
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let colony_files: Vec<PathBuf> = match stem.strip_suffix('p') {
+            Some(base) => (1..).map(|k| path.with_file_name(format!("{base}c{k}.map"))).take_while(|p| p.exists()).collect(),
+            None => Vec::new(),
+        };
+        let colonies = colony_files
+            .iter()
+            .map(|p| Map::parse(&fs::read(p).map_err(|e| format!("{} : {e}", p.display()))?))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok((Map::parse(&file)?, colonies, settings));
     }
     let mut campaign = Campaign::parse(&file)?;
+    // Cartes : copie de travail, cité mère, puis les colonies.
+    let colonies = campaign.maps.split_off(campaign.maps.len().min(2));
     let parent = if campaign.maps.len() > 1 { 1 } else { 0 };
-    Ok((campaign.maps.swap_remove(parent), campaign.settings))
+    Ok((campaign.maps.swap_remove(parent), colonies, campaign.settings))
 }
 
 /// Contenu du fichier de textes d'une aventure.
@@ -602,40 +616,204 @@ fn text_entry(text: &str, key: &str) -> Option<String> {
     Some(value.replace(['\r', '\n'], " ").trim().to_string()).filter(|value| !value.is_empty())
 }
 
-/// Récit d'ouverture d'une aventure : son titre et ses paragraphes. Les aventures
-/// livrées en dossier l'apportent dans un fichier de textes ; les autres le prennent
-/// dans les messages du jeu, au numéro donné par leur en-tête.
-fn briefing(data: &Path, map_path: &Path, settings: Option<Settings>) -> Option<(String, Vec<String>)> {
+/// Moment d'une aventure qui a son récit.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Moment {
+    Opening,
+    Victory,
+    /// Fin de l'aventure, après le récit de victoire du dernier épisode.
+    End,
+}
+
+/// Récit d'un épisode : son titre et ses paragraphes. Les aventures livrées en dossier
+/// l'apportent dans un fichier de textes ; les autres le prennent dans les messages du
+/// jeu, au numéro donné par leur en-tête. L'ouverture du premier épisode commence par
+/// la présentation de l'aventure.
+fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, moment: Moment) -> Option<(String, Vec<String>)> {
     let folder = map_path.parent()?;
     let texts = fs::read_dir(folder).ok()?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "txt"));
     // Un fichier de textes ne compte que dans le dossier propre à une aventure.
     if let Some(file) = texts.filter(|_| folder.file_name().is_some_and(|name| name != "adventures")) {
         let text = adventure_texts(&file)?;
         let entry = |key: &str| text_entry(&text, key);
-        let mut paragraphs = messages::paragraphs(&entry("Adventure_Introduction").unwrap_or_default());
-        if let Some(episode) = entry("Parent_Episode_1_Title") {
-            paragraphs.push(episode);
+        if moment == Moment::End {
+            return Some((entry("Adventure_Title")?, messages::paragraphs(&entry("Adventure_Complete")?)));
         }
-        paragraphs.extend(messages::paragraphs(&entry("Parent_Episode_1_Introduction").unwrap_or_default()));
-        return Some((entry("Adventure_Title")?, paragraphs)).filter(|(_, paragraphs)| !paragraphs.is_empty());
+        let prefix = match step {
+            Step::Parent(i) => format!("Parent_Episode_{}", i + 1),
+            Step::Colony(i) => format!("Colony_{}", i + 1),
+        };
+        let title = entry(&format!("{prefix}_Title"));
+        let (heading, mut paragraphs) = match (moment, step) {
+            (Moment::Opening, Step::Parent(0)) => {
+                let mut paragraphs = messages::paragraphs(&entry("Adventure_Introduction").unwrap_or_default());
+                paragraphs.extend(title);
+                (entry("Adventure_Title")?, paragraphs)
+            }
+            _ => (title.unwrap_or_default(), Vec::new()),
+        };
+        let part = if moment == Moment::Opening { "Introduction" } else { "Complete" };
+        paragraphs.extend(messages::paragraphs(&entry(&format!("{prefix}_{part}")).unwrap_or_default()));
+        return Some((heading, paragraphs)).filter(|(_, paragraphs)| !paragraphs.is_empty());
     }
-    let id = usize::try_from(settings?.first_message).ok()?;
-    let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(id)?;
+    let episode = settings?.episode(step)?;
+    let id = match moment {
+        Moment::Opening => episode.intro_message,
+        Moment::Victory => episode.victory_message,
+        Moment::End => return None,
+    };
+    let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(usize::try_from(id).ok()?)?;
     Some((message.title, message.paragraphs))
 }
 
-/// Récit de fin du premier épisode, pris au même endroit que son récit d'ouverture.
-fn victory_story(data: &Path, map_path: &Path, settings: Option<Settings>) -> Option<(String, Vec<String>)> {
-    let folder = map_path.parent()?;
-    let texts = fs::read_dir(folder).ok()?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "txt"));
-    if let Some(file) = texts.filter(|_| folder.file_name().is_some_and(|name| name != "adventures")) {
-        let text = adventure_texts(&file)?;
-        let paragraphs = messages::paragraphs(&text_entry(&text, "Parent_Episode_1_Complete")?);
-        return Some((text_entry(&text, "Parent_Episode_1_Title").unwrap_or_default(), paragraphs));
+/// L'épisode dit ce que la cité peut produire : les exploitations et ateliers des
+/// autres ressources ne sont pas proposés. Tant que le moteur ne sait nourrir une cité
+/// que par ses exploitations et ses laiteries, ses pavillons de chasse et ses
+/// pêcheries, la restriction ne s'applique qu'aux épisodes qui en permettent au moins
+/// une : les autres resteraient sans vivres.
+fn lock_resources(world: &mut World, resources: &[u8]) {
+    let has = |resource: u8| resources.contains(&resource);
+    let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
+    if !farmable {
+        world.locked = Vec::new();
+        return;
     }
-    let id = usize::try_from(settings?.victory_message).ok()?;
-    let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(id)?;
-    Some((message.title, message.paragraphs))
+    world.locked = world
+        .kinds
+        .iter()
+        .map(|kind| match kind.function {
+            Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
+            Function::Producer(Good::Fleece) => !has(RESOURCE_FLEECE),
+            Function::Fishery => !has(RESOURCE_FISH),
+            // Laiterie et pavillon de chasse se distinguent par leur image.
+            Function::Producer(Good::Food) => {
+                let hunting = kind.parts.first().is_some_and(|part| part.image == HUNTING_LODGE_IMAGE);
+                !has(if hunting { RESOURCE_MEAT } else { RESOURCE_CHEESE })
+            }
+            Function::Supplier(Raw::Crops) => !has(RESOURCE_OLIVES) && !has(RESOURCE_GRAPES),
+            Function::Workshop(Good::Oil) => !has(RESOURCE_OLIVES),
+            Function::Workshop(Good::Wine) => !has(RESOURCE_GRAPES),
+            Function::Supplier(Raw::Bronze) => !has(RESOURCE_BRONZE),
+            _ => false,
+        })
+        .collect();
+}
+
+/// Où en est l'aventure : l'ordre de ses épisodes, celui que l'on joue, et la cité
+/// mère, mise de côté pendant un épisode de colonie.
+struct Journey {
+    order: Vec<Step>,
+    position: usize,
+    home: Option<World>,
+    colony_maps: Vec<Map>,
+}
+
+impl Journey {
+    fn step(&self) -> Step {
+        self.order.get(self.position).copied().unwrap_or(Step::Parent(0))
+    }
+
+    /// Passe à l'épisode de ce rang, en changeant de cité s'il le faut ; rend vrai si
+    /// la cité a changé. Une colonie part de sa carte vierge. Le trésor suit le joueur
+    /// d'une cité à l'autre (on ignore encore comment le jeu dote une colonie), et le
+    /// calendrier continue.
+    fn travel(&mut self, world: &mut World, position: usize) -> bool {
+        let (from, Some(&to)) = (self.step(), self.order.get(position)) else { return false };
+        self.position = position;
+        match (from, to) {
+            (Step::Parent(_), Step::Colony(k)) => {
+                let Some(map) = self.colony_maps.get(k).cloned() else { return false };
+                let colony = world.new_city(map, world.money);
+                self.home = Some(std::mem::replace(world, colony));
+                true
+            }
+            (Step::Colony(_), Step::Parent(_)) => {
+                let Some(mut home) = self.home.take() else { return false };
+                home.money = world.money;
+                home.ticks = home.ticks.max(world.ticks);
+                *world = home;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Fichiers qui accompagnent une sauvegarde : le rang de l'épisode, et la cité
+    /// mère pendant un épisode de colonie.
+    fn companions(save: &Path) -> (PathBuf, PathBuf) {
+        (save.with_extension("episode"), save.with_extension("mere"))
+    }
+
+    fn save(&self, world: &World, save: &Path) -> std::io::Result<()> {
+        let (episode, home) = Self::companions(save);
+        fs::write(save, world.save())?;
+        fs::write(episode, format!("{}\n", self.position))?;
+        match &self.home {
+            Some(city) => fs::write(home, city.save()),
+            None => fs::remove_file(home).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
+        }
+    }
+
+    /// Recharge une partie et son épisode. Les sauvegardes sans rang d'épisode
+    /// reprennent le premier. Rien ne change si la lecture échoue.
+    fn load(&mut self, world: &mut World, save: &Path) -> Result<(), String> {
+        let (episode, home) = Self::companions(save);
+        let read = |path: &Path| fs::read_to_string(path).map_err(|e| format!("{} : {e}", path.display()));
+        let text = read(save)?;
+        let position = fs::read_to_string(episode).ok().and_then(|t| t.trim().parse().ok()).filter(|&p| p < self.order.len()).unwrap_or(0);
+        // Toutes les cités se bâtissent sur le modèle de la cité mère.
+        let base = self.home.as_ref().unwrap_or(world);
+        let mut parent = base.new_city(base.map.clone(), 0);
+        let (city, home) = match self.order.get(position).copied().unwrap_or(Step::Parent(0)) {
+            Step::Parent(_) => {
+                parent.load(&text)?;
+                (parent, None)
+            }
+            Step::Colony(k) => {
+                parent.load(&read(&home)?)?;
+                let mut colony = base.new_city(self.colony_maps.get(k).ok_or("carte de colonie absente")?.clone(), 0);
+                colony.load(&text)?;
+                (colony, Some(parent))
+            }
+        };
+        *world = city;
+        self.home = home;
+        self.position = position;
+        Ok(())
+    }
+}
+
+/// Prépare l'affichage d'une cité où l'on arrive : son sol, la vue sur son terrain
+/// libre ; rend le cadre de sa mini-carte.
+fn arrive(world: &World, graphics: &mut Graphics, view: &mut View) -> Minimap {
+    graphics.set_ground(plain_ground(world));
+    let site = opening_site(world);
+    (view.cx, view.cy) = tile_origin(site.0, site.1);
+    Minimap::new(world)
+}
+
+/// Sol nu le plus courant de la carte, pour remplacer les tuiles sans image propre.
+fn plain_ground(world: &World) -> (Source, usize) {
+    let mut counts: HashMap<u32, u32> = HashMap::new();
+    for y in 0..GRID {
+        for x in 0..GRID {
+            if world.map.terrain(x, y) == 0 && world.map.image(x, y) != 0 {
+                *counts.entry(world.map.image(x, y)).or_default() += 1;
+            }
+        }
+    }
+    let commonest = counts.into_iter().max_by_key(|&(id, count)| (count, id)).map(|(id, _)| id);
+    commonest.and_then(|id| world.map.resolve(id)).unwrap_or((Source::Terrain, 201))
+}
+
+/// Case où s'ouvre la vue : le terrain constructible le plus proche du centre de la
+/// zone jouable ; le centre lui-même tombe parfois sur l'eau ou sur des falaises.
+fn opening_site(world: &World) -> (i32, i32) {
+    let centre = GRID as i32 / 2;
+    let mut sites: Vec<(i32, i32)> = (0..GRID as i32).flat_map(|y| (0..GRID as i32).map(move |x| (x, y))).collect();
+    sites.sort_by_key(|&(x, y)| (x - centre).abs() + (y - centre).abs());
+    let open = sites.into_iter().find(|&(x, y)| world.can_build(x - START_CLEARING / 2, y - START_CLEARING / 2, START_CLEARING as usize));
+    open.unwrap_or((centre, centre))
 }
 
 /// Image prête à dessiner : sa texture et ses dimensions.
@@ -664,6 +842,13 @@ struct Graphics {
 }
 
 impl Graphics {
+    /// Retient la tuile de sol nu de la carte, quand elle a la taille d'une case.
+    fn set_ground(&mut self, ground: (Source, usize)) {
+        let catalog = self.catalog(ground.0);
+        let fits = catalog.images.get(ground.1).is_some_and(|i| (i.width, i.height) == (TILE_WIDTH, TILE_HEIGHT));
+        self.ground = fits.then(|| catalog.decode(ground.1).ok()).flatten();
+    }
+
     fn catalog(&self, source: Source) -> &Catalog {
         match source {
             Source::Terrain => &self.terrain,
@@ -1256,7 +1441,7 @@ fn run(
     size: (i32, i32),
     measure: u32,
 ) -> Result<(), String> {
-    let (map, settings) = load_map(map_path)?;
+    let (map, colony_maps, settings) = load_map(map_path)?;
     let read = |file: &str| fs::read(data.join(file)).map_err(|e| format!("{file} : {e}"));
     let text = Text::parse(&read("zeus_text.eng")?)?;
     let model = Model::parse(&read("model/zeus_model_normal.txt")?)?;
@@ -1382,34 +1567,11 @@ fn run(
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
     let mut world = World::new(map, kinds, model.houses.clone(), walkers, settings.as_ref().map_or(STARTING_MONEY, |s| s.funds));
     let start_year = settings.as_ref().map_or(0, |s| s.start_year);
-    // L'aventure dit ce que la cité peut produire : les exploitations et ateliers des
-    // autres ressources ne sont pas proposés. La démonstration, elle, a droit à tout.
-    // Tant que le moteur ne sait nourrir une cité que par ses exploitations et ses
-    // laiteries, ses pavillons de chasse et ses pêcheries, la restriction ne s'applique qu'aux aventures qui en
-    // permettent au moins une : les autres resteraient sans vivres.
-    let farmable = |r: &Vec<u8>| FARM_RESOURCES.iter().any(|crop| r.contains(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].iter().any(|food| r.contains(food));
-    let resources = settings.as_ref().map(|s| s.resources.clone()).filter(|r| farmable(r) && !demo);
-    if let Some(resources) = resources {
-        let has = |resource: u8| resources.contains(&resource);
-        world.locked = world
-            .kinds
-            .iter()
-            .map(|kind| match kind.function {
-                Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
-                Function::Producer(Good::Fleece) => !has(RESOURCE_FLEECE),
-                Function::Fishery => !has(RESOURCE_FISH),
-                // Laiterie et pavillon de chasse se distinguent par leur image.
-                Function::Producer(Good::Food) => {
-                    let hunting = kind.parts.first().is_some_and(|part| part.image == HUNTING_LODGE_IMAGE);
-                    !has(if hunting { RESOURCE_MEAT } else { RESOURCE_CHEESE })
-                }
-                Function::Supplier(Raw::Crops) => !has(RESOURCE_OLIVES) && !has(RESOURCE_GRAPES),
-                Function::Workshop(Good::Oil) => !has(RESOURCE_OLIVES),
-                Function::Workshop(Good::Wine) => !has(RESOURCE_GRAPES),
-                Function::Supplier(Raw::Bronze) => !has(RESOURCE_BRONZE),
-                _ => false,
-            })
-            .collect();
+    let mut journey = Journey { order: settings.as_ref().map(Settings::order).unwrap_or_default(), position: 0, home: None, colony_maps };
+    let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
+    // La démonstration a droit à tout.
+    if let Some(first) = episode(Step::Parent(0)).filter(|_| !demo) {
+        lock_resources(&mut world, &first.resources);
     }
     let mut tool = Tool::None;
     let name = map_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -1462,15 +1624,7 @@ fn run(
         // Départ au centre de la zone jouable, ou sur la scène de démonstration.
         let (start, mut demo_plan) = match demo.then(|| demo_scene(&mut world, road_cost)).flatten() {
             Some((start, plan)) => (start, plan),
-            // La vue s'ouvre sur le terrain constructible le plus proche du centre : le
-            // centre lui-même tombe parfois sur l'eau ou sur des falaises.
-            None => {
-                let centre = GRID as i32 / 2;
-                let mut sites: Vec<(i32, i32)> = (0..GRID as i32).flat_map(|y| (0..GRID as i32).map(move |x| (x, y))).collect();
-                sites.sort_by_key(|&(x, y)| (x - centre).abs() + (y - centre).abs());
-                let open = sites.into_iter().find(|&(x, y)| world.can_build(x - START_CLEARING / 2, y - START_CLEARING / 2, START_CLEARING as usize));
-                (open.unwrap_or((centre, centre)), DemoPlan::new())
-            }
+            None => (opening_site(&world), DemoPlan::new()),
         };
         let (start_x, start_y) = tile_origin(start.0, start.1);
         let mut view = View { cx: start_x, cy: start_y, zoom: 1.0 };
@@ -1502,33 +1656,20 @@ fn run(
         let (mut frames, mut measure_start, mut slowest, mut previous_frame) = (0u32, 0u64, 0u64, 0u64);
         // Récit d'ouverture, affiché jusqu'au premier clic ou à la première touche. Pas
         // en capture, sauf si le script commence par « intro ».
-        let mut intro = briefing(data, map_path, settings.clone()).filter(|_| capture.is_none() || script.split_whitespace().next() == Some("intro"));
-        // Objectifs du premier épisode de la cité mère, le seul que l'on joue ; ceux
-        // déjà atteints, pour n'annoncer que les nouveaux ; panneau ouvert par O.
-        let goals: Vec<Goal> = settings.as_ref().and_then(|s| s.goals.parent.first().cloned()).unwrap_or_default();
+        let mut intro = story(data, map_path, settings.as_ref(), Step::Parent(0), Moment::Opening)
+            .filter(|_| capture.is_none() || script.split_whitespace().next() == Some("intro"));
+        // Objectifs de l'épisode en cours ; ceux déjà atteints, pour n'annoncer que les
+        // nouveaux ; panneau ouvert par O.
+        let mut goals: Vec<Goal> = episode(Step::Parent(0)).map(|e| e.goals.clone()).unwrap_or_default();
         let mut goals_met = vec![false; goals.len()];
         let (mut goals_panel, mut won) = (false, false);
+        // Étape « fin » d'un essai scripté : l'épisode se termine comme si ses objectifs
+        // étaient atteints.
+        let mut force_end = false;
         let mut clock = sdl::SDL_GetTicks();
         let mut paused = false;
         let mut speed = NORMAL_SPEED;
-        // Sol nu le plus courant de la carte, pour remplacer les tuiles sans image propre.
-        let plain_ground = {
-            let mut counts: HashMap<u32, u32> = HashMap::new();
-            for y in 0..GRID {
-                for x in 0..GRID {
-                    if world.map.terrain(x, y) == 0 && world.map.image(x, y) != 0 {
-                        *counts.entry(world.map.image(x, y)).or_default() += 1;
-                    }
-                }
-            }
-            let commonest = counts.into_iter().max_by_key(|&(id, count)| (count, id)).map(|(id, _)| id);
-            commonest.and_then(|id| world.map.resolve(id)).unwrap_or((Source::Terrain, 201))
-        };
-        graphics.ground = {
-            let catalog = graphics.catalog(plain_ground.0);
-            let fits = catalog.images.get(plain_ground.1).is_some_and(|i| (i.width, i.height) == (TILE_WIDTH, TILE_HEIGHT));
-            fits.then(|| catalog.decode(plain_ground.1).ok()).flatten()
-        };
+        graphics.set_ground(plain_ground(&world));
         // Mini-carte : texture, emplacement à l'écran (x, y) et images écoulées depuis sa mise à jour.
         let minimap = sdl::SDL_CreateTexture(renderer, sdl::PIXELFORMAT_ABGR8888, sdl::TEXTUREACCESS_STATIC, MINIMAP_WIDTH as i32, MINIMAP_HEIGHT as i32);
         let (mut minimap_at, mut minimap_age) = (Minimap::new(&world), MINIMAP_REFRESH);
@@ -1643,6 +1784,10 @@ fn run(
                         None
                     }
                     ("intro", _) => None,
+                    ("fin", _) => {
+                        force_end = true;
+                        None
+                    }
                     ("t", &[ticks]) => {
                         for _ in 0..ticks as u32 {
                             world.tick();
@@ -1679,6 +1824,31 @@ fn run(
                 world.disasters.clear();
             }
 
+            // Récit de victoire refermé : place à l'épisode suivant, dans la même cité ou
+            // dans une autre, ou à la fin de l'aventure.
+            if won && intro.is_none() {
+                won = false;
+                let next = journey.position + 1;
+                if next < journey.order.len() {
+                    if journey.travel(&mut world, next) {
+                        minimap_at = arrive(&world, &mut graphics, &mut view);
+                        (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
+                    }
+                    let step = journey.step();
+                    if let Some(episode) = episode(step).filter(|_| !demo) {
+                        lock_resources(&mut world, &episode.resources);
+                    }
+                    goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
+                    intro = story(data, map_path, settings.as_ref(), step, Moment::Opening);
+                } else {
+                    journey.position = journey.order.len();
+                    goals.clear();
+                    intro = story(data, map_path, settings.as_ref(), journey.step(), Moment::End);
+                    notice = ("Aventure terminée : la partie continue sans objectif".to_string(), now);
+                }
+                goals_met = vec![false; goals.len()];
+            }
+
             // Objectifs atteints depuis la dernière image, puis fin de l'épisode quand
             // tous le sont. Un épisode sans objectif se joue sans fin.
             let statuses: Vec<Status> = goals.iter().map(|goal| goal.status(&world)).collect();
@@ -1689,10 +1859,10 @@ fn run(
                 }
                 goals_met[i] = met;
             }
-            if !won && !goals.is_empty() && goals_met.iter().all(|&met| met) {
+            if !won && (std::mem::take(&mut force_end) || !goals.is_empty() && goals_met.iter().all(|&met| met)) {
                 won = true;
                 let fallback = ("Épisode terminé".to_string(), vec!["Tous les objectifs de l'épisode sont atteints.".to_string()]);
-                intro = Some(victory_story(data, map_path, settings.clone()).unwrap_or(fallback));
+                intro = Some(story(data, map_path, settings.as_ref(), journey.step(), Moment::Victory).unwrap_or(fallback));
             }
 
             while sdl::SDL_PollEvent(&mut event) {
@@ -1714,15 +1884,26 @@ fn run(
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
                         sdl::KEY_SPACE => paused = !paused,
                         sdl::KEY_F5 => {
-                            notice = match fs::write(&save_file, world.save()) {
+                            notice = match journey.save(&world, &save_file) {
                                 Ok(()) => (format!("Partie enregistrée : {}", save_file.display()), now),
                                 Err(e) => (format!("Enregistrement impossible : {e}"), now),
                             };
                         }
                         sdl::KEY_F9 => {
-                            let loaded = fs::read_to_string(&save_file).map_err(|e| e.to_string()).and_then(|t| world.load(&t));
-                            notice = match loaded {
-                                Ok(()) => ("Partie chargée".to_string(), now),
+                            notice = match journey.load(&mut world, &save_file) {
+                                Ok(()) => {
+                                    minimap_at = arrive(&world, &mut graphics, &mut view);
+                                    (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
+                                    let step = journey.step();
+                                    if let Some(episode) = episode(step).filter(|_| !demo) {
+                                        lock_resources(&mut world, &episode.resources);
+                                    }
+                                    // Les objectifs déjà atteints ne sont pas annoncés de nouveau.
+                                    goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
+                                    goals_met = goals.iter().map(|goal| goal.status(&world) == Status::Met).collect();
+                                    won = false;
+                                    ("Partie chargée".to_string(), now)
+                                }
                                 Err(e) => (format!("Chargement impossible : {e}"), now),
                             };
                         }
@@ -2292,7 +2473,7 @@ fn run(
                 if lines.is_empty() {
                     lines.push(text.get(44, 280));
                 }
-                let width = lines.iter().chain([&heading]).map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 48.0;
+                let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * lines.len() as f32;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
                 graphics.panel(px, py, width, height);

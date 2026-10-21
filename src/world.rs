@@ -288,6 +288,7 @@ pub struct Part {
 }
 
 /// Type de bâtiment constructible.
+#[derive(Clone)]
 pub struct Kind {
     pub name: String,
     pub cost: i32,
@@ -512,6 +513,14 @@ impl World {
             disasters: Vec::new(),
             appeal: vec![0; GRID * GRID],
         }
+    }
+
+    /// Cité vierge sur une autre carte, avec les mêmes types de bâtiments et les mêmes
+    /// règles ; le calendrier continue là où en est celle-ci.
+    pub fn new_city(&self, map: Map, money: i32) -> World {
+        let mut city = World::new(map, self.kinds.clone(), self.house_levels.clone(), self.walkers, money);
+        city.ticks = self.ticks;
+        city
     }
 
     /// Attrait de la case, somme de l'influence des bâtiments voisins.

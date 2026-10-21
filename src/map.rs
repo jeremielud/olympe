@@ -12,6 +12,7 @@ const ENTRY_SIZE: usize = 20;
 /// Longueur compressée spéciale : bloc incompressible, stocké tel quel.
 const STORED: u32 = 0x8000_0000;
 
+#[derive(Clone)]
 pub struct Block {
     /// Adresse de la variable dans `Zeus.exe` au moment de l'enregistrement.
     pub address: u32,
@@ -20,6 +21,7 @@ pub struct Block {
     pub data: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct Map {
     pub version: u32,
     pub blocks: Vec<Block>,

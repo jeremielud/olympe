@@ -7,7 +7,7 @@ use zeus::goals::{Goal, Kind};
 use zeus::map::Map;
 use zeus::messages::Messages;
 use zeus::model::Model;
-use zeus::pak::{Campaign, Settings};
+use zeus::pak::{Campaign, Settings, Step};
 use zeus::sg::Catalog;
 use zeus::text::Text;
 
@@ -49,16 +49,18 @@ fn every_adventure_parses() {
     }
     for file in files(&adventures, "pak") {
         let campaign = Campaign::parse(&fs::read(&file).unwrap()).unwrap_or_else(|e| panic!("{} : {e}", file.display()));
-        let settings = campaign.settings.unwrap_or_else(|| panic!("{} : réglages absents", file.display()));
+        let settings = campaign.settings.clone().unwrap_or_else(|| panic!("{} : réglages absents", file.display()));
         assert!((100..=100_000).contains(&settings.funds), "{} : trésor {}", file.display(), settings.funds);
         assert!((-4000..=0).contains(&settings.start_year), "{} : année {}", file.display(), settings.start_year);
-        // La table des objectifs se lit pour chaque aventure, cité mère et colonies.
-        assert_eq!(settings.goals.parent.len(), 10, "{}", file.display());
-        assert_eq!(settings.goals.colonies.len(), 4, "{}", file.display());
+        // Chaque aventure a des épisodes, et une carte pour chaque épisode de colonie
+        // que l'on joue.
+        assert!(!settings.parent.is_empty(), "{}", file.display());
+        let colonies = settings.order().iter().filter(|step| matches!(step, Step::Colony(_))).count();
+        assert!(colonies <= campaign.colonies().len(), "{} : {colonies} épisodes de colonie", file.display());
     }
     for file in files(&adventures, "set") {
         let settings = Settings::parse(&fs::read(&file).unwrap()).unwrap();
-        assert_eq!(settings.goals.parent.len(), 10, "{}", file.display());
+        assert!(!settings.parent.is_empty(), "{}", file.display());
     }
 }
 
@@ -69,20 +71,40 @@ fn episode_goals_and_resources() {
     let goal = |kind, values| Goal { kind, values };
     let jason = settings("[les aventures de jason.pak");
     // Premier épisode : la quête, le monstre, 3000 drachmes.
-    assert_eq!(jason.goals.parent[0], [goal(Kind::Quest, [0, 0, 0]), goal(Kind::Slay, [12, 0, 0]), goal(Kind::Treasury, [3000, 0, 0])]);
-    assert_eq!(jason.goals.parent[3][4], goal(Kind::Housing, [11, 72, 0]));
+    assert_eq!(jason.parent[0].goals, [goal(Kind::Quest, [0, 0, 0]), goal(Kind::Slay, [12, 0, 0]), goal(Kind::Treasury, [3000, 0, 0])]);
+    assert_eq!(jason.parent[3].goals[4], goal(Kind::Housing, [11, 72, 0]));
     // Mise de côté dans une aventure de Zeus : la laine, ancien numéro 13, devient 14 ;
     // de 4881 (0x1311), le jeu ne lit que l'octet bas, 17, l'huile d'olive, devenue 20.
-    assert_eq!(jason.goals.parent[2][3], goal(Kind::SetAside, [14, 24, 0]));
-    assert_eq!(jason.goals.parent[2][2], goal(Kind::SetAside, [20, 24, 0]));
+    assert_eq!(jason.parent[2].goals[3], goal(Kind::SetAside, [14, 24, 0]));
+    assert_eq!(jason.parent[2].goals[2], goal(Kind::SetAside, [20, 24, 0]));
     // Ressources renumérotées comme le fait le jeu : bois et laine, pas oranges et olives.
-    assert_eq!(jason.resources, [2, 4, 5, 7, 9, 14]);
-    assert_eq!(settings("firstcity.pak").goals.parent[0].len(), 1);
-    assert!(settings("}jeu ouvert - bac à sable.pak").goals.parent[0].is_empty());
+    assert_eq!(jason.parent[0].resources, [2, 4, 5, 7, 9, 14]);
+    assert_eq!(settings("firstcity.pak").parent[0].goals.len(), 1);
+    assert!(settings("}jeu ouvert - bac à sable.pak").parent[0].goals.is_empty());
     // Poséidon (version 26) : les marchandises gardent leur numéro.
     let atlantis = settings("#la naissance de l'atlantide.pak");
-    assert_eq!(atlantis.goals.parent[1][3], goal(Kind::Pyramid, [1, 100, 0]));
-    assert_eq!(atlantis.goals.parent[6][3], goal(Kind::Hippodrome, [40, 0, 0]));
+    assert_eq!(atlantis.parent[1].goals[3], goal(Kind::Pyramid, [1, 100, 0]));
+    assert_eq!(atlantis.parent[6].goals[3], goal(Kind::Hippodrome, [40, 0, 0]));
+}
+
+#[test]
+fn episodes_follow_each_other() {
+    let Some(data) = data() else { return };
+    let order = |name: &str| Campaign::parse(&fs::read(data.join("adventures").join(name)).unwrap()).unwrap().settings.unwrap().order();
+    use Step::{Colony, Parent};
+    // Un épisode marqué « colonie » mène au prochain épisode de colonie, après lequel
+    // on revient à la cité mère ; le dernier épisode clôt l'aventure.
+    assert_eq!(order("{la guerre de troie.pak"), [Parent(0), Parent(1), Colony(0), Parent(2), Colony(1), Parent(3)]);
+    assert_eq!(order("@l'histoire d'athènes.pak"), [Parent(0), Parent(1), Colony(0), Parent(2), Colony(1), Parent(3), Parent(4), Parent(5)]);
+    assert_eq!(order("#la naissance de l'atlantide.pak").len(), 9);
+    // Jason n'annonce qu'une colonie : son second épisode de colonie reste hors jeu.
+    assert_eq!(order("[les aventures de jason.pak"), [Parent(0), Parent(1), Parent(2), Colony(0), Parent(3)]);
+    assert_eq!(order("firstcity.pak"), [Parent(0)]);
+    // Récits : ouverture et victoire de chaque épisode.
+    let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap();
+    let settings = troy.settings.as_ref().unwrap();
+    assert_eq!((settings.colonies[1].intro_message, settings.colonies[1].victory_message), (385, 399));
+    assert_eq!(troy.colonies().len(), 2);
 }
 
 #[test]

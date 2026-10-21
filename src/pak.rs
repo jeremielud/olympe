@@ -1,61 +1,139 @@
 //! Campagnes (`.pak`) : un en-tête décrivant les épisodes, puis les cartes de la
 //! cité mère et des colonies, chacune au format `.map`.
 
-use crate::goals::{Goals, modern_resource};
+use crate::goals::{Goal, Goals, modern_resource};
 use crate::map::Map;
 
 /// Version de l'en-tête (32 bits) : 5 pour Zeus, 26 pour Poséidon.
 const VERSION_OFFSET: usize = 4;
+/// Nombres d'épisodes de la cité mère et des colonies (32 bits).
+const PARENT_EPISODES_OFFSET: usize = 8;
+const COLONY_EPISODES_OFFSET: usize = 16;
 /// À partir de cette version, les marchandises sont numérotées comme dans Poséidon.
 const MODERN_RESOURCES_VERSION: i32 = 22;
-/// Position, dans l'en-tête, de l'année de départ (16 bits signés) et du trésor.
-const START_YEAR_OFFSET: usize = 7140;
-const FUNDS_OFFSET: usize = 7172;
-/// Numéros, dans `zeus_mm.eng`, du récit d'ouverture et du récit de victoire du
-/// premier épisode.
-const FIRST_MESSAGE_OFFSET: usize = 28;
-const VICTORY_MESSAGE_OFFSET: usize = 40;
-/// Liste des ressources du premier épisode (octets, terminée par un zéro).
-const RESOURCES_OFFSET: usize = 9100;
+/// Fiches courtes des épisodes (récits, suite), dix pour la cité mère puis dix pour
+/// les colonies.
+const PARENT_HEADERS: usize = 20;
+const COLONY_HEADERS: usize = 3580;
+const HEADER_SIZE: usize = 356;
+/// Dans une fiche courte : récit d'ouverture et récit de victoire (numéros de
+/// `zeus_mm.eng`), et ce qui suit l'épisode.
+const INTRO_MESSAGE: usize = 8;
+const VICTORY_MESSAGE: usize = 20;
+const NEXT: usize = 84;
+/// Fiches complètes des épisodes, de la cité mère puis des colonies.
+const PARENT_RECORDS: usize = 7140;
+const COLONY_RECORDS: usize = 27460;
+const RECORD_SIZE: usize = 2032;
+/// Dans une fiche complète : année de départ (16 bits signés), trésor, puis la liste
+/// des ressources (octets, terminée par un zéro).
+const START_YEAR: usize = 0;
+const FUNDS: usize = 32;
+const RESOURCES: usize = 1960;
 const MAX_RESOURCES: usize = 16;
+
+/// Ce qui suit un épisode de la cité mère. Valeurs écrites par l'éditeur du jeu.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Next {
+    /// Un autre épisode dans la cité mère (2).
+    Parent,
+    /// Le prochain épisode de colonie (1), après quoi l'on revient à la cité mère.
+    Colony,
+    /// La fin de l'aventure (3).
+    End,
+}
+
+/// Un épisode, dans la cité mère ou dans une colonie.
+#[derive(Clone, Debug)]
+pub struct Episode {
+    /// Numéros, dans `zeus_mm.eng`, des récits d'ouverture et de victoire ; négatifs
+    /// pour une aventure qui apporte ses textes dans un fichier à part.
+    pub intro_message: i32,
+    pub victory_message: i32,
+    pub next: Next,
+    /// Ressources que la cité peut produire : numéros du groupe de textes 23
+    /// (2 poisson, 5 carottes, 7 blé, 13 olives…). Vide quand l'épisode n'en déclare
+    /// aucune.
+    pub resources: Vec<u8>,
+    pub goals: Vec<Goal>,
+}
+
+/// Épisode à jouer, désigné par son rang dans la cité mère ou parmi les colonies.
+/// L'épisode de colonie k se joue sur la k-ième carte de colonie.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Step {
+    Parent(usize),
+    Colony(usize),
+}
 
 /// Réglages d'une aventure, lus au début d'un `.pak` ou d'un `.set` (même en-tête).
 #[derive(Clone, Debug)]
 pub struct Settings {
-    pub episodes: usize,
     /// Année de départ ; négative avant notre ère.
     pub start_year: i32,
     /// Trésor de départ, en drachmes.
     pub funds: i32,
-    /// Numéro, dans `zeus_mm.eng`, du récit du premier épisode ; négatif pour une
-    /// aventure qui apporte ses textes dans un fichier à part.
-    pub first_message: i32,
-    /// Récit de victoire du premier épisode, même numérotation.
-    pub victory_message: i32,
-    /// Ressources que la cité mère peut produire au premier épisode : numéros du
-    /// groupe de textes 23 (2 poisson, 5 carottes, 7 blé, 13 olives…). Vide quand
-    /// l'aventure n'en déclare aucune.
-    pub resources: Vec<u8>,
-    /// Objectifs de chaque épisode ; vides si la table n'a pas pu être lue.
-    pub goals: Goals,
+    pub parent: Vec<Episode>,
+    pub colonies: Vec<Episode>,
 }
 
 impl Settings {
     pub fn parse(file: &[u8]) -> Option<Settings> {
         let int = |offset: usize| file.get(offset..offset + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-        let year = file.get(START_YEAR_OFFSET..START_YEAR_OFFSET + 2)?;
         let version = int(VERSION_OFFSET)?;
         // Zeus.exe renumérote au chargement les ressources des anciennes aventures.
         let resource = |r: u8| if version < MODERN_RESOURCES_VERSION { modern_resource(r) } else { r };
+        let goals = Goals::parse(file, version).unwrap_or_default();
+        let episodes = |count: i32, headers: usize, records: usize, goals: &[Vec<Goal>]| -> Option<Vec<Episode>> {
+            (0..count.clamp(0, 10) as usize)
+                .map(|i| {
+                    let (header, record) = (headers + i * HEADER_SIZE, records + i * RECORD_SIZE);
+                    let resources = file.get(record + RESOURCES..record + RESOURCES + MAX_RESOURCES)?;
+                    Some(Episode {
+                        intro_message: int(header + INTRO_MESSAGE)?,
+                        victory_message: int(header + VICTORY_MESSAGE)?,
+                        next: match int(header + NEXT)? {
+                            1 => Next::Colony,
+                            3 => Next::End,
+                            _ => Next::Parent,
+                        },
+                        resources: resources.iter().copied().take_while(|&r| r != 0).map(resource).collect(),
+                        goals: goals.get(i).cloned().unwrap_or_default(),
+                    })
+                })
+                .collect()
+        };
+        let year = file.get(PARENT_RECORDS + START_YEAR..PARENT_RECORDS + START_YEAR + 2)?;
         Some(Settings {
-            episodes: int(8)?.max(0) as usize,
             start_year: i16::from_le_bytes([year[0], year[1]]) as i32,
-            funds: int(FUNDS_OFFSET)?,
-            first_message: int(FIRST_MESSAGE_OFFSET)?,
-            victory_message: int(VICTORY_MESSAGE_OFFSET)?,
-            resources: file.get(RESOURCES_OFFSET..RESOURCES_OFFSET + MAX_RESOURCES).unwrap_or(&[]).iter().copied().take_while(|&r| r != 0).map(resource).collect(),
-            goals: Goals::parse(file, version).unwrap_or_default(),
+            funds: int(PARENT_RECORDS + FUNDS)?,
+            parent: episodes(int(PARENT_EPISODES_OFFSET)?, PARENT_HEADERS, PARENT_RECORDS, &goals.parent)?,
+            // Quatre fiches complètes de colonie seulement.
+            colonies: episodes(int(COLONY_EPISODES_OFFSET)?.min(4), COLONY_HEADERS, COLONY_RECORDS, &goals.colonies)?,
         })
+    }
+
+    /// Ordre de jeu des épisodes : ceux de la cité mère, chacun suivi au besoin du
+    /// prochain épisode de colonie, jusqu'au dernier.
+    pub fn order(&self) -> Vec<Step> {
+        let mut colonies = 0..self.colonies.len();
+        let mut steps = Vec::new();
+        for (i, episode) in self.parent.iter().enumerate() {
+            steps.push(Step::Parent(i));
+            match episode.next {
+                Next::End => break,
+                Next::Colony => steps.extend(colonies.next().map(Step::Colony)),
+                Next::Parent => {}
+            }
+        }
+        steps
+    }
+
+    pub fn episode(&self, step: Step) -> Option<&Episode> {
+        match step {
+            Step::Parent(i) => self.parent.get(i),
+            Step::Colony(i) => self.colonies.get(i),
+        }
     }
 }
 
@@ -91,5 +169,10 @@ impl Campaign {
     /// Carte de la cité mère.
     pub fn parent(&self) -> &Map {
         self.maps.get(1).unwrap_or(&self.maps[0])
+    }
+
+    /// Cartes des colonies, dans l'ordre de leurs épisodes.
+    pub fn colonies(&self) -> &[Map] {
+        self.maps.get(2..).unwrap_or(&[])
     }
 }
