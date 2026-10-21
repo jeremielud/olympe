@@ -363,7 +363,7 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
     street(&mut world, x, y);
-    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false, favor: 50 }];
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
     let rule = Goal { kind: GoalKind::Rule, values: [0, 0, 0] };
     assert_eq!(rule.status(&world), Status::Pending(None));
     assert_eq!(world.conquer(0), Err(Conquest::TooWeak { army: 0, defence: 24 }));
@@ -386,7 +386,7 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     assert_eq!(partners.status(&world), Status::Met);
     // Le statut passe par la sauvegarde.
     let (mut other, ..) = self::world(&data);
-    other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false, favor: 50 }];
+    other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
     other.load(&world.save()).unwrap();
     assert_eq!((other.cities[0].status, other.cities[0].trade), (VASSAL, true));
 }
@@ -396,7 +396,7 @@ fn world_changes_happen_on_their_date() {
     use zeus::map::{ALLY, City, RIVAL};
     let Some(data) = data() else { return };
     let (mut world, ..) = world(&data);
-    world.cities = vec![City { active: true, kind: 2, name: 68, status: ALLY, military: 3, trade: false, favor: 50 }];
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: ALLY, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
     // Troie devient rivale en mars de l'année suivante, puis renforce son armée.
     world.schedule(zeus::world::BECOMES_RIVAL, (0, 0), (5, 10), 2, (1, 1));
     world.schedule(zeus::world::MILITARY_BUILDUP, (0, 0), (2, 2), 6, (1, 1));
@@ -418,7 +418,7 @@ fn cities_ask_for_goods_and_drachmas() {
     use zeus::world::{DRACHMAS, REQUEST};
     let Some(data) = data() else { return };
     let (mut world, ..) = world(&data);
-    world.cities = vec![City { active: true, kind: 2, name: 57, status: ALLY, military: 3, trade: false, favor: 50 }; 2];
+    world.cities = vec![City { active: true, kind: 2, name: 57, status: ALLY, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }; 2];
     world.schedule(REQUEST + DRACHMAS, (0, 0), (1500, 1500), 1, (0, 0));
     world.schedule(REQUEST + 14, (1, 1), (8, 8), 1, (0, 0));
     (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
@@ -439,7 +439,7 @@ fn neglected_requests_turn_allies_into_rivals() {
     use zeus::world::{DRACHMAS, REQUEST};
     let Some(data) = data() else { return };
     let (mut world, ..) = world(&data);
-    world.cities = vec![City { active: true, kind: 2, name: 57, status: ALLY, military: 3, trade: false, favor: 35 }];
+    world.cities = vec![City { active: true, kind: 2, name: 57, status: ALLY, military: 3, trade: false, favor: 35, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
     world.schedule(REQUEST + DRACHMAS, (0, 0), (100, 100), 1, (0, 0));
     world.schedule(REQUEST + DRACHMAS, (0, 0), (100, 100), 3, (0, 0));
     (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
@@ -551,4 +551,23 @@ fn a_friendly_god_drives_a_hostile_god_away() {
     assert!(world.figures.iter().any(|f| f.source == Source::Deity(5)));
     (0..TICKS_PER_MONTH + 10).for_each(|_| world.tick());
     assert!(world.figures.iter().all(|f| f.source != Source::Deity(5)), "Arès est resté malgré Hermès");
+}
+
+#[test]
+fn trade_partners_buy_surplus_and_sell_what_is_missing() {
+    use zeus::map::{ALLY, City};
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    assert!(world.place_building(first, x, y));
+    // Une cité achète de la laine (24 par an) et vend du vin (12 par an).
+    world.cities = vec![City { active: true, kind: 2, name: 40, status: ALLY, military: 3, trade: true, favor: 50, sells: vec![(21, 12)], buys: vec![(14, 24)], sold: 0, bought: 0 }];
+    world.buildings.iter_mut().flatten().find(|b| b.kind == first).unwrap().goods[Good::Fleece as usize] = 12;
+    let money = world.money;
+    (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    // Laine au-delà de la réserve vendue (2 par mois), vin acheté (1 par mois).
+    assert_eq!((world.stored(14), world.stored(21)), (10, 1));
+    assert_eq!((world.cities[0].sold, world.cities[0].bought), (70, 50));
+    assert_eq!(world.money - money, 70 - 50 - world.last_month.1 + world.last_month.0);
 }

@@ -229,4 +229,8 @@ fn rule_goals_name_foreign_cities() {
     let troy = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap();
     let cities = troy.parent().cities();
     assert_eq!((cities[0].name, cities[6].name, cities[6].status, cities[6].military), (5, 68, zeus::map::ALLY, 6));
+    // Commerce, renuméroté comme les ressources : Ténédos vend blé, raisin, olives et
+    // laine ; Mycènes vend de la laine et achète raisin et vin.
+    assert_eq!(cities[1].sells, [(7, 36), (12, 24), (13, 24), (14, 24)]);
+    assert_eq!((cities[3].sells.clone(), cities[3].buys.clone()), (vec![(14, 12)], vec![(12, 12), (21, 12)]));
 }

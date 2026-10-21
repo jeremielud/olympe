@@ -52,13 +52,21 @@ const CITY_MILITARY: usize = 220;
 /// Attitude envers le joueur (entier en 340 : de 50 à 85 dans les aventures, 80
 /// pour les colonies à fonder) ; Olympe en fait la faveur de la cité.
 const CITY_FAVOR: usize = 340;
+/// Commerce : les marchandises vendues (octets à partir de 188) et achetées (à
+/// partir de 196), quatre au plus en tout, et la quantité annuelle de chacune (octet
+/// 96 + numéro de la marchandise). Les cartes de Zeus gardent l'ancienne
+/// numérotation des marchandises.
+const CITY_SELLS: usize = 188;
+const CITY_BUYS: usize = 196;
+const CITY_QUANTITIES: usize = 96;
+const TRADE_SLOTS: usize = 4;
 pub const FOREIGN: u8 = 2;
 pub const ALLY: i32 = 0;
 pub const RIVAL: i32 = 1;
 pub const VASSAL: i32 = 2;
 pub const COLONY: i32 = 3;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct City {
     pub active: bool,
     pub kind: u8,
@@ -69,6 +77,12 @@ pub struct City {
     pub trade: bool,
     /// Faveur de la cité envers le joueur, de 0 à 100.
     pub favor: i32,
+    /// Ce que la cité vend et achète : (ressource, quantité par an).
+    pub sells: Vec<(u8, i32)>,
+    pub buys: Vec<(u8, i32)>,
+    /// Drachmes gagnées et dépensées avec elle depuis le début de la partie.
+    pub sold: i32,
+    pub bought: i32,
 }
 
 /// Catalogue d'où provient une image de terrain.
@@ -193,10 +207,26 @@ impl Map {
     /// Cités du monde, vide pour une carte qui n'en décrit pas.
     pub fn cities(&self) -> Vec<City> {
         let Some(block) = self.blocks.iter().find(|b| b.count == CITIES && CITY_SIZES.contains(&b.element_size)) else { return Vec::new() };
+        // Les cartes de Zeus (enregistrements de 476 octets) numérotent les
+        // marchandises comme avant Poséidon.
+        let zeus = block.element_size == CITY_SIZES[0];
+        let goods = move |r: &[u8], at: usize| -> Vec<(u8, i32)> {
+            r[at..at + TRADE_SLOTS]
+                .iter()
+                .filter(|&&g| g != 0)
+                .map(|&g| {
+                    let quantity = r.get(CITY_QUANTITIES + g as usize).copied().unwrap_or(0) as i32;
+                    (if zeus { crate::goals::modern_resource(g) } else { g }, quantity)
+                })
+                .filter(|&(g, _)| g != 0)
+                .collect()
+        };
         block
             .data
             .chunks_exact(block.element_size)
             .map(|r| City {
+                sells: goods(r, CITY_SELLS),
+                buys: goods(r, CITY_BUYS),
                 active: r[0] != 0,
                 kind: r[CITY_KIND],
                 name: r[CITY_NAME],
@@ -204,6 +234,8 @@ impl Map {
                 military: r[CITY_MILITARY],
                 trade: false,
                 favor: (le32(r, CITY_FAVOR) as i32).clamp(0, 100),
+                sold: 0,
+                bought: 0,
             })
             .collect()
     }

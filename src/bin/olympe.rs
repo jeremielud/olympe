@@ -2991,8 +2991,9 @@ fn run(
                     .map(|(i, c)| {
                         let status = statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default();
                         let action = if c.status <= zeus::map::RIVAL { format!(", soumettre : {} sur {}", world.army(), world.defence(i)) } else { String::new() };
+                        let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
                         let trade = match (c.trade, c.status == zeus::map::RIVAL) {
-                            (true, _) => "  commerce ouvert".to_string(),
+                            (true, _) => format!("  vend {} ; achète {} (ventes {} dr., achats {} dr.)", names(&c.sells), names(&c.buys), c.sold, c.bought),
                             (false, false) => format!("  [ouvrir le commerce : {} dr.]", zeus::world::TRADE_ROUTE_COST),
                             (false, true) => String::new(),
                         };

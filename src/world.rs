@@ -205,6 +205,27 @@ pub enum Conquest {
 }
 
 const CONQUEST_PER_SHIELD: i32 = 24;
+/// Réserve que le commerce garde ou cherche à atteindre, par marchandise (Olympe).
+const TRADE_RESERVE: i32 = 8;
+
+/// Prix d'une unité de marchandise, en drachmes (valeurs d'Olympe, provisoires : le
+/// jeu a ses prix, que l'on n'a pas encore trouvés).
+fn price(resource: usize) -> i32 {
+    match resource {
+        1..=8 => 8,
+        12 | 13 => 10,
+        9 => 20,
+        11 => 30,
+        10 | 14 => 35,
+        20 => 40,
+        21 => 50,
+        18 => 80,
+        15 => 100,
+        19 => 200,
+        _ => 30,
+    }
+}
+
 /// Prix d'une route commerciale (Olympe : le jeu fixe un prix par cité).
 pub const TRADE_ROUTE_COST: i32 = 1000;
 const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
@@ -1501,7 +1522,7 @@ impl World {
     /// assez forte, la cité devient vassale et l'armée rentre six mois plus tard. Le
     /// jeu livre bataille ; Olympe se contente de comparer les forces.
     pub fn conquer(&mut self, city: usize) -> Result<(), Conquest> {
-        let Some(target) = self.cities.get(city).copied().filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
+        let Some(target) = self.cities.get(city).cloned().filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
         if target.status > RIVAL {
             return Err(Conquest::AlreadyRuled);
         }
@@ -1527,6 +1548,79 @@ impl World {
         self.money -= TRADE_ROUTE_COST;
         self.cities[city].trade = true;
         true
+    }
+
+    /// Range `amount` d'une ressource au grenier (vivres) ou à l'entrepôt, dans la
+    /// limite de la place ; rend ce qui a été rangé.
+    fn store(&mut self, resource: usize, amount: i32) -> i32 {
+        let good = GOODS.iter().position(|&g| resource_of(g) == Some(resource as u8));
+        let mut left = amount;
+        for id in 0..self.buildings.len() {
+            if left <= 0 {
+                break;
+            }
+            let function = match &self.buildings[id] {
+                Some(b) => self.kinds[b.kind].function,
+                None => continue,
+            };
+            let Some(b) = self.buildings[id].as_mut() else { continue };
+            let put = match (function, good) {
+                (Function::Granary, _) if (1..FOODS).contains(&resource) => (GRANARY_STORAGE - b.stock).clamp(0, left),
+                (Function::Storehouse, Some(good)) => {
+                    // Une marchandise n'occupe jamais plus de la moitié de l'entrepôt.
+                    let room = BAY_LOADS * (STOREHOUSE_BAYS as i32 / 2) - b.goods[good];
+                    let free_bays = STOREHOUSE_BAYS.saturating_sub(bays_used(&b.goods)) as i32 * BAY_LOADS + (BAY_LOADS - b.goods[good] % BAY_LOADS) % BAY_LOADS;
+                    room.min(free_bays).clamp(0, left)
+                }
+                _ => 0,
+            };
+            if put > 0 {
+                match good {
+                    Some(good) if function == Function::Storehouse => b.goods[good] += put,
+                    _ => {
+                        b.stock += put;
+                        b.foods[resource] += put;
+                    }
+                }
+                left -= put;
+            }
+        }
+        amount - left
+    }
+
+    /// Commerce du mois avec les cités partenaires : on leur vend ce qu'elles
+    /// achètent au-delà d'une réserve gardée, et l'on achète ce qu'elles vendent
+    /// quand les réserves sont basses, au prix d'Olympe, dans la limite d'un
+    /// douzième de leur quantité annuelle.
+    fn trade(&mut self) {
+        for city in 0..self.cities.len() {
+            let c = &self.cities[city];
+            if !(c.active && c.trade && c.status != RIVAL) {
+                continue;
+            }
+            let (buys, sells) = (c.buys.clone(), c.sells.clone());
+            let (mut sold, mut bought) = (0, 0);
+            for (resource, quantity) in buys {
+                let (resource, monthly) = (resource as usize, (quantity / 12).max(1));
+                let spare = (self.stored(resource) - TRADE_RESERVE).min(monthly);
+                if spare > 0 && resource < RESOURCES {
+                    let taken = self.take(resource, spare);
+                    self.money += taken * price(resource);
+                    sold += taken * price(resource);
+                }
+            }
+            for (resource, quantity) in sells {
+                let (resource, monthly) = (resource as usize, (quantity / 12).max(1));
+                let wanted = (TRADE_RESERVE - self.stored(resource)).min(monthly).min(self.money / price(resource).max(1));
+                if wanted > 0 && resource < RESOURCES {
+                    let put = self.store(resource, wanted);
+                    self.money -= put * price(resource);
+                    bought += put * price(resource);
+                }
+            }
+            let c = &mut self.cities[city];
+            (c.sold, c.bought) = (c.sold + sold, c.bought + bought);
+        }
     }
 
     /// Partenaires commerciaux : cités non rivales avec qui une route est ouverte
@@ -1852,6 +1946,7 @@ impl World {
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
         self.call_heroes();
+        self.trade();
         self.release_monsters();
         self.place_heroes();
         self.send_gods();
@@ -2652,6 +2747,8 @@ impl World {
             let _ = writeln!(out, "forces {}", military.join(" "));
             let favor: Vec<String> = self.cities.iter().map(|c| c.favor.to_string()).collect();
             let _ = writeln!(out, "faveurs {}", favor.join(" "));
+            let traded: Vec<String> = self.cities.iter().map(|c| format!("{} {}", c.sold, c.bought)).collect();
+            let _ = writeln!(out, "echanges {}", traded.join(" "));
         }
         for q in &self.quests {
             let (state, until) = match q.state {
@@ -2751,6 +2848,7 @@ impl World {
         let mut requests = Vec::new();
         let mut invasions = Vec::new();
         let mut favors: Vec<i32> = Vec::new();
+        let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -2790,6 +2888,7 @@ impl World {
                     amount: number_at(2)? as i32,
                     until: number_at(3)? as u64,
                 }),
+                "echanges" => traded = (0..rest.len()).map(|i| number_at(i).map(|n| n as i32)).collect::<Result<_, _>>()?,
                 "faveurs" => favors = (0..rest.len()).map(|i| number_at(i).map(|f| f as i32)).collect::<Result<_, _>>()?,
                 "forces" => military = (0..rest.len()).map(|i| number_at(i).map(|m| m as u8)).collect::<Result<_, _>>()?,
                 "heros" => {
@@ -2991,6 +3090,9 @@ impl World {
         }
         for (city, favor) in self.cities.iter_mut().zip(favors) {
             city.favor = favor;
+        }
+        for (city, pair) in self.cities.iter_mut().zip(traded.chunks_exact(2)) {
+            (city.sold, city.bought) = (pair[0], pair[1]);
         }
         for (city, status) in self.cities.iter_mut().zip(statuses) {
             (city.status, city.trade) = (status % 10, status >= 10);
