@@ -334,3 +334,24 @@ fn heroes_fight_monsters_then_leave_on_quests() {
     other.load(&world.save()).unwrap();
     assert!(other.heroes[3] && other.quest_done(0) && other.monster_slain(1));
 }
+
+#[test]
+fn elite_houses_support_soldiers() {
+    use zeus::world::Soldier;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    let hoplites = Goal { kind: GoalKind::Support, values: [12, 2, 0] };
+    assert_eq!(hoplites.status(&world), Status::Pending(Some(0)));
+    // Une masure pleine fournit cinq hommes de piétaille, un hôtel particulier deux hoplites.
+    let houses: Vec<usize> = (0..world.buildings.len()).filter(|&i| world.buildings[i].as_ref().is_some_and(|b| b.house.is_some())).collect();
+    for (i, level) in [(houses[0], 2), (houses[1], 10)] {
+        let house = world.buildings[i].as_mut().unwrap().house.as_mut().unwrap();
+        // Au-delà de sa capacité, une maison ne fournit pas plus de soldats.
+        (house.level, house.population) = (level, 1000);
+    }
+    assert_eq!(world.soldiers(Soldier::Rabble), 7);
+    assert_eq!(world.soldiers(Soldier::Hoplite), 2);
+    assert_eq!(hoplites.status(&world), Status::Met);
+    assert_eq!(Goal { kind: GoalKind::Support, values: [57, 1, 0] }.status(&world), Status::Unsupported);
+}

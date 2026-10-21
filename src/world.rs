@@ -119,6 +119,33 @@ const MIN_HOUSEHOLD: i32 = 8;
 const HOUSE_FOOD_MONTHS: i32 = 4;
 /// Un chargement nourrit ce nombre d'habitants pendant un mois.
 const PEOPLE_PER_LOAD: i32 = 64;
+/// Soldats que fournit un logement plein, par niveau (annexe 4 de l'éditeur
+/// d'aventures) : piétaille des logements modestes à partir de la masure, hoplites
+/// des hôtels particuliers et manoirs, cavaliers des domaines.
+const SOLDIERS: [(Soldier, i32); 13] = [
+    (Soldier::Rabble, 0),
+    (Soldier::Rabble, 0),
+    (Soldier::Rabble, 5),
+    (Soldier::Rabble, 6),
+    (Soldier::Rabble, 10),
+    (Soldier::Rabble, 12),
+    (Soldier::Rabble, 15),
+    (Soldier::Rabble, 0),
+    (Soldier::Rabble, 0),
+    (Soldier::Rabble, 0),
+    (Soldier::Hoplite, 2),
+    (Soldier::Hoplite, 4),
+    (Soldier::Horseman, 4),
+];
+
+/// Soldats, du moins au plus aguerri.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Soldier {
+    Rabble,
+    Hoplite,
+    Horseman,
+}
+
 /// Durée d'un combat de héros contre un monstre, et d'une quête (valeurs d'Olympe).
 const HERO_FIGHT_TICKS: u64 = TICKS_PER_MONTH;
 const QUEST_TICKS: u64 = TICKS_PER_MONTH * 6;
@@ -1198,6 +1225,21 @@ impl World {
                 _ => {}
             }
         }
+    }
+
+    /// Soldats que la cité entretient de ce rang ou d'un rang supérieur ; un logement
+    /// en fournit au prorata de ses habitants.
+    pub fn soldiers(&self, at_least: Soldier) -> i32 {
+        self.buildings
+            .iter()
+            .flatten()
+            .filter_map(|b| b.house.as_ref())
+            .filter_map(|house| {
+                let &(soldier, full) = SOLDIERS.get(house.level)?;
+                let capacity = self.capacity(house).max(1);
+                (soldier >= at_least).then(|| full * house.population.min(capacity) / capacity)
+            })
+            .sum()
     }
 
     /// La quête ou le monstre de cet événement est venu à bout.

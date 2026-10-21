@@ -44,6 +44,9 @@ const ANY_FOOD: i32 = 25;
 const SCULPTURE: i32 = 19;
 /// Paramètre des exigences de comptage : chevaux (43) ou trières (57).
 const HORSES: i32 = 43;
+/// Niveaux luxueux : résidence, puis hôtel particulier.
+const RESIDENCE: usize = ELITE_FIRST_LEVEL + 2;
+const MANSION: usize = ELITE_FIRST_LEVEL + 3;
 
 /// Où en est une exigence.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -99,9 +102,10 @@ impl Requirement {
                 let horses = world.buildings.iter().flatten().filter(|x| world.kinds[x.kind].function == Function::Producer(Good::Horses)).map(|x| x.stock).sum();
                 against(horses, a)
             }
-            // Logements luxueux d'un niveau donné ou mieux (manoirs, domaines…).
-            2 => against(houses().filter(|h| h.level > ELITE_FIRST_LEVEL).count() as i32, a),
-            10 => against(houses().filter(|h| h.level >= ELITE_FIRST_LEVEL).count() as i32, a),
+            // Hôtels particuliers ou mieux (types 12 et 13 des règles), et logements
+            // luxueux habités (résidences ou mieux).
+            2 => against(houses().filter(|h| h.level >= MANSION).count() as i32, a),
+            10 => against(houses().filter(|h| h.level >= RESIDENCE).count() as i32, a),
             // Sanctuaires dédiés à `a` des dieux nommés ensuite.
             3 => {
                 let built = world.sanctuaries();

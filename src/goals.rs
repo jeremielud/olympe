@@ -9,7 +9,7 @@
 //! chargement (0x526500).
 
 use crate::text::Text;
-use crate::world::World;
+use crate::world::{Soldier, World};
 
 pub const MAX_GOALS: usize = 6;
 pub const PARENT_EPISODES: usize = 10;
@@ -178,6 +178,14 @@ impl Goal {
                 Some(best) => against(best, first),
                 None => Status::Pending(None),
             },
+            // Soldats d'un rang ou mieux (11 piétaille, 12 hoplites, 13 cavaliers, comme
+            // 0x4de170) ; les trières (57) ne sont pas encore simulées.
+            Kind::Support => match first {
+                11 => against(world.soldiers(Soldier::Rabble), second),
+                12 => against(world.soldiers(Soldier::Hoplite), second),
+                13 => against(world.soldiers(Soldier::Horseman), second),
+                _ => Status::Unsupported,
+            },
             // Objectifs désignés par un événement de l'épisode.
             Kind::Quest => if world.quest_done(first.max(0) as usize) { Status::Met } else { Status::Pending(None) },
             Kind::Slay => if world.monster_slain(first.max(0) as usize) { Status::Met } else { Status::Pending(None) },
@@ -235,6 +243,15 @@ impl Goal {
                 amount(line(33), second).replace("[house_level]", &level.to_lowercase())
             }
             Kind::Partners => amount(line(34), first),
+            Kind::Support => {
+                let unit = match first {
+                    11 => "soldats ou mieux",
+                    12 => "hoplites ou mieux",
+                    13 => "cavaliers",
+                    _ => "trières",
+                };
+                amount(line(24), second).replace("[military_or_better]", unit)
+            }
             Kind::SetAside => amount(line(if in_colony { 35 } else { 36 }), second).replace("[item]", &resource(first)),
             Kind::Sanctuary if first == -1 => match (second >= 2, third != 0) {
                 (false, false) => line(20),

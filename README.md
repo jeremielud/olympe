@@ -34,6 +34,8 @@ Ce qui fonctionne :
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont
   suivis (les monstres ne paraissent pas encore dans la cité) ;
+- soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
+  chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
