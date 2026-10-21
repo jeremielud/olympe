@@ -250,3 +250,23 @@ fn wood_and_marble_reach_the_storehouse() {
     assert!(world.stored(9) > 0 && world.stored(11) > 0, "{} {}", world.stored(9), world.stored(11));
     assert!(world.best_production(9) > 0);
 }
+
+#[test]
+fn the_sculpture_studio_casts_the_foundry_bronze() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0));
+    let mut studio = Kind::simple("atelier de sculpture".into(), 50, 2, 683, Function::Workshop(Good::Sculpture), 0);
+    studio.product = 19;
+    world.kinds.push(studio);
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    assert!(world.place_building(first, x + 10, y + 3), "fonderie");
+    assert!(world.place_building(first + 1, x + 4, y + 5), "atelier");
+    assert!(world.place_building(first + 2, x + 6, y + 5), "entrepôt");
+    (0..9600).for_each(|_| world.tick());
+    assert!(world.stored(19) > 0, "{}", world.stored(19));
+    assert!(world.best_production(19) >= world.stored(19));
+}

@@ -99,7 +99,7 @@ const GROUP_PHILOSOPHER: usize = 240;
 const TYPE_FOUNDRY: usize = 50;
 const DAIRY_IMAGE: usize = 548;
 const HUNTING_LODGE_IMAGE: usize = 544;
-const SIMPLE_KINDS: [(usize, usize, Function, usize); 36] = [
+const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
     (121, 1075, Function::Service(Service::Maintenance), GROUP_SUPERINTENDENT),
@@ -129,6 +129,8 @@ const SIMPLE_KINDS: [(usize, usize, Function, usize); 36] = [
     // (raccourci, comme la fonderie) ; images attribuées à l'œil.
     (51, 598, Function::Producer(Good::Wood), 0),
     (49, 609, Function::Producer(Good::Marble), 0),
+    // Atelier de sculpture : coule le bronze ; image attribuée à l'œil (tour de coulée).
+    (55, 683, Function::Workshop(Good::Sculpture), 0),
     // Haras : le groupe d'images voisin de celui de l'enclos à chevaux.
     (133, 723, Function::Producer(Good::Horses), 0),
     // Stade : deux moitiés 5 × 5 ; l'outil pose l'annexe (au fond) puis celle-ci.
@@ -168,7 +170,7 @@ const RESOURCE_OLIVES: u8 = 13;
 const RESOURCE_FLEECE: u8 = 14;
 /// Ce que produit chaque bâtiment d'une seule image (numéro de type, ressource), pour
 /// les objectifs de production et le tri des vivres au grenier.
-const PRODUCTS: [(usize, u8); 11] = [
+const PRODUCTS: [(usize, u8); 12] = [
     (44, RESOURCE_FISH),
     (46, RESOURCE_MEAT),
     (42, RESOURCE_CHEESE),
@@ -176,6 +178,7 @@ const PRODUCTS: [(usize, u8); 11] = [
     (TYPE_FOUNDRY, RESOURCE_BRONZE),
     (51, RESOURCE_WOOD),
     (49, RESOURCE_MARBLE),
+    (55, 19),
     (135, 18),
     (133, 15),
     (54, 20),
@@ -211,7 +214,7 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
     (73, 455, 456, Good::Horses, GROUP_HORSE_TRAINER),
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
-const GOOD_TEXTS: [usize; 9] = [25, 14, 20, 21, 18, 15, 10, 9, 11];
+const GOOD_TEXTS: [usize; 10] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19];
 /// Logement luxueux : type, et image d'un quart de terrain vacant (pour l'aperçu).
 const TYPE_ELITE_HOUSE: usize = 9;
 const ELITE_LOT_IMAGE: usize = 1021;
@@ -264,7 +267,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Fleece) => "AGORA_FLEECE",
         Function::Vendor(Good::Oil) => "AGORA_OIL",
         Function::Vendor(Good::Wine) => "AGORA_WINE",
-        Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble) => "AGORA_ARMS",
+        Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
         Function::None => "BEAUTIFICATION",
@@ -720,6 +723,7 @@ fn lock_resources(world: &mut World, resources: &[u8]) {
             Function::Supplier(Raw::Bronze) => !has(RESOURCE_BRONZE),
             Function::Producer(Good::Wood) => !has(RESOURCE_WOOD),
             Function::Producer(Good::Marble) => !has(RESOURCE_MARBLE),
+            Function::Workshop(Good::Sculpture) => !has(RESOURCE_BRONZE),
             _ => false,
         })
         .collect();

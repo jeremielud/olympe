@@ -125,6 +125,8 @@ const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH / 8;
 const PRODUCER_STORAGE: i32 = 8;
 /// Durée de fabrication d'un chargement de fromage : deux par mois (provisoire).
 const DAIRY_TICKS: u64 = TICKS_PER_MONTH / 2;
+/// Durée de fonte d'une sculpture : deux par mois (provisoire).
+const SCULPTURE_TICKS: u64 = TICKS_PER_MONTH / 2;
 /// Matière première qu'un atelier accepte d'avance.
 const WORKSHOP_RAW_STORAGE: i32 = 8;
 /// Réserve de laine ou d'huile qu'une maison cherche à garder, et mois que dure un chargement.
@@ -155,7 +157,8 @@ const AGORA_ROAD_IMAGES: usize = 3;
 pub const STOREHOUSE_BAYS: usize = 8;
 const BAY_LOADS: i32 = 4;
 const EMPTY_BAY_IMAGE: usize = 934;
-const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849];
+/// Une baie ne montre jamais qu'une sculpture.
+const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873];
 const WORKFORCE_PERCENT: i32 = 40;
 /// Impôt mensuel, en drachmes pour 100 habitants d'une maison visitée par un
 /// percepteur (multiplié par le coefficient du niveau de logement).
@@ -206,6 +209,8 @@ pub enum Good {
     /// Bois de la scierie et marbre de l'atelier de maçonnerie, rangés à l'entrepôt.
     Wood,
     Marble,
+    /// Sculptures de bronze de l'atelier de sculpture.
+    Sculpture,
 }
 
 /// Matière première d'un atelier.
@@ -220,12 +225,13 @@ pub enum Raw {
 /// Ce qu'un atelier transforme pour fabriquer cette marchandise.
 fn raw_for(good: Good) -> Raw {
     match good {
-        Good::Arms => Raw::Bronze,
+        Good::Arms | Good::Sculpture => Raw::Bronze,
         _ => Raw::Crops,
     }
 }
 
-pub const GOODS: [Good; 9] = [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze, Good::Wood, Good::Marble];
+pub const GOODS: [Good; 10] =
+    [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze, Good::Wood, Good::Marble, Good::Sculpture];
 
 /// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
 /// objectifs des aventures) : 2 poisson, 7 blé, 14 laine, 20 huile d'olive…
@@ -236,7 +242,7 @@ pub const FOODS: usize = 8;
 /// Marchandise que les maisons consomment (les autres ne servent qu'à l'industrie
 /// ou aux objectifs).
 pub fn for_houses(good: Good) -> bool {
-    !matches!(good, Good::Bronze | Good::Wood | Good::Marble)
+    !matches!(good, Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture)
 }
 
 /// Numéro de ressource d'une marchandise rangée à l'entrepôt.
@@ -250,6 +256,7 @@ pub fn resource_of(good: Good) -> Option<u8> {
         Good::Bronze => Some(10),
         Good::Wood => Some(9),
         Good::Marble => Some(11),
+        Good::Sculpture => Some(19),
         Good::Food => None,
     }
 }
@@ -1246,7 +1253,7 @@ impl World {
                 Function::Workshop(_) => {
                     if building.raw == 0 || building.stock >= PRODUCER_STORAGE {
                         self.buildings[id].as_mut().unwrap().sown_at = self.ticks;
-                    } else if self.ticks - building.sown_at >= PRODUCTION_TICKS {
+                    } else if self.ticks - building.sown_at >= if function == Function::Workshop(Good::Sculpture) { SCULPTURE_TICKS } else { PRODUCTION_TICKS } {
                         let building = self.buildings[id].as_mut().unwrap();
                         building.sown_at = self.ticks;
                         building.raw -= 1;
@@ -1814,7 +1821,7 @@ fn bay_image(goods: &[i32; GOODS.len()], bay: usize) -> usize {
     for (good, &loads) in goods.iter().enumerate() {
         let bays = ((loads + BAY_LOADS - 1) / BAY_LOADS) as usize;
         if bay < first + bays {
-            let inside = (loads - (bay - first) as i32 * BAY_LOADS).clamp(1, BAY_LOADS);
+            let inside = if GOODS[good] == Good::Sculpture { 1 } else { (loads - (bay - first) as i32 * BAY_LOADS).clamp(1, BAY_LOADS) };
             return BAY_FIRST_IMAGES[good] + inside as usize - 1;
         }
         first += bays;
@@ -1841,7 +1848,7 @@ fn bays_used(goods: &[i32; GOODS.len()]) -> usize {
 fn units_per_load(good: Good) -> i32 {
     match good {
         Good::Food => PEOPLE_PER_LOAD,
-        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze | Good::Wood | Good::Marble => 1,
+        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture => 1,
     }
 }
 
@@ -1863,10 +1870,10 @@ fn direction(from: (u16, u16), to: (u16, u16)) -> usize {
 }
 
 /// En-tête des fichiers de sauvegarde ; le numéro change quand le format change.
-const SAVE_HEADER: &str = "zeus-sauvegarde 11";
+const SAVE_HEADER: &str = "zeus-sauvegarde 12";
 /// Versions précédentes, encore lues, et nombre de marchandises qu'elles connaissaient
 /// (les plus récentes s'ajoutent à la fin de `GOODS`).
-const OLD_SAVE_HEADERS: [(&str, usize); 2] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7)];
+const OLD_SAVE_HEADERS: [(&str, usize); 3] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7), ("zeus-sauvegarde 11", 9)];
 
 impl World {
     /// État de la partie sous forme de texte : une ligne par route, bâtiment ou
