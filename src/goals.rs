@@ -181,11 +181,12 @@ impl Goal {
                 None => Status::Pending(None),
             },
             // Soldats d'un rang ou mieux (11 piétaille, 12 hoplites, 13 cavaliers, comme
-            // 0x4de170) ; les trières (57) ne sont pas encore simulées.
+            // 0x4de170), ou trières (57).
             Kind::Support => match first {
                 11 => against(world.soldiers(Soldier::Rabble), second),
                 12 => against(world.soldiers(Soldier::Hoplite), second),
                 13 => against(world.soldiers(Soldier::Horseman), second),
+                57 => against(world.triremes(), second),
                 _ => Status::Unsupported,
             },
             Kind::Partners => against(world.partners(), first),

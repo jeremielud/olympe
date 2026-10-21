@@ -369,6 +369,10 @@ const SANCTUARY_PLAIN_IMAGE: usize = 1453;
 /// Durée de fabrication d'un chargement (bergerie, pressoir).
 const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH / 8;
 const PRODUCER_STORAGE: i32 = 8;
+/// Une trière demande quatre charges de bois et trois mois de chantier (barème
+/// d'Olympe).
+const TRIREME_WOOD: i32 = 4;
+const TRIREME_TICKS: u64 = 3 * TICKS_PER_MONTH;
 /// Durée de fabrication d'un chargement de fromage : deux par mois (provisoire).
 const DAIRY_TICKS: u64 = TICKS_PER_MONTH / 2;
 /// Durée de fonte d'une sculpture : deux par mois (provisoire).
@@ -548,6 +552,9 @@ pub enum Function {
     Sanctuary { god: u8, needs: [u16; 3] },
     /// Temple d'un héros : le héros y vient quand ses exigences sont remplies.
     HeroHall(u8),
+    /// Quai des trières : posé au bord de l'eau, il arme une trière avec le bois de
+    /// l'entrepôt.
+    Wharf,
     /// Monument de Poséidon (rang 0 à 14, type de bâtiment 100 + rang), et ce qu'il
     /// faut y livrer : marbre, bois, sculptures.
     Monument { model: u8, needs: [u16; 3] },
@@ -1060,7 +1067,7 @@ impl World {
             // Une échoppe prend la place d'un emplacement d'agora, exactement.
             Function::Vendor(_) => self.plot_at(x, y).is_some(),
             Function::Stadium => self.can_build(x, y, k.size) && self.can_build(x, y + size, k.size),
-            Function::Fishery => {
+            Function::Fishery | Function::Wharf => {
                 let near_water = (y - 1..=y + size).any(|ty| (x - 1..=x + size).any(|tx| Self::in_grid(tx, ty) && self.map.terrain(tx as usize, ty as usize) & TERRAIN_WATER != 0));
                 self.can_build(x, y, k.size) && near_water
             }
@@ -1507,6 +1514,11 @@ impl World {
             }
             _ => true,
         }
+    }
+
+    /// Trières à quai.
+    pub fn triremes(&self) -> i32 {
+        self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == Function::Wharf).map(|b| b.stock.min(1)).sum()
     }
 
     /// Monuments achevés de ce rang, ou de tous les rangs.
@@ -2547,7 +2559,7 @@ impl World {
             let (stock, errand_out, due) = (building.stock, building.errand_out, building.next_walk <= self.ticks);
             if !building.staffed {
                 // À l'arrêt : la pousse des champs est suspendue elle aussi.
-                if matches!(function, Function::Farm | Function::Supplier(_) | Function::Producer(_) | Function::Fishery | Function::Workshop(_)) {
+                if matches!(function, Function::Farm | Function::Supplier(_) | Function::Producer(_) | Function::Fishery | Function::Workshop(_) | Function::Wharf) {
                     self.buildings[id].as_mut().unwrap().sown_at += 1;
                 }
                 continue;
@@ -2560,6 +2572,23 @@ impl World {
                     let allowed = service != Service::Tax || palace;
                     if allowed && (!needs_school || taught[service as usize]) {
                         self.start_rounds(id, walker, Rounds::Service(service));
+                    }
+                }
+                // Quai sans trière : il réunit son bois, puis la trière est lancée au
+                // bout du chantier ; elle reste à quai, comptée dans la flotte.
+                Function::Wharf if stock == 0 => {
+                    let wood = building.goods[Good::Wood as usize];
+                    if wood < TRIREME_WOOD {
+                        let taken = resource_of(Good::Wood).map_or(0, |r| self.take(r as usize, TRIREME_WOOD - wood));
+                        let building = self.buildings[id].as_mut().unwrap();
+                        building.goods[Good::Wood as usize] += taken;
+                        if wood == 0 {
+                            building.sown_at = self.ticks;
+                        }
+                    } else if self.ticks - building.sown_at >= TRIREME_TICKS {
+                        let building = self.buildings[id].as_mut().unwrap();
+                        building.goods[Good::Wood as usize] = 0;
+                        building.stock = 1;
                     }
                 }
                 Function::Producer(_) | Function::Fishery => {

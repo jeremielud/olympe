@@ -37,6 +37,10 @@ Ce qui fonctionne :
   par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
   arrivent de l'entrepôt (quantités provisoires) ; les pentes sont dessinées en
   blocs, les statues en obélisques ;
+- quai des trières (onglet Armée), au bord de l'eau : il prend quatre charges de
+  bois à l'entrepôt et lance une trière trois mois plus tard (barème d'Olympe ; le jeu
+  n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
+  d'entretien de trières sont suivis ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont

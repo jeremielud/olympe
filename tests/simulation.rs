@@ -299,6 +299,29 @@ fn a_sanctuary_is_built_from_storehouse_materials() {
 }
 
 #[test]
+fn a_wharf_builds_a_trireme_from_wood() {
+    let Some(data) = data() else { return };
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages::default(), 10_000);
+    let (wharf, storehouse) = (world.kinds.len(), world.kinds.len() + 1);
+    world.kinds.push(Kind::simple("quai des trières".into(), 150, 3, 721, Function::Wharf, 0));
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    // Au bord de l'eau seulement : on cherche une place sur la côte du raz-de-marée.
+    let (wx, wy) = world.map.disaster_point(3).unwrap();
+    let shore = (-12..12).flat_map(|dy| (-12..12).map(move |dx| (wx as i32 + dx, wy as i32 + dy))).find(|&(x, y)| world.can_place(wharf, x, y)).unwrap();
+    assert!(world.place_building(wharf, shore.0, shore.1));
+    let site = (-30..30).flat_map(|dy| (-30..30).map(move |dx| (wx as i32 + dx, wy as i32 + dy))).find(|&(x, y)| world.can_place(storehouse, x, y) && world.can_build(x - 1, y - 1, 5)).unwrap();
+    assert!(world.place_building(storehouse, site.0, site.1));
+    world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Wood as usize] = 6;
+    let goal = Goal { kind: GoalKind::Support, values: [57, 1, 0] };
+    assert_eq!(goal.status(&world), Status::Pending(Some(0)));
+    (0..5 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!((world.triremes(), world.stored(9)), (1, 2));
+    assert_eq!(goal.status(&world), Status::Met);
+}
+
+#[test]
 fn a_pyramid_rises_with_its_materials() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
@@ -385,7 +408,8 @@ fn elite_houses_support_soldiers() {
     assert_eq!(world.soldiers(Soldier::Rabble), 7);
     assert_eq!(world.soldiers(Soldier::Hoplite), 2);
     assert_eq!(hoplites.status(&world), Status::Met);
-    assert_eq!(Goal { kind: GoalKind::Support, values: [57, 1, 0] }.status(&world), Status::Unsupported);
+    // Pas de quai, pas de trière.
+    assert_eq!(Goal { kind: GoalKind::Support, values: [57, 1, 0] }.status(&world), Status::Pending(Some(0)));
 }
 
 #[test]

@@ -104,6 +104,9 @@ const TYPE_FOUNDRY: usize = 50;
 /// planche de l'élevage ; les pontons voisins (544 à 551) sont les quais à oursins.
 const DAIRY_IMAGE: usize = 565;
 const HUNTING_LODGE_IMAGE: usize = 528;
+/// Quai des trières, et l'image de pêcherie qui le représente.
+const TYPE_WHARF: usize = 136;
+const WHARF_IMAGE: usize = 721;
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
@@ -279,7 +282,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Producer(Good::Wood) => "TIMBER_MILL",
         Function::Producer(Good::Marble) => "MARBLE_QUARRY",
         Function::Producer(Good::Food) => "GOAT_FARM",
-        Function::Fishery => "SEA",
+        Function::Fishery | Function::Wharf => "SEA",
         Function::Producer(_) => "SHEEP_FARM",
         Function::Supplier(Raw::Crops) => "ORCHARD",
         Function::Supplier(Raw::Bronze) => "FOUNDRY",
@@ -375,11 +378,11 @@ const PANEL_LEFT: f32 = 54.0;
 /// Icône d'onglet de chaque catégorie (rang dans la série des onglets d'origine :
 /// maison, épis, rouage, amphore, chapiteau, personnage assis, discobole, cyprès) ;
 /// l'attribution des icônes aux catégories est faite à l'œil.
-const CATEGORY_TABS: [(usize, usize); 9] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7), (10, 8)];
+const CATEGORY_TABS: [(usize, usize); 10] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7), (10, 8), (MILITARY_TAB, 9)];
 
 /// Catégories du menu de construction : intitulé (rang dans le groupe de textes 4,
 /// ou texte de secours quand le jeu n'en a pas) et rôles des bâtiments rangés dedans.
-const CATEGORY_NAMES: [(Option<usize>, &str); 9] = [
+const CATEGORY_NAMES: [(Option<usize>, &str); 10] = [
     (None, "Population"),
     (Some(6), "Agriculture"),
     (Some(1), "Industrie"),
@@ -389,6 +392,7 @@ const CATEGORY_NAMES: [(Option<usize>, &str); 9] = [
     (Some(9), "Culture"),
     (Some(10), "Mythologie"),
     (None, "Embellissement"),
+    (Some(2), "Armée"),
 ];
 
 /// Rang, dans `CATEGORY_NAMES`, de la catégorie d'un bâtiment.
@@ -407,6 +411,7 @@ fn category_of(function: Function) -> usize {
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
+        Function::Wharf => 9,
         Function::None => 8,
     }
 }
@@ -1991,6 +1996,13 @@ fn run(
         });
         monument_layouts.push(layout);
     }
+    // Quai des trières : le jeu n'en a pas d'image reconnue ; Olympe prend celle d'une
+    // pêcherie.
+    let mut wharf = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_WHARF), rules(TYPE_WHARF)?.cost, 3, WHARF_IMAGE, Function::Wharf, 0);
+    wharf.employees = rules(TYPE_WHARF)?.employees;
+    wharf.appeal = appeal_of(TYPE_WHARF)?;
+    (wharf.fire_risk, wharf.damage_risk) = (rules(TYPE_WHARF)?.fire_risk, rules(TYPE_WHARF)?.damage_risk);
+    kinds.push(wharf);
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -2920,8 +2932,6 @@ fn run(
                 graphics.blit(UI_TABS + UI_TAB_STATES * icon + state, slot.0, slot.1);
                 menu_rows.push((slot, MenuRow::Category(index)));
             }
-            // Dixième onglet : l'armée, grisée tant qu'Olympe n'en a pas.
-            graphics.blit(UI_TABS + UI_TAB_STATES * MILITARY_TAB + 3, side + TAB_LEFT, TAB_TOP + TAB_STEP * CATEGORY_TABS.len() as f32);
             // Les autres réserves du panneau reçoivent les boutons d'origine : un fond
             // sombre, puis le bouton (repos, survol, enfoncé, inactif).
             for &(x, y, w, h, image, key) in &SIDEBAR_BUTTONS {
@@ -3046,6 +3056,12 @@ fn run(
                     for requirement in heroes::requirements(hero) {
                         lines.push(requirement_line(&text, requirement, requirement.check(&world, hall)));
                     }
+                }
+                if world.kinds[building.kind].function == Function::Wharf {
+                    lines.push(match building.stock {
+                        0 => format!("Trière en chantier : {} {} / 4", good_names[Good::Wood as usize], building.goods[Good::Wood as usize]),
+                        _ => "Une trière est à quai".to_string(),
+                    });
                 }
                 // Chantier de sanctuaire ou de monument : matériaux livrés sur demandés.
                 if let Function::Sanctuary { needs, .. } | Function::Monument { needs, .. } = world.kinds[building.kind].function {
