@@ -363,7 +363,7 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
     street(&mut world, x, y);
-    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1 }];
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false }];
     let rule = Goal { kind: GoalKind::Rule, values: [0, 0, 0] };
     assert_eq!(rule.status(&world), Status::Pending(None));
     assert_eq!(world.conquer(0), Err(Conquest::TooWeak { army: 0, defence: 24 }));
@@ -378,9 +378,15 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     assert_eq!(world.cities[0].status, VASSAL);
     assert_eq!(rule.status(&world), Status::Met);
     assert_eq!(world.conquer(0), Err(Conquest::AlreadyRuled));
+    // Une cité qui n'est plus rivale peut devenir partenaire commerciale.
+    let partners = Goal { kind: GoalKind::Partners, values: [1, 0, 0] };
+    assert_eq!(partners.status(&world), Status::Pending(Some(0)));
+    assert!(world.open_trade(0));
+    assert!(!world.open_trade(0), "déjà ouverte");
+    assert_eq!(partners.status(&world), Status::Met);
     // Le statut passe par la sauvegarde.
     let (mut other, ..) = self::world(&data);
-    other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1 }];
+    other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false }];
     other.load(&world.save()).unwrap();
-    assert_eq!(other.cities[0].status, VASSAL);
+    assert_eq!((other.cities[0].status, other.cities[0].trade), (VASSAL, true));
 }

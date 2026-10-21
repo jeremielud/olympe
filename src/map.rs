@@ -62,6 +62,8 @@ pub struct City {
     pub name: u8,
     pub status: i32,
     pub military: u8,
+    /// Route commerciale ouverte par le joueur.
+    pub trade: bool,
 }
 
 /// Catalogue d'où provient une image de terrain.
@@ -189,6 +191,7 @@ impl Map {
                 name: r[CITY_NAME],
                 status: le32(r, CITY_STATUS) as i32,
                 military: r[CITY_MILITARY],
+                trade: false,
             })
             .collect()
     }

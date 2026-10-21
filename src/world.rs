@@ -156,6 +156,8 @@ pub enum Conquest {
 }
 
 const CONQUEST_PER_SHIELD: i32 = 24;
+/// Prix d'une route commerciale (Olympe : le jeu fixe un prix par cité).
+pub const TRADE_ROUTE_COST: i32 = 1000;
 const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 
 /// Durée d'un combat de héros contre un monstre, et d'une quête (valeurs d'Olympe).
@@ -1292,6 +1294,24 @@ impl World {
         Ok(())
     }
 
+    /// Ouvre une route commerciale avec une cité étrangère qui n'est pas rivale, au
+    /// prix d'Olympe ; faux si c'est impossible ou trop cher.
+    pub fn open_trade(&mut self, city: usize) -> bool {
+        let open = self.cities.get(city).is_some_and(|c| c.active && c.kind == FOREIGN && c.status != RIVAL && !c.trade);
+        if !open || self.money < TRADE_ROUTE_COST {
+            return false;
+        }
+        self.money -= TRADE_ROUTE_COST;
+        self.cities[city].trade = true;
+        true
+    }
+
+    /// Partenaires commerciaux : cités non rivales avec qui une route est ouverte
+    /// (0x525ec0).
+    pub fn partners(&self) -> i32 {
+        self.cities.iter().filter(|c| c.active && c.trade && c.status != RIVAL).count() as i32
+    }
+
     /// La quête ou le monstre de cet événement est venu à bout.
     pub fn quest_done(&self, event: usize) -> bool {
         self.quests.iter().any(|q| q.event == event && q.state == QuestState::Done)
@@ -2213,7 +2233,9 @@ impl World {
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
         let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
         let _ = writeln!(out, "heros {}", present.join(" "));
-        let cities: Vec<String> = std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| c.status.to_string())).collect();
+        // Statut de chaque cité, plus 10 quand une route commerciale est ouverte.
+        let cities: Vec<String> =
+            std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| (c.status + 10 * c.trade as i32).to_string())).collect();
         let _ = writeln!(out, "cites {}", cities.join(" "));
         for q in &self.quests {
             let (state, until) = match q.state {
@@ -2509,7 +2531,7 @@ impl World {
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         for (city, status) in self.cities.iter_mut().zip(statuses) {
-            city.status = status;
+            (city.status, city.trade) = (status % 10, status >= 10);
         }
         self.hero_news.clear();
         self.rebuild_appeal();

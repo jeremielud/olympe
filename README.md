@@ -38,7 +38,8 @@ Ce qui fonctionne :
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
   l'on soumet une cité en un clic quand l'armée est assez forte (simple comparaison
-  des forces, sans bataille), ce qui suit les objectifs « Régner » ;
+  des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
+  des routes commerciales (partenaires commerciaux, sans échanges de marchandises) ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;

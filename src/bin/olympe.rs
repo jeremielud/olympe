@@ -523,8 +523,9 @@ enum MenuRow {
     /// Ouvre ou referme une catégorie.
     Category(usize),
     Pick(Tool),
-    /// Envoie l'armée soumettre cette cité du monde.
+    /// Envoie l'armée soumettre cette cité du monde, ou y ouvre une route commerciale.
     Conquer(usize),
+    Trade(usize),
 }
 
 /// Outil tenu par le joueur.
@@ -2281,6 +2282,15 @@ fn run(
                                 hovered = (-1, -1);
                                 continue;
                             }
+                            Some(MenuRow::Trade(city)) => {
+                                let name = city_name(&text, &world, city);
+                                notice = if world.open_trade(city) {
+                                    (format!("Route commerciale ouverte avec {name}"), now)
+                                } else {
+                                    (format!("Pas de route possible avec {name}"), now)
+                                };
+                                continue;
+                            }
                             Some(MenuRow::Conquer(city)) => {
                                 let name = city_name(&text, &world, city);
                                 notice = match world.conquer(city) {
@@ -2811,7 +2821,9 @@ fn run(
             if cities_panel {
                 let heading = "Cités du monde".to_string();
                 let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();
-                let rows: Vec<(usize, String)> = world
+                // Chaque ligne : la cité (clic : la soumettre), puis le commerce (clic :
+                // ouvrir une route).
+                let rows: Vec<(usize, String, String)> = world
                     .cities
                     .iter()
                     .enumerate()
@@ -2819,10 +2831,16 @@ fn run(
                     .map(|(i, c)| {
                         let status = statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default();
                         let action = if c.status <= zeus::map::RIVAL { format!(", soumettre : {} sur {}", world.army(), world.defence(i)) } else { String::new() };
-                        (i, format!("{} ({status}, force {}{action})", city_name(&text, &world, i), c.military))
+                        let trade = match (c.trade, c.status == zeus::map::RIVAL) {
+                            (true, _) => "  commerce ouvert".to_string(),
+                            (false, false) => format!("  [ouvrir le commerce : {} dr.]", zeus::world::TRADE_ROUTE_COST),
+                            (false, true) => String::new(),
+                        };
+                        (i, format!("{} ({status}, force {}{action})", city_name(&text, &world, i), c.military), trade)
                     })
                     .collect();
-                let width = rows.iter().map(|(_, l)| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
+                let line_width = |(_, city, trade): &(usize, String, String)| graphics.text_width(FONT_TEXT, city) + graphics.text_width(FONT_TEXT, trade);
+                let width = rows.iter().map(line_width).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * rows.len().max(1) as f32;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
                 graphics.panel(px, py, width, height);
@@ -2832,10 +2850,15 @@ fn run(
                 if rows.is_empty() {
                     graphics.draw_text(FONT_TEXT, "Aucune cité étrangère", px + 24.0, py + title_line + 24.0);
                 }
-                for (i, (city, line)) in rows.iter().enumerate() {
+                for (i, (city, line, trade)) in rows.iter().enumerate() {
                     let y = py + title_line + 24.0 + row * i as f32;
+                    let split = px + 24.0 + graphics.text_width(FONT_TEXT, line);
                     graphics.draw_text(FONT_TEXT, line, px + 24.0, y);
-                    menu_rows.push(((px, y, width, row), MenuRow::Conquer(*city)));
+                    graphics.draw_text(FONT_TEXT, trade, split, y);
+                    menu_rows.push(((px, y, split - px, row), MenuRow::Conquer(*city)));
+                    if !trade.is_empty() {
+                        menu_rows.push(((split, y, px + width - split, row), MenuRow::Trade(*city)));
+                    }
                 }
             }
 

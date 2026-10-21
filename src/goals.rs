@@ -186,6 +186,7 @@ impl Goal {
                 13 => against(world.soldiers(Soldier::Horseman), second),
                 _ => Status::Unsupported,
             },
+            Kind::Partners => against(world.partners(), first),
             // Régner sur une cité : la rendre vassale (0x526ed0).
             Kind::Rule => match world.cities.get(first.max(0) as usize) {
                 Some(city) if city.status == crate::map::VASSAL => Status::Met,
