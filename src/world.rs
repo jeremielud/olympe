@@ -67,7 +67,7 @@ const ROAD_ACCESS_RANGE: i32 = 2;
 /// du jour de 0 à 49, jour de 0 à 15, mois de 0 à 11).
 const TICKS_PER_DAY: u64 = 50;
 const DAYS_PER_MONTH: u64 = 16;
-const TICKS_PER_MONTH: u64 = TICKS_PER_DAY * DAYS_PER_MONTH;
+pub const TICKS_PER_MONTH: u64 = TICKS_PER_DAY * DAYS_PER_MONTH;
 /// Images de marche d'un personnage, par direction.
 const WALK_FRAMES: usize = 12;
 /// Pas de simulation pour parcourir une case : les personnages des sauvegardes
@@ -119,6 +119,15 @@ const MIN_HOUSEHOLD: i32 = 8;
 const HOUSE_FOOD_MONTHS: i32 = 4;
 /// Un chargement nourrit ce nombre d'habitants pendant un mois.
 const PEOPLE_PER_LOAD: i32 = 64;
+/// Une cité n'a jamais plus de quatre sanctuaires à la fois.
+pub const MAX_SANCTUARIES: usize = 4;
+/// Marchandises qu'on livre à un sanctuaire en chantier, dans l'ordre de ses besoins.
+pub const SANCTUARY_MATERIALS: [Good; 3] = [Good::Marble, Good::Wood, Good::Sculpture];
+/// Images de `zeus_general.sg3` qu'un sanctuaire montre dès son chantier : dalles
+/// décorées et dallage uni ; le reste (autel, statues) n'apparaît qu'une fois achevé.
+const SANCTUARY_FLOOR_IMAGES: std::ops::RangeInclusive<usize> = 1447..=1458;
+/// Dallage uni (six variantes) qui tient leur place pendant le chantier.
+const SANCTUARY_PLAIN_IMAGE: usize = 1453;
 /// Part de la population en âge de travailler, en pour cent.
 /// Durée de fabrication d'un chargement (bergerie, pressoir).
 const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH / 8;
@@ -297,6 +306,9 @@ pub enum Function {
     Workshop(Good),
     /// Se fournit auprès d'un producteur et distribue la marchandise aux maisons.
     Vendor(Good),
+    /// Sanctuaire d'un dieu (numéro du jeu), et ce qu'il faut y livrer pour l'achever :
+    /// marbre, bois, sculptures.
+    Sanctuary { god: u8, needs: [u16; 3] },
 }
 
 /// Attrait qu'un bâtiment donne à son voisinage, tel que décrit dans les règles.
@@ -318,12 +330,13 @@ pub struct Part {
     pub dx: usize,
     pub dy: usize,
     pub size: usize,
-    /// Image dans `zeus_general.sg3`.
     pub image: usize,
     /// Champ : l'image avance avec la pousse.
     pub crop: bool,
     /// Baie d'entrepôt (rang) : l'image montre la marchandise qui s'y trouve.
     pub bay: Option<u8>,
+    /// Catalogue de l'image (`zeus_general.sg3` le plus souvent).
+    pub source: Source,
 }
 
 /// Type de bâtiment constructible.
@@ -355,7 +368,7 @@ pub struct Kind {
 impl Kind {
     /// Bâtiment fait d'une seule image.
     pub fn simple(name: String, cost: i32, size: usize, image: usize, function: Function, walker: usize) -> Kind {
-        let parts = vec![Part { dx: 0, dy: 0, size, image, crop: false, bay: None }];
+        let parts = vec![Part { dx: 0, dy: 0, size, image, crop: false, bay: None, source: Source::General }];
         Kind { name, cost, size, depth: size, parts, function, walker, stock_overlay: None, employees: 0, appeal: Appeal::default(), fire_risk: 0, damage_risk: 0, product: 0 }
     }
 }
@@ -530,6 +543,8 @@ pub struct World {
     pub best_produced: [i32; RESOURCES],
     /// Marchandises mises de côté pour la cité suivante, par ressource.
     pub set_aside: [i32; RESOURCES],
+    /// Nombre de sanctuaires que l'épisode permet d'avoir à la fois (quatre au plus).
+    pub max_sanctuaries: usize,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -561,6 +576,7 @@ impl World {
             produced: [0; RESOURCES],
             best_produced: [0; RESOURCES],
             set_aside: [0; RESOURCES],
+            max_sanctuaries: MAX_SANCTUARIES,
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -673,6 +689,13 @@ impl World {
                 self.can_build(x, y, k.size) && near_water
             }
             Function::Farm => self.can_build(x, y, k.size) && (0..size).all(|dy| (0..size).all(|dx| self.is_meadow(x + dx, y + dy))),
+            // Un sanctuaire par dieu, et pas plus que l'épisode n'en permet.
+            Function::Sanctuary { god, .. } => {
+                let sanctuaries: Vec<u8> = self.buildings.iter().flatten().filter_map(|b| self.sanctuary_god(b.kind)).collect();
+                sanctuaries.len() < self.max_sanctuaries
+                    && !sanctuaries.contains(&god)
+                    && (0..k.depth as i32).all(|dy| (0..size).all(|dx| self.is_free(x + dx, y + dy)))
+            }
             _ => (0..k.depth as i32).all(|dy| (0..size).all(|dx| self.is_free(x + dx, y + dy))),
         }
     }
@@ -908,6 +931,21 @@ impl World {
             Cell::Building(id) => {
                 let building = self.buildings[id as usize].as_ref()?;
                 let kind = &self.kinds[building.kind];
+                // Sanctuaire en chantier : autel et statues ne sont pas encore là, chacune
+                // de leurs cases montre du dallage.
+                if matches!(kind.function, Function::Sanctuary { .. }) && !self.is_complete(building) {
+                    let (rx, ry) = (x - building.x, y - building.y);
+                    let hidden = kind.parts.iter().any(|p| {
+                        (p.dx..p.dx + p.size).contains(&rx)
+                            && (p.dy..p.dy + p.size).contains(&ry)
+                            && !matches!(p.source, Source::Sanctuary(_))
+                            && !SANCTUARY_FLOOR_IMAGES.contains(&p.image)
+                    });
+                    if hidden {
+                        let image = SANCTUARY_PLAIN_IMAGE + (x + y) % 6;
+                        return Some(Draw { source: Source::General, image, burning: false, overlay: None, ground: None });
+                    }
+                }
                 // Chaque élément est porté par sa case la plus à gauche à l'écran.
                 let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
                 let image = match (&building.house, part.crop, part.bay) {
@@ -923,7 +961,20 @@ impl World {
                 };
                 let overlay = kind.stock_overlay.filter(|_| building.stock > 0);
                 let ground = part.crop.then(|| self.map.resolve(self.map.image(x, y))).flatten();
-                Some(Draw { source: Source::General, image, burning: false, overlay, ground })
+                let (source, image) = match kind.function {
+                    Function::Sanctuary { needs, .. } if !self.is_complete(building) => {
+                        // Chantier : le temple passe par deux états d'échafaudage ; le
+                        // reste n'est que dallage.
+                        let delivered: i32 = SANCTUARY_MATERIALS.iter().map(|&good| building.goods[good as usize]).sum();
+                        let needed = needs.iter().map(|&n| n as i32).sum::<i32>().max(1);
+                        match part.source {
+                            Source::Sanctuary(_) => (Source::Sanctuary((2 * delivered >= needed) as u8), image),
+                            _ => (Source::General, image),
+                        }
+                    }
+                    _ => (part.source, image),
+                };
+                Some(Draw { source, image, burning: false, overlay, ground })
             }
         }
     }
@@ -984,6 +1035,14 @@ impl World {
         if amount <= 0 || resource >= RESOURCES || self.stored(resource) < amount {
             return false;
         }
+        self.take(resource, amount);
+        self.set_aside[resource] += amount;
+        true
+    }
+
+    /// Prend jusqu'à `amount` d'une ressource dans les greniers ou les entrepôts ; rend
+    /// ce qui a été pris.
+    fn take(&mut self, resource: usize, amount: i32) -> i32 {
         let good = GOODS.iter().position(|&g| resource_of(g) == Some(resource as u8));
         let mut left = amount;
         for id in 0..self.buildings.len() {
@@ -1008,8 +1067,50 @@ impl World {
             };
             left -= taken;
         }
-        self.set_aside[resource] += amount;
-        true
+        amount - left
+    }
+
+    /// Dieu du sanctuaire qu'est ce type de bâtiment.
+    fn sanctuary_god(&self, kind: usize) -> Option<u8> {
+        match self.kinds[kind].function {
+            Function::Sanctuary { god, .. } => Some(god),
+            _ => None,
+        }
+    }
+
+    /// Le sanctuaire a reçu tous ses matériaux.
+    pub fn is_complete(&self, building: &Building) -> bool {
+        match self.kinds[building.kind].function {
+            Function::Sanctuary { needs, .. } => SANCTUARY_MATERIALS.iter().zip(needs).all(|(&good, need)| building.goods[good as usize] >= need as i32),
+            _ => true,
+        }
+    }
+
+    /// Dieux dont la cité a un sanctuaire achevé.
+    pub fn sanctuaries(&self) -> Vec<u8> {
+        self.buildings.iter().flatten().filter(|b| self.is_complete(b)).filter_map(|b| self.sanctuary_god(b.kind)).collect()
+    }
+
+    /// Chantiers des sanctuaires : chaque mois, ceux qui ont leurs ouvriers prennent
+    /// dans les entrepôts ce qui leur manque (sans porteurs, pour l'instant).
+    fn supply_sanctuaries(&mut self) {
+        for id in 0..self.buildings.len() {
+            let Some(building) = &self.buildings[id] else { continue };
+            let Function::Sanctuary { needs, .. } = self.kinds[building.kind].function else { continue };
+            if !building.staffed {
+                continue;
+            }
+            for (&good, need) in SANCTUARY_MATERIALS.iter().zip(needs) {
+                let Some(resource) = resource_of(good) else { continue };
+                let missing = need as i32 - self.buildings[id].as_ref().map_or(0, |b| b.goods[good as usize]);
+                if missing > 0 {
+                    let taken = self.take(resource as usize, missing);
+                    if let Some(building) = self.buildings[id].as_mut() {
+                        building.goods[good as usize] += taken;
+                    }
+                }
+            }
+        }
     }
 
     /// Compte la production d'un bâtiment pour les objectifs.
@@ -1152,6 +1253,7 @@ impl World {
         let wages = employed * WAGES_PER_100_WORKERS / 100;
         self.money += taxes - wages;
         self.last_month = (taxes, wages);
+        self.supply_sanctuaries();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
         if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {

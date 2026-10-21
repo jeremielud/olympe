@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use zeus::goals::{Goal, Kind as GoalKind, Status};
 use zeus::map::{GRID, Map};
 use zeus::model::Model;
-use zeus::world::{Function, Good, Kind, Service, WalkerImages, World};
+use zeus::world::{Function, Good, Kind, Service, TICKS_PER_MONTH, WalkerImages, World};
 
 const HOUSE: usize = 0;
 const FOUNTAIN: usize = 1;
@@ -269,4 +269,31 @@ fn the_sculpture_studio_casts_the_foundry_bronze() {
     (0..9600).for_each(|_| world.tick());
     assert!(world.stored(19) > 0, "{}", world.stored(19));
     assert!(world.best_production(19) >= world.stored(19));
+}
+
+#[test]
+fn a_sanctuary_is_built_from_storehouse_materials() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    world.kinds.push(Kind::simple("refuge d'Hermès".into(), 640, 3, 1460, Function::Sanctuary { god: 7, needs: [4, 2, 1] }, 0));
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    assert!(world.place_building(first + 1, x, y), "entrepôt");
+    assert!(world.place_building(first, x + 4, y), "sanctuaire");
+    let hermes = Goal { kind: GoalKind::Sanctuary, values: [7, 1, 0] };
+    let any_two = Goal { kind: GoalKind::Sanctuary, values: [-1, 2, 0] };
+    // Un seul sanctuaire par dieu.
+    assert!(!world.can_place(first, x + 8, y));
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(hermes.status(&world), Status::Pending(None));
+    // Les matériaux arrivent à l'entrepôt ; le chantier les prend le mois suivant.
+    let storehouse = world.buildings.iter_mut().flatten().find(|b| b.kind == first + 1).unwrap();
+    storehouse.goods[Good::Marble as usize] = 4;
+    storehouse.goods[Good::Wood as usize] = 4;
+    storehouse.goods[Good::Sculpture as usize] = 1;
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.sanctuaries(), [7]);
+    assert_eq!(hermes.status(&world), Status::Met);
+    assert_eq!(any_two.status(&world), Status::Pending(Some(1)));
+    assert_eq!((world.stored(11), world.stored(9), world.stored(19)), (0, 2, 0));
 }

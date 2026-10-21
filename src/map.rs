@@ -53,6 +53,11 @@ pub enum Source {
     Destruction,
     /// `zeus_interface.sg3` (bandeau, panneau latéral, boutons).
     Interface,
+    /// `zeus_sanctuary1.sg3` à `zeus_sanctuary3.sg3` : temples des sanctuaires, en
+    /// chantier (0 et 1) puis achevés (2).
+    Sanctuary(u8),
+    /// `zeus_godNN.sg3` : grande statue d'un dieu, par rang du dieu dans le jeu.
+    God(u8),
 }
 
 /// Dans tous les catalogues, les 200 premières images sont communes (« système ») ;

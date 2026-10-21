@@ -31,6 +31,17 @@ const START_YEAR: usize = 0;
 const FUNDS: usize = 32;
 const RESOURCES: usize = 1960;
 const MAX_RESOURCES: usize = 16;
+/// Mythologie de chaque épisode (dix de la cité mère, puis quatre de colonie), une
+/// table par épisode : 224 octets dans Zeus, 300 dans Poséidon. On y lit les six dieux
+/// favorables proches (entiers), si leur sanctuaire est permis (octets), et le nombre
+/// de sanctuaires permis à la fois.
+const MYTHOLOGY: usize = 35736;
+const MYTHOLOGY_SIZE: usize = 224;
+const MYTHOLOGY_SIZE_POSEIDON: usize = 300;
+const PROPONENT_GODS: usize = 48;
+const SANCTUARY_ALLOWED: usize = 208;
+const MAX_SANCTUARIES: usize = 220;
+const PROXIMATE_PROPONENTS: usize = 6;
 
 /// Ce qui suit un épisode de la cité mère. Valeurs écrites par l'éditeur du jeu.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -56,6 +67,10 @@ pub struct Episode {
     /// aucune.
     pub resources: Vec<u8>,
     pub goals: Vec<Goal>,
+    /// Dieux (numéros du jeu) à qui l'on peut bâtir un sanctuaire, et combien de
+    /// sanctuaires la cité peut avoir à la fois.
+    pub sanctuaries: Vec<u8>,
+    pub max_sanctuaries: usize,
 }
 
 /// Épisode à jouer, désigné par son rang dans la cité mère ou parmi les colonies.
@@ -84,11 +99,17 @@ impl Settings {
         // Zeus.exe renumérote au chargement les ressources des anciennes aventures.
         let resource = |r: u8| if version < MODERN_RESOURCES_VERSION { modern_resource(r) } else { r };
         let goals = Goals::parse(file, version).unwrap_or_default();
-        let episodes = |count: i32, headers: usize, records: usize, goals: &[Vec<Goal>]| -> Option<Vec<Episode>> {
+        let table_size = if version < MODERN_RESOURCES_VERSION { MYTHOLOGY_SIZE } else { MYTHOLOGY_SIZE_POSEIDON };
+        let episodes = |count: i32, headers: usize, records: usize, goals: &[Vec<Goal>], first_table: usize| -> Option<Vec<Episode>> {
             (0..count.clamp(0, 10) as usize)
                 .map(|i| {
                     let (header, record) = (headers + i * HEADER_SIZE, records + i * RECORD_SIZE);
                     let resources = file.get(record + RESOURCES..record + RESOURCES + MAX_RESOURCES)?;
+                    let table = MYTHOLOGY + (first_table + i) * table_size;
+                    let sanctuaries = (0..PROXIMATE_PROPONENTS)
+                        .filter(|&slot| file.get(table + SANCTUARY_ALLOWED + slot).is_some_and(|&allowed| allowed != 0))
+                        .filter_map(|slot| u8::try_from(int(table + PROPONENT_GODS + 4 * slot)?).ok())
+                        .collect();
                     Some(Episode {
                         intro_message: int(header + INTRO_MESSAGE)?,
                         victory_message: int(header + VICTORY_MESSAGE)?,
@@ -99,6 +120,8 @@ impl Settings {
                         },
                         resources: resources.iter().copied().take_while(|&r| r != 0).map(resource).collect(),
                         goals: goals.get(i).cloned().unwrap_or_default(),
+                        sanctuaries,
+                        max_sanctuaries: int(table + MAX_SANCTUARIES).map_or(0, |n| n.clamp(0, 4) as usize),
                     })
                 })
                 .collect()
@@ -107,9 +130,9 @@ impl Settings {
         Some(Settings {
             start_year: i16::from_le_bytes([year[0], year[1]]) as i32,
             funds: int(PARENT_RECORDS + FUNDS)?,
-            parent: episodes(int(PARENT_EPISODES_OFFSET)?, PARENT_HEADERS, PARENT_RECORDS, &goals.parent)?,
+            parent: episodes(int(PARENT_EPISODES_OFFSET)?, PARENT_HEADERS, PARENT_RECORDS, &goals.parent, 0)?,
             // Quatre fiches complètes de colonie seulement.
-            colonies: episodes(int(COLONY_EPISODES_OFFSET)?.min(4), COLONY_HEADERS, COLONY_RECORDS, &goals.colonies)?,
+            colonies: episodes(int(COLONY_EPISODES_OFFSET)?.min(4), COLONY_HEADERS, COLONY_RECORDS, &goals.colonies, 10)?,
         })
     }
 

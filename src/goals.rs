@@ -82,7 +82,8 @@ pub struct Goal {
     pub kind: Kind,
     /// Sens selon le type : population : (nombre) ; production et mise de côté :
     /// (marchandise, quantité) ; logement : (niveau, habitants) ; sanctuaire :
-    /// (dieu ou -1, nombre, « autres » si non nul)…
+    /// (dieu ou -1, nombre, « autres » si non nul) — tirés des valeurs 0, 2 et 4 du
+    /// jeu, dont la 1 et la 3 sont des compteurs de partie…
     pub values: [i32; 3],
 }
 
@@ -126,6 +127,11 @@ impl Goals {
                             let at = goals_start + episode * EPISODE_SIZE + i * GOAL_SIZE;
                             let kind = *KINDS.get(usize::try_from(int(at)).ok()?)?;
                             let mut values = [int(at + 4), int(at + 8), int(at + 12)];
+                            // Sanctuaire : nombre en troisième valeur, « autres » en cinquième ;
+                            // un dieu désigné ne demande qu'un sanctuaire (0x52b7d0).
+                            if kind == Kind::Sanctuary {
+                                values = [values[0], if values[0] == -1 { values[2] } else { 1 }, int(at + 20)];
+                            }
                             // Le jeu ne lit que l'octet bas de la marchandise mise de côté.
                             if kind == Kind::SetAside {
                                 values[0] &= 0xFF;
@@ -172,6 +178,21 @@ impl Goal {
                 Some(best) => against(best, first),
                 None => Status::Pending(None),
             },
+            Kind::Sanctuary => {
+                let built = world.sanctuaries();
+                match first {
+                    // « Autres sanctuaires » : Olympe compte aussi ceux qu'un autre
+                    // objectif désigne.
+                    -1 => against(built.len() as i32, second),
+                    god => {
+                        if built.iter().any(|&g| g as i32 == god) {
+                            Status::Met
+                        } else {
+                            Status::Pending(None)
+                        }
+                    }
+                }
+            }
             // Meilleure année, l'année en cours comprise.
             Kind::Production if world.produces(first) => against(world.best_production(first as usize), second),
             // Le jeu tient pour atteint un objectif sans marchandise.
@@ -218,6 +239,7 @@ impl Goal {
                 (true, false) => amount(line(22), second),
                 (true, true) => amount(line(23), second),
             },
+            Kind::Sanctuary => line(19).replace("[god]", &text.get(crate::sanctuary::TEXT_GODS, first.max(0) as usize)),
             Kind::Quest => line(26),
             Kind::Slay => line(27),
             Kind::Pyramid if first == -1 => line(39),

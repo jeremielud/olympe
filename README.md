@@ -27,12 +27,15 @@ Ce qui fonctionne :
   réserver pour la cité suivante se mettent de côté par la touche `R` (vivres du
   grenier ; laine, huile, vin, armement, bronze, bois, marbre et sculptures de
   l'entrepôt) ; l'épisode se termine sur son récit de victoire quand tous sont atteints ;
+- sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
+  comme dans le jeu ; le chantier prend marbre, bois et sculptures à l'entrepôt
+  (quantités provisoires), et les objectifs de sanctuaire sont suivis ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : sanctuaires, dieux, héros et monstres, armée, commerce et
+Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), héros et monstres, armée, commerce et
 colonies (une colonie part de sa carte vierge, le trésor suit le joueur), les
 objectifs qui en dépendent ; scierie et atelier de maçonnerie se posent sans forêt
 ni carrière, et les marchandises mises de côté ne parviennent pas à la cité

@@ -19,6 +19,7 @@ pub mod paths;
 pub mod pkware;
 pub mod png;
 pub mod render;
+pub mod sanctuary;
 pub mod sdl;
 pub mod sg;
 pub mod text;

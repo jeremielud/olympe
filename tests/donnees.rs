@@ -141,3 +141,29 @@ fn backdrops_and_music_decode() {
     assert_eq!(stream.channels, 2);
     assert!(!first.is_empty());
 }
+
+#[test]
+fn sanctuary_goals_name_allowed_gods() {
+    let Some(data) = data() else { return };
+    let adventures = data.join("adventures");
+    let mut checked = 0;
+    for file in files(&adventures, "pak") {
+        let Some(settings) = Campaign::parse(&fs::read(&file).unwrap()).unwrap().settings else { continue };
+        for episode in settings.parent.iter().chain(&settings.colonies) {
+            for goal in episode.goals.iter().filter(|g| g.kind == Kind::Sanctuary) {
+                let [god, count, _] = goal.values;
+                if god >= 0 {
+                    assert!(episode.sanctuaries.contains(&(god as u8)), "{} : dieu {god} absent de {:?}", file.display(), episode.sanctuaries);
+                    checked += 1;
+                } else {
+                    assert!((1..=4).contains(&count), "{} : {count} sanctuaires", file.display());
+                }
+            }
+        }
+    }
+    assert!(checked > 10, "{checked}");
+    // L'Odyssée : Hermès d'abord, puis Athéna, Hermès et Zeus, trois à la fois.
+    let odyssey = Settings::parse(&fs::read(adventures.join("l'odyssée/l'odyssée.set")).unwrap()).unwrap();
+    assert_eq!((odyssey.parent[1].sanctuaries.clone(), odyssey.parent[1].max_sanctuaries), (vec![7], 1));
+    assert_eq!((odyssey.parent[3].sanctuaries.clone(), odyssey.parent[3].max_sanctuaries), (vec![8, 7, 0], 3));
+}

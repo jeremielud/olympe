@@ -19,10 +19,11 @@ use zeus::map::{GRID, Map, Source};
 use zeus::model::Model;
 use zeus::ambience::Ambience;
 use zeus::music::Music;
-use zeus::pak::{Campaign, Settings, Step};
+use zeus::pak::{Campaign, Episode, Settings, Step};
 use zeus::paths;
 use zeus::png;
 use zeus::sdl;
+use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
 use zeus::world::{TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
@@ -215,6 +216,16 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
 const GOOD_TEXTS: [usize; 10] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19];
+/// Sanctuaires : temple d'un seul tenant (puis, deux plus loin, moitiés arrière et
+/// avant des grands temples) dans `zeus_sanctuaryN.sg3`, grande statue (quatre
+/// orientations) dans `zeus_godNN.sg3`, et dans `zeus_general.sg3` : petites statues
+/// (quatre par dieu, par rang), dalles décorées, dallage uni (six variantes), autel.
+const SANCTUARY_TEMPLE_IMAGE: usize = 201;
+const GOD_STATUE_IMAGE: usize = 201;
+const SMALL_STATUE_IMAGE: usize = 1399;
+const SANCTUARY_TILE_IMAGE: usize = 1447;
+const SANCTUARY_PLAIN_IMAGES: usize = 1453;
+const ALTAR_IMAGE: usize = 1459;
 /// Logement luxueux : type, et image d'un quart de terrain vacant (pour l'aperçu).
 const TYPE_ELITE_HOUSE: usize = 9;
 const ELITE_LOT_IMAGE: usize = 1021;
@@ -270,6 +281,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex => "STADIUM",
+        Function::Sanctuary { .. } => "SANCTUARY",
         Function::None => "BEAUTIFICATION",
     }
 }
@@ -335,11 +347,11 @@ const PANEL_LEFT: f32 = 54.0;
 /// Icône d'onglet de chaque catégorie (rang dans la série des onglets d'origine :
 /// maison, épis, rouage, amphore, chapiteau, personnage assis, discobole, cyprès) ;
 /// l'attribution des icônes aux catégories est faite à l'œil.
-const CATEGORY_TABS: [(usize, usize); 8] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (10, 7)];
+const CATEGORY_TABS: [(usize, usize); 9] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7), (10, 8)];
 
 /// Catégories du menu de construction : intitulé (rang dans le groupe de textes 4,
 /// ou texte de secours quand le jeu n'en a pas) et rôles des bâtiments rangés dedans.
-const CATEGORY_NAMES: [(Option<usize>, &str); 8] = [
+const CATEGORY_NAMES: [(Option<usize>, &str); 9] = [
     (None, "Population"),
     (Some(6), "Agriculture"),
     (Some(1), "Industrie"),
@@ -347,6 +359,7 @@ const CATEGORY_NAMES: [(Option<usize>, &str); 8] = [
     (Some(7), "Hygiène et sécurité"),
     (Some(11), "Administration"),
     (Some(9), "Culture"),
+    (Some(10), "Mythologie"),
     (None, "Embellissement"),
 ];
 
@@ -365,7 +378,8 @@ fn category_of(function: Function) -> usize {
         Function::Service(Service::Philosophy | Service::Athletics | Service::Drama) | Function::School(_) | Function::Stadium => 6,
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
-        Function::None => 7,
+        Function::Sanctuary { .. } => 7,
+        Function::None => 8,
     }
 }
 
@@ -698,17 +712,17 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
 /// que par ses exploitations et ses laiteries, ses pavillons de chasse et ses
 /// pêcheries, la restriction ne s'applique qu'aux épisodes qui en permettent au moins
 /// une : les autres resteraient sans vivres.
-fn lock_resources(world: &mut World, resources: &[u8]) {
-    let has = |resource: u8| resources.contains(&resource);
+fn lock_resources(world: &mut World, episode: &Episode) {
+    let has = |resource: u8| episode.resources.contains(&resource);
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
-    if !farmable {
-        world.locked = Vec::new();
-        return;
-    }
+    world.max_sanctuaries = episode.max_sanctuaries;
     world.locked = world
         .kinds
         .iter()
         .map(|kind| match kind.function {
+            // Seuls les dieux favorables que l'épisode désigne reçoivent un sanctuaire.
+            Function::Sanctuary { god, .. } => !episode.sanctuaries.contains(&god),
+            _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
             Function::Producer(Good::Fleece) => !has(RESOURCE_FLEECE),
             Function::Fishery => !has(RESOURCE_FISH),
@@ -840,6 +854,22 @@ fn set_aside(world: &mut World, goals: &[Goal], text: &Text) -> String {
     report.join(" ; ")
 }
 
+/// Élément d'un sanctuaire : son image et son catalogue.
+fn sanctuary_part(dx: usize, dy: usize, piece: Piece) -> Part {
+    let plain = (Source::General, SANCTUARY_PLAIN_IMAGES + (dx + dy) % 6);
+    let (source, image) = match piece {
+        Piece::Temple => (Source::Sanctuary(2), SANCTUARY_TEMPLE_IMAGE),
+        Piece::TempleBack => (Source::Sanctuary(2), SANCTUARY_TEMPLE_IMAGE + 2),
+        Piece::TempleFront => (Source::Sanctuary(2), SANCTUARY_TEMPLE_IMAGE + 3),
+        Piece::Altar => (Source::General, ALTAR_IMAGE),
+        Piece::Sculpture { god, facing } => sanctuary::rank(god).map_or(plain, |rank| (Source::God(rank as u8), GOD_STATUE_IMAGE + facing)),
+        Piece::Statue { god, facing } => sanctuary::rank(god).map_or(plain, |rank| (Source::General, SMALL_STATUE_IMAGE + 4 * rank + facing)),
+        Piece::Tile(motif) => (Source::General, SANCTUARY_TILE_IMAGE + motif),
+        Piece::Plain => plain,
+    };
+    Part { dx, dy, size: piece.size(), image, crop: false, bay: None, source }
+}
+
 /// Prépare l'affichage d'une cité où l'on arrive : son sol, la vue sur son terrain
 /// libre ; rend le cadre de sa mini-carte.
 fn arrive(world: &World, graphics: &mut Graphics, view: &mut View) -> Minimap {
@@ -891,6 +921,11 @@ struct Graphics {
     figures: Catalog,
     destruction: Catalog,
     interface: Catalog,
+    /// Temples des sanctuaires (deux chantiers puis l'achèvement), grandes statues des
+    /// dieux par rang, et catalogue vide pour ceux qui manquent.
+    sanctuaries: Vec<Catalog>,
+    gods: Vec<Catalog>,
+    empty: Catalog,
     /// Teinte appliquée au texte (blanc = couleur propre de la police).
     ink: (u8, u8, u8),
     /// Pixels du sol nu de la carte (une tuile), pour boucher les réserves vertes.
@@ -915,6 +950,8 @@ impl Graphics {
             Source::Figures => &self.figures,
             Source::Destruction => &self.destruction,
             Source::Interface => &self.interface,
+            Source::Sanctuary(stage) => self.sanctuaries.get(stage as usize).unwrap_or(&self.empty),
+            Source::God(rank) => self.gods.get(rank as usize).unwrap_or(&self.empty),
         }
     }
 
@@ -1378,6 +1415,9 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             figures: load("sprmain.sg3")?,
             destruction: load("destruction.sg3")?,
             interface: load("zeus_interface.sg3")?,
+            sanctuaries: Vec::new(),
+            gods: Vec::new(),
+            empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
             sprites: HashMap::new(),
@@ -1525,8 +1565,8 @@ fn run(
         kinds.push(entry);
     }
     for ((kind, crop), product) in FARMS.into_iter().zip(FARM_RESOURCES) {
-        let mut parts = vec![Part { dx: 0, dy: 0, size: size_of(FARM_HOUSE_IMAGE)?, image: FARM_HOUSE_IMAGE, crop: false, bay: None }];
-        parts.extend(FARM_FIELDS.map(|(dx, dy)| Part { dx, dy, size: 1, image: crop, crop: true, bay: None }));
+        let mut parts = vec![Part { dx: 0, dy: 0, size: size_of(FARM_HOUSE_IMAGE)?, image: FARM_HOUSE_IMAGE, crop: false, bay: None, source: Source::General }];
+        parts.extend(FARM_FIELDS.map(|(dx, dy)| Part { dx, dy, size: 1, image: crop, crop: true, bay: None, source: Source::General }));
         kinds.push(Kind {
             name: text.get(TEXT_BUILDINGS, kind),
             cost: rules(kind)?.cost,
@@ -1545,8 +1585,8 @@ fn run(
     }
     // Entrepôt : une cabane au coin du fond et huit baies.
     let bays = (0..3).flat_map(|dy| (0..3).map(move |dx| (dx, dy))).filter(|&at| at != (0, 0));
-    let mut storehouse_parts = vec![Part { dx: 0, dy: 0, size: 1, image: STOREHOUSE_HUT_IMAGE, crop: false, bay: None }];
-    storehouse_parts.extend(bays.enumerate().map(|(bay, (dx, dy))| Part { dx, dy, size: 1, image: EMPTY_BAY_IMAGE, crop: false, bay: Some(bay as u8) }));
+    let mut storehouse_parts = vec![Part { dx: 0, dy: 0, size: 1, image: STOREHOUSE_HUT_IMAGE, crop: false, bay: None, source: Source::General }];
+    storehouse_parts.extend(bays.enumerate().map(|(bay, (dx, dy))| Part { dx, dy, size: 1, image: EMPTY_BAY_IMAGE, crop: false, bay: Some(bay as u8), source: Source::General }));
     kinds.push(Kind {
         name: text.get(TEXT_BUILDINGS, TYPE_STOREHOUSE),
         cost: rules(TYPE_STOREHOUSE)?.cost,
@@ -1571,7 +1611,7 @@ fn run(
         cost: rules(TYPE_ELITE_HOUSE)?.cost,
         size: 4,
         depth: 4,
-        parts: quarters.map(|(quarter, (dx, dy))| Part { dx, dy, size: 2, image: ELITE_LOT_IMAGE, crop: false, bay: Some(quarter as u8) }).collect(),
+        parts: quarters.map(|(quarter, (dx, dy))| Part { dx, dy, size: 2, image: ELITE_LOT_IMAGE, crop: false, bay: Some(quarter as u8), source: Source::General }).collect(),
         function: Function::House,
         walker: 0,
         stock_overlay: None,
@@ -1585,13 +1625,13 @@ fn run(
     // l'une derrière l'autre, bordées de dalles sur trois côtés et de deux dalles
     // d'angle (6 × 9 cases).
     let mut palace_parts = vec![
-        Part { dx: 1, dy: 1, size: 4, image: PALACE_BACK_IMAGE, crop: false, bay: None },
-        Part { dx: 1, dy: 5, size: 4, image: PALACE_FRONT_IMAGE, crop: false, bay: None },
+        Part { dx: 1, dy: 1, size: 4, image: PALACE_BACK_IMAGE, crop: false, bay: None, source: Source::General },
+        Part { dx: 1, dy: 5, size: 4, image: PALACE_FRONT_IMAGE, crop: false, bay: None, source: Source::General },
     ];
     let border = (0..6).map(|dx| (dx, 0)).chain((1..9).flat_map(|dy| [(0, dy), (5, dy)]));
     palace_parts.extend(border.map(|(dx, dy)| {
         let image = if dy == 0 && (dx == 0 || dx == 5) { PALACE_CORNER_IMAGE } else { PALACE_TILE_IMAGE };
-        Part { dx, dy, size: 1, image, crop: false, bay: None }
+        Part { dx, dy, size: 1, image, crop: false, bay: None, source: Source::General }
     }));
     kinds.push(Kind {
         name: text.get(TEXT_BUILDINGS, TYPE_PALACE),
@@ -1623,6 +1663,28 @@ fn run(
         (vendor.fire_risk, vendor.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
         kinds.push(vendor);
     }
+    // Sanctuaires : un par dieu, disposés comme dans les fichiers du jeu.
+    for god in 0..sanctuary::GODS {
+        let kind = sanctuary::FIRST_TYPE + god;
+        let layout = fs::read(data.join(format!("model/sanctuary_{}.txt", sanctuary::LAYOUTS[god]))).ok();
+        let (Some(layout), Ok(rule)) = (layout.and_then(|t| Layout::parse(&String::from_utf8_lossy(&t))), rules(kind)) else { continue };
+        let [marble, wood, sculptures] = layout.materials().map(|n| n as u16);
+        kinds.push(Kind {
+            name: text.get(TEXT_BUILDINGS, kind),
+            cost: rule.cost,
+            size: layout.width,
+            depth: layout.depth,
+            parts: layout.pieces.iter().map(|&(dx, dy, piece)| sanctuary_part(dx, dy, piece)).collect(),
+            function: Function::Sanctuary { god: god as u8, needs: [marble, wood, sculptures] },
+            walker: 0,
+            stock_overlay: None,
+            employees: rule.employees,
+            appeal: appeal_of(kind)?,
+            fire_risk: rule.fire_risk,
+            damage_risk: rule.damage_risk,
+            product: 0,
+        });
+    }
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -1633,7 +1695,7 @@ fn run(
     let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
     // La démonstration a droit à tout.
     if let Some(first) = episode(Step::Parent(0)).filter(|_| !demo) {
-        lock_resources(&mut world, &first.resources);
+        lock_resources(&mut world, first);
     }
     let mut tool = Tool::None;
     let name = map_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -1678,6 +1740,10 @@ fn run(
             figures,
             destruction: Catalog::load(&data.join("data/destruction.sg3"))?,
             interface: Catalog::load(&data.join("data/zeus_interface.sg3"))?,
+            // Facultatifs : sans eux, les sanctuaires se dessinent sans temple ni statues.
+            sanctuaries: (1..=3).map(|n| Catalog::load(&data.join(format!("data/zeus_sanctuary{n}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
+            gods: (1..=12).map(|n| Catalog::load(&data.join(format!("data/zeus_god{n:02}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
+            empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
             sprites: HashMap::new(),
@@ -1899,7 +1965,7 @@ fn run(
                     }
                     let step = journey.step();
                     if let Some(episode) = episode(step).filter(|_| !demo) {
-                        lock_resources(&mut world, &episode.resources);
+                        lock_resources(&mut world, episode);
                     }
                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
                     world.start_episode();
@@ -1960,7 +2026,7 @@ fn run(
                                     (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
                                     let step = journey.step();
                                     if let Some(episode) = episode(step).filter(|_| !demo) {
-                                        lock_resources(&mut world, &episode.resources);
+                                        lock_resources(&mut world, episode);
                                     }
                                     // Les objectifs déjà atteints ne sont pas annoncés de nouveau.
                                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
@@ -2269,7 +2335,7 @@ fn run(
             if let (Tool::Build(kind), true) = (tool, in_grid(under)) {
                 let allowed = world.can_place(kind, under.0, under.1) && world.money >= world.kinds[kind].cost;
                 for part in world.kinds[kind].parts.clone() {
-                    let Some(sprite) = graphics.sprite(Source::General, part.image) else { continue };
+                    let Some(sprite) = graphics.sprite(part.source, part.image) else { continue };
                     let (px, py) = (under.0 + part.dx as i32, under.1 + part.dy as i32);
                     let (ox, oy) = tile_origin(px, py + part.size as i32 - 1);
                     let (sx, sy) = view.to_screen(ox, oy + (part.size as f32 + 1.0) * HALF_HEIGHT - sprite.height, w, h);

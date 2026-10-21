@@ -73,6 +73,11 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// Catalogue sans images, à la place d'un catalogue facultatif absent.
+    pub fn empty() -> Catalog {
+        Catalog { groups: Vec::new(), bitmaps: Vec::new(), images: Vec::new(), pixels: Vec::new(), externals: HashMap::new() }
+    }
+
     /// Charge un catalogue `.sg3` et le `.555` voisin.
     pub fn load(sg3: &Path) -> Result<Catalog, String> {
         let read = |path: &Path| std::fs::read(path).map_err(|e| format!("{} : {e}", path.display()));
