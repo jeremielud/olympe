@@ -105,7 +105,7 @@ fn a_dairy_feeds_the_city_through_granary_and_vendor() {
     let (mut world, x, y) = world(&data);
     // Types ajoutés pour cet essai : laiterie, grenier, agora, emplacement, épicière.
     let first = world.kinds.len();
-    world.kinds.push(Kind::simple("laiterie".into(), 35, 2, 548, Function::Producer(zeus::world::Good::Food), 0));
+    world.kinds.push(Kind::simple("laiterie".into(), 35, 2, 565, Function::Producer(zeus::world::Good::Food), 0));
     world.kinds.push(Kind::simple("grenier".into(), 100, 4, 473, Function::Granary, 0));
     world.kinds.push(Kind::simple("agora".into(), 50, 2, 460, Function::Agora { grand: false }, 0));
     world.kinds.push(Kind::simple("emplacement".into(), 0, 2, 460, Function::Plot, 0));
@@ -171,7 +171,7 @@ fn production_and_set_aside_goals() {
     let (mut world, x, y) = world(&data);
     // Une laiterie livre son fromage (ressource 4) à un grenier.
     let first = world.kinds.len();
-    let mut dairy = Kind::simple("laiterie".into(), 35, 2, 548, Function::Producer(zeus::world::Good::Food), 0);
+    let mut dairy = Kind::simple("laiterie".into(), 35, 2, 565, Function::Producer(zeus::world::Good::Food), 0);
     dairy.product = 4;
     world.kinds.push(dairy);
     world.kinds.push(Kind::simple("grenier".into(), 100, 4, 473, Function::Granary, 0));

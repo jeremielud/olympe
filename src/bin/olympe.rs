@@ -99,8 +99,10 @@ const GROUP_PHILOSOPHER: usize = 240;
 /// La fonderie porte par erreur le numéro 10 dans le fichier de règles ; elle y occupe
 /// bien le rang 50.
 const TYPE_FOUNDRY: usize = 50;
-const DAIRY_IMAGE: usize = 548;
-const HUNTING_LODGE_IMAGE: usize = 544;
+/// Laiterie (la fermière et ses fromages) et pavillon de chasse (le boucher), dans la
+/// planche de l'élevage ; les pontons voisins (544 à 551) sont les quais à oursins.
+const DAIRY_IMAGE: usize = 565;
+const HUNTING_LODGE_IMAGE: usize = 528;
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
@@ -115,10 +117,9 @@ const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (78, 390, Function::School(Service::Drama), 0),
     (82, 440, Function::Service(Service::Drama), GROUP_ACTOR),
     (41, 552, Function::Producer(Good::Fleece), 0),
-    // Laiterie : produit du fromage sans chèvres (raccourci) ; image attribuée à l'œil.
+    // Laiterie : produit du fromage sans chèvres (raccourci).
     (42, DAIRY_IMAGE, Function::Producer(Good::Food), 0),
-    // Pavillon de chasse : fournit de la viande sans chasseurs ni gibier (raccourci) ;
-    // image attribuée à l'œil.
+    // Pavillon de chasse : fournit de la viande sans chasseurs ni gibier (raccourci).
     (46, HUNTING_LODGE_IMAGE, Function::Producer(Good::Food), 0),
     // Pêcherie : posée sur la terre ferme au bord de l'eau, sans bateau (raccourci ;
     // dans le jeu d'origine elle s'avance sur l'eau).
