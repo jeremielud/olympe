@@ -773,7 +773,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::TradeChange { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -1005,6 +1005,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
             }
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
             Event::GodInvasion { god, month, years } => world.schedule_god(god, month, years),
+            Event::TradeChange { change, resource, cities, amount, month, years } => world.schedule_trade(change, resource, cities, amount, month, years),
             Event::Gift { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::GIFT.saturating_add(resource), cities, amount, month, years)
             }
@@ -2237,6 +2238,19 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if let Some((city, change, resource)) = world.trade_news.pop() {
+                let (name, good) = (city_name(&text, &world, city), request_good(&text, resource));
+                let line = match change {
+                    0 => format!("{name} demande davantage de {good}"),
+                    1 => format!("{name} demande moins de {good}"),
+                    2 => format!("{name} vend davantage de {good}"),
+                    3 => format!("{name} vend moins de {good}"),
+                    4 => format!("Le prix de {good} monte : {} dr.", world.price(resource as usize)),
+                    _ => format!("Le prix de {good} baisse : {} dr.", world.price(resource as usize)),
+                };
+                notice = (line, now);
+                world.trade_news.clear();
+            }
             if !world.gifts.is_empty() {
                 let gifts = std::mem::take(&mut world.gifts);
                 let lines: Vec<String> = gifts.iter().map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();

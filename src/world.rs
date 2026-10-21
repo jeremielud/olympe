@@ -167,6 +167,9 @@ pub const DISAPPEARS: u8 = 21;
 /// (`GIFT` + ressource).
 pub const INVASION: u8 = 99;
 pub const GIFT: u8 = 130;
+/// Changements du commerce programmés : `TRADE_CHANGE` + 0 à 5 (demande, offre, prix ;
+/// hausse puis baisse).
+pub const TRADE_CHANGE: u8 = 200;
 
 /// Issue d'une invasion armée.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -217,6 +220,8 @@ pub struct Scheduled {
     pub change: u8,
     pub cities: (i16, i16),
     pub amount: (i16, i16),
+    /// Marchandise visée, pour un changement du commerce.
+    pub resource: u8,
 }
 
 /// Pourquoi une conquête n'a pas lieu.
@@ -232,6 +237,9 @@ const CONQUEST_PER_SHIELD: i32 = 24;
 /// Tribut annuel d'une vassale : une part fixe et une part par bouclier (Olympe).
 const TRIBUTE_BASE: i32 = 250;
 const TRIBUTE_PER_SHIELD: i32 = 50;
+
+/// Palier de demande ou d'offre d'une cité, en unités par an (les niveaux du jeu).
+const TRADE_STEP: i32 = 12;
 
 /// Réserve que le commerce garde ou cherche à atteindre, par marchandise (Olympe).
 const TRADE_RESERVE: i32 = 8;
@@ -795,6 +803,10 @@ pub struct World {
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
     pub gifts: Vec<(usize, u8, i32)>,
+    /// Écart de chaque prix à son prix de base, et changements du commerce survenus
+    /// depuis la dernière lecture : (cité, changement, ressource).
+    pub price_shift: [i32; RESOURCES],
+    pub trade_news: Vec<(usize, u8, u8)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -844,6 +856,8 @@ impl World {
             battles: Vec::new(),
             carried: [0; RESOURCES],
             gifts: Vec::new(),
+            price_shift: [0; RESOURCES],
+            trade_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1446,7 +1460,7 @@ impl World {
     /// `years` (comptées depuis l'année en cours) ; tout de suite s'il est déjà passé.
     pub fn schedule(&mut self, change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
         let at = self.date_in(month, years);
-        self.scheduled.push(Scheduled { at, change, cities, amount });
+        self.scheduled.push(Scheduled { at, change, cities, amount, resource: 0 });
     }
 
     /// Satisfait la demande de ce rang : paie, envoie l'armée ou prend les
@@ -1522,7 +1536,36 @@ impl World {
             };
             // Cadeau : de toute cité active, y compris la cité mère ; une quantité
             // négative est ce qui a été mis de côté pour la cité.
-            if event.change >= GIFT {
+            // Commerce : un prix pour tous, ou la demande et l'offre d'une cité, par
+            // paliers de douze unités par an.
+            if event.change >= TRADE_CHANGE {
+                let resource = event.resource as usize;
+                if resource >= RESOURCES {
+                    continue;
+                }
+                match event.change - TRADE_CHANGE {
+                    4 => self.price_shift[resource] += amount.max(1),
+                    5 => self.price_shift[resource] -= amount.max(1),
+                    kind => {
+                        let Some(target) = self.cities.get_mut(city).filter(|c| c.active && c.kind == FOREIGN) else { continue };
+                        let list = if kind < 2 { &mut target.buys } else { &mut target.sells };
+                        let step = if kind % 2 == 0 { TRADE_STEP } else { -TRADE_STEP };
+                        match list.iter_mut().position(|e| e.0 == event.resource) {
+                            Some(i) => {
+                                list[i].1 += step;
+                                if list[i].1 <= 0 {
+                                    list.remove(i);
+                                }
+                            }
+                            None if step > 0 => list.push((event.resource, step)),
+                            None => {}
+                        }
+                    }
+                }
+                self.trade_news.push((city, event.change - TRADE_CHANGE, event.resource));
+                continue;
+            }
+            if (GIFT..TRADE_CHANGE).contains(&event.change) {
                 let resource = (event.change - GIFT) as usize;
                 if !self.cities.get(city).is_some_and(|c| c.active) || resource >= RESOURCES {
                     continue;
@@ -1721,22 +1764,33 @@ impl World {
                 let spare = (self.stored(resource) - TRADE_RESERVE).min(monthly);
                 if spare > 0 && resource < RESOURCES {
                     let taken = self.take(resource, spare);
-                    self.money += taken * price(resource);
-                    sold += taken * price(resource);
+                    self.money += taken * self.price(resource);
+                    sold += taken * self.price(resource);
                 }
             }
             for (resource, quantity) in sells {
                 let (resource, monthly) = (resource as usize, (quantity / 12).max(1));
-                let wanted = (TRADE_RESERVE - self.stored(resource)).min(monthly).min(self.money / price(resource).max(1));
+                let wanted = (TRADE_RESERVE - self.stored(resource)).min(monthly).min(self.money / self.price(resource).max(1));
                 if wanted > 0 && resource < RESOURCES {
                     let put = self.store(resource, wanted);
-                    self.money -= put * price(resource);
-                    bought += put * price(resource);
+                    self.money -= put * self.price(resource);
+                    bought += put * self.price(resource);
                 }
             }
             let c = &mut self.cities[city];
             (c.sold, c.bought) = (c.sold + sold, c.bought + bought);
         }
+    }
+
+    /// Prix courant d'une marchandise : prix de base, déplacé par les événements.
+    pub fn price(&self, resource: usize) -> i32 {
+        (price(resource) + self.price_shift.get(resource).copied().unwrap_or(0)).max(1)
+    }
+
+    /// Programme un changement du commerce.
+    pub fn schedule_trade(&mut self, change: u8, resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
+        let at = self.date_in(month, years);
+        self.scheduled.push(Scheduled { at, change: TRADE_CHANGE + change, cities, amount, resource });
     }
 
     /// Partenaires commerciaux : cités non rivales avec qui une route est ouverte
@@ -2907,6 +2961,7 @@ impl World {
         let _ = writeln!(out, "meilleure {}", list(&self.best_produced));
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
         let _ = writeln!(out, "emporte {}", list(&self.carried));
+        let _ = writeln!(out, "prix {}", list(&self.price_shift));
         let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
         let _ = writeln!(out, "heros {}", present.join(" "));
         // Statut de chaque cité, plus 10 quand une route commerciale est ouverte.
@@ -2914,7 +2969,7 @@ impl World {
             std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| (c.status + 10 * c.trade as i32).to_string())).collect();
         let _ = writeln!(out, "cites {}", cities.join(" "));
         for s in &self.scheduled {
-            let _ = writeln!(out, "changement {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1);
+            let _ = writeln!(out, "changement {} {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1, s.resource);
         }
         for &(at, god) in &self.invasions {
             let _ = writeln!(out, "invasion {at} {god}");
@@ -3020,7 +3075,7 @@ impl World {
         let mut state = None;
         let mut profits = (0, None);
         // Compteurs des objectifs : absents des sauvegardes plus anciennes.
-        let mut counters = [[0; RESOURCES]; 4];
+        let mut counters = [[0; RESOURCES]; 5];
         // Héros, quêtes et monstres : absents des sauvegardes plus anciennes.
         let (mut heroes, mut quests, mut monsters) = ([false; crate::heroes::HEROES], Vec::new(), Vec::new());
         // Statuts des cités du monde : sans eux, ceux de la carte restent.
@@ -3046,8 +3101,8 @@ impl World {
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
                 }
-                "production" | "meilleure" | "reserve" | "emporte" => {
-                    let row = ["production", "meilleure", "reserve", "emporte"].iter().position(|&k| k == kind).unwrap_or(0);
+                "production" | "meilleure" | "reserve" | "emporte" | "prix" => {
+                    let row = ["production", "meilleure", "reserve", "emporte", "prix"].iter().position(|&k| k == kind).unwrap_or(0);
                     for (i, slot) in counters[row].iter_mut().enumerate() {
                         *slot = number_at(i)? as i32;
                     }
@@ -3061,6 +3116,7 @@ impl World {
                     change: number_at(1)? as u8,
                     cities: (number_at(2)? as i16, number_at(3)? as i16),
                     amount: (number_at(4)? as i16, number_at(5)? as i16),
+                    resource: rest.get(6).and_then(|w| w.parse().ok()).unwrap_or(0),
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "demande" => requests.push(Request {
@@ -3260,7 +3316,7 @@ impl World {
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;
-        [self.produced, self.best_produced, self.set_aside, self.carried] = counters;
+        [self.produced, self.best_produced, self.set_aside, self.carried, self.price_shift] = counters;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;

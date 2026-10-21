@@ -89,6 +89,11 @@ const EVENT_INVASION_TYPE: u8 = 2;
 /// a été mis de côté dans l'épisode précédent), la cité (0 : la cité mère), la date.
 /// Établi sur Troie, où la colonie reçoit ainsi les marchandises réservées.
 const EVENT_GIFT_TYPE: u8 = 23;
+/// Changements du commerce : demande d'une cité en hausse ou en baisse (13, 14), offre
+/// (21, 22), prix d'une marchandise pour tous (15, 16). L'ordre vient du regroupement
+/// des événements dans le jeu (0x468250) ; le partage entre demande et offre est
+/// déduit, non vérifié.
+const EVENT_TRADE_TYPES: [u8; 6] = [13, 14, 21, 22, 15, 16];
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -149,6 +154,9 @@ pub enum Event {
     /// Une cité offre une marchandise ; une quantité négative désigne ce qui a été
     /// mis de côté pour la cité.
     Gift { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
+    /// Changement du commerce : 0 et 1 la demande d'une cité monte ou baisse, 2 et 3
+    /// son offre, 4 et 5 le prix d'une marchandise.
+    TradeChange { change: u8, resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Une cité rivale envoie une armée de tant de soldats.
     Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
     Other,
@@ -239,6 +247,21 @@ impl Settings {
                             Event::Invasion {
                                 cities: either(EVENT_CITY, EVENT_CITIES),
                                 soldiers: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                month: event[EVENT_MONTH] % 12,
+                                years: either(EVENT_YEAR, EVENT_YEARS),
+                            }
+                        }
+                        kind if EVENT_TRADE_TYPES.contains(&kind) => {
+                            let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                            let either = |one: usize, range: usize| match short(one) {
+                                n if n >= 0 => (n, n),
+                                _ => (short(range), short(range + 2)),
+                            };
+                            Event::TradeChange {
+                                change: EVENT_TRADE_TYPES.iter().position(|&t| t == kind).unwrap_or(0) as u8,
+                                resource: resource(event[EVENT_GOOD]),
+                                cities: either(EVENT_CITY, EVENT_CITIES),
+                                amount: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
                                 month: event[EVENT_MONTH] % 12,
                                 years: either(EVENT_YEAR, EVENT_YEARS),
                             }

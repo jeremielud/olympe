@@ -648,3 +648,25 @@ fn gifts_bring_the_goods_set_aside_by_the_previous_city() {
     assert_eq!(world.gifts, [(0, 14, 12), (0, 23, 500)]);
     assert!(world.money >= money + 500 - 100);
 }
+
+#[test]
+fn trade_changes_move_prices_and_city_demand() {
+    use zeus::map::{ALLY, City};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    world.cities = vec![City { active: true, kind: 2, name: 40, status: ALLY, military: 3, trade: true, favor: 50, sells: vec![], buys: vec![(14, 12)], sold: 0, bought: 0 }];
+    let wine = world.price(21);
+    // Le vin monte de 10 drachmes ; la cité achète un niveau de laine de plus, puis
+    // se met à vendre de l'huile.
+    world.schedule_trade(4, 21, (0, 0), (10, 10), 1, (0, 0));
+    world.schedule_trade(0, 14, (0, 0), (-1, -1), 1, (0, 0));
+    world.schedule_trade(2, 20, (0, 0), (-1, -1), 1, (0, 0));
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.price(21), wine + 10);
+    assert_eq!((world.cities[0].buys.clone(), world.cities[0].sells.clone()), (vec![(14, 24)], vec![(20, 12)]));
+    // La sauvegarde garde l'écart de prix.
+    let (mut other, ..) = self::world(&data);
+    other.cities = world.cities.clone();
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.price(21), wine + 10);
+}
