@@ -78,6 +78,9 @@ const EVENT_WORLD_TYPE: u8 = 19;
 /// ressources, avec 23 drachmes, 24 troupes et 25 vivres), la quantité, la cité et
 /// la date comme pour un changement du monde.
 const EVENT_REQUEST_TYPE: u8 = 1;
+/// Invasion d'un dieu hostile (type 27) : le dieu (octet 6), la date comme pour un
+/// changement du monde.
+const EVENT_GOD_TYPE: u8 = 27;
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -133,6 +136,8 @@ pub enum Event {
     World { change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Demande d'une cité : la ressource voulue et sa quantité.
     Request { resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
+    /// Un dieu hostile vient en personne dans la cité.
+    GodInvasion { god: u8, month: u8, years: (i16, i16) },
     Other,
 }
 
@@ -204,6 +209,14 @@ impl Settings {
                             }
                             None => Event::Other,
                         },
+                        EVENT_GOD_TYPE => {
+                            let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                            let years = match short(EVENT_YEAR) {
+                                n if n >= 0 => (n, n),
+                                _ => (short(EVENT_YEARS), short(EVENT_YEARS + 2)),
+                            };
+                            Event::GodInvasion { god: event[EVENT_GOOD], month: event[EVENT_MONTH] % 12, years }
+                        }
                         kind @ (EVENT_WORLD_TYPE | EVENT_REQUEST_TYPE) => {
                             let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
                             let either = |one: usize, range: usize| match short(one) {

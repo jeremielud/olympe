@@ -97,6 +97,8 @@ pub enum Source {
     Monster(u8),
     /// Catalogue d'un héros (numéro du groupe de textes 163).
     Hero(u8),
+    /// Catalogue d'un dieu en personne (numéro du groupe de textes 157).
+    Deity(u8),
 }
 
 /// Dans tous les catalogues, les 200 premières images sont communes (« système ») ;

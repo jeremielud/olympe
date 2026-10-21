@@ -740,7 +740,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::GodInvasion { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -908,6 +908,24 @@ fn request_good(text: &Text, resource: u8) -> String {
     }
 }
 
+/// Catalogue de chaque dieu en personne, dans l'ordre du groupe de textes 157.
+const GOD_FILES: [&str; 14] = [
+    "zeus_zeus",
+    "zeus_poseidon",
+    "zeus_demeter",
+    "zeus_apollo",
+    "zeus_artemis",
+    "zeus_ares",
+    "zeus_aphrodite",
+    "zeus_hermes",
+    "zeus_athena",
+    "zeus_hephaestus",
+    "zeus_dionysus",
+    "zeus_hades",
+    "poseidon_hera",
+    "poseidon_atlas",
+];
+
 /// Catalogue de chaque héros, dans l'ordre du groupe de textes 163.
 const HERO_FILES: [&str; 8] =
     ["zeus_achilles", "zeus_heracles", "zeus_jason", "zeus_odysseus", "zeus_perseus", "zeus_theseus", "poseidon_atalanta", "poseidon_bellerophon"];
@@ -941,6 +959,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
     world.monsters.clear();
     world.scheduled.clear();
     world.requests.clear();
+    world.invasions.clear();
     for (event, &kind) in episode.events.iter().enumerate() {
         match kind {
             Event::Quest { god, quest, hero } => {
@@ -952,6 +971,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 world.monsters.push(Monster { event, monster, fight_until: None, slain: false, arrives_at });
             }
             Event::World { change, cities, amount, month, years } => world.schedule(change, cities, amount, month, years),
+            Event::GodInvasion { god, month, years } => world.schedule_god(god, month, years),
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
             }
@@ -1095,6 +1115,7 @@ struct Graphics {
     /// Catalogues des monstres et des héros, chargés quand ils paraissent.
     monsters: HashMap<u8, Catalog>,
     heroes: HashMap<u8, Catalog>,
+    deities: HashMap<u8, Catalog>,
     empty: Catalog,
     /// Teinte appliquée au texte (blanc = couleur propre de la police).
     ink: (u8, u8, u8),
@@ -1124,6 +1145,7 @@ impl Graphics {
             Source::God(rank) => self.gods.get(rank as usize).unwrap_or(&self.empty),
             Source::Monster(monster) => self.monsters.get(&monster).unwrap_or(&self.empty),
             Source::Hero(hero) => self.heroes.get(&hero).unwrap_or(&self.empty),
+            Source::Deity(god) => self.deities.get(&god).unwrap_or(&self.empty),
         }
     }
 
@@ -1591,6 +1613,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             gods: Vec::new(),
             monsters: HashMap::new(),
             heroes: HashMap::new(),
+            deities: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -1944,6 +1967,7 @@ fn run(
             gods: (1..=12).map(|n| Catalog::load(&data.join(format!("data/zeus_god{n:02}.sg3"))).unwrap_or_else(|_| Catalog::empty())).collect(),
             monsters: HashMap::new(),
             heroes: HashMap::new(),
+            deities: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -2176,6 +2200,11 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if let Some((god, arrived)) = world.god_news.pop() {
+                let name = text.get(sanctuary::TEXT_GODS, god as usize);
+                notice = if arrived { (format!("{name} s'abat sur la cité !"), now) } else { (format!("{name} quitte la cité"), now) };
+                world.god_news.clear();
+            }
             if let Some(news) = world.request_news.pop() {
                 let (zeus::world::RequestNews::Arrived(r) | zeus::world::RequestNews::Expired(r)) = news;
                 let (name, good) = (city_name(&text, &world, r.city), request_good(&text, r.resource));
@@ -2568,6 +2597,7 @@ fn run(
                 let (loaded, files, id) = match figure.source {
                     Source::Monster(monster) => (&mut graphics.monsters, &MONSTER_FILES[..], monster),
                     Source::Hero(hero) => (&mut graphics.heroes, &HERO_FILES[..], hero),
+                    Source::Deity(god) => (&mut graphics.deities, &GOD_FILES[..], god),
                     _ => continue,
                 };
                 if !loaded.contains_key(&id) {

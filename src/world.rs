@@ -214,6 +214,9 @@ const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 const NO_TARGET: u16 = u16::MAX;
 const MONSTER_REST_TICKS: u64 = TICKS_PER_MONTH * 2;
 const SEA_MONSTERS: [u8; 2] = [1, 10];
+/// Un dieu hostile reste six mois et détruit un bâtiment par mois (valeurs d'Olympe).
+const GOD_STAY_TICKS: u64 = TICKS_PER_MONTH * 6;
+const GOD_REST_TICKS: u64 = TICKS_PER_MONTH;
 
 /// Chemin en ligne droite, case par case (diagonales permises), rangé à l'envers.
 fn straight_path(from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
@@ -618,6 +621,8 @@ enum Role {
     Monster { monster: u8, target: u16, rest_until: u64 },
     /// Héros présent dans la cité, rattaché à son temple.
     Hero { hero: u8, hall: u16 },
+    /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
+    God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
 }
 
 pub struct Figure {
@@ -723,6 +728,10 @@ pub struct World {
     /// Demandes des cités en attente, et leurs nouvelles.
     pub requests: Vec<Request>,
     pub request_news: Vec<RequestNews>,
+    /// Venues de dieux hostiles à venir (pas de simulation, dieu), et nouvelles
+    /// (dieu, arrivée ou départ).
+    pub invasions: Vec<(u64, u8)>,
+    pub god_news: Vec<(u8, bool)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -765,6 +774,8 @@ impl World {
             world_news: Vec::new(),
             requests: Vec::new(),
             request_news: Vec::new(),
+            invasions: Vec::new(),
+            god_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1081,6 +1092,7 @@ impl World {
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
             Role::Monster { .. } => true,
             Role::Hero { hall, .. } => hall != id,
+            Role::God { .. } => true,
         });
         self.rebuild_appeal();
     }
@@ -1534,15 +1546,8 @@ impl World {
             if self.figures.iter().any(|f| matches!(f.role, Role::Monster { monster: m, .. } if m == monster)) {
                 continue;
             }
-            // Il arrive par l'entrée de la carte, depuis la première case dessinée.
-            let start = self.map.entry_points().first().copied().unwrap_or((GRID / 2, GRID / 2));
-            let inward = straight_path((start.0 as u16, start.1 as u16), (GRID as u16 / 2, GRID as u16 / 2));
-            let at = inward
-                .iter()
-                .rev()
-                .copied()
-                .find(|&(x, y)| self.map.image(x as usize, y as usize) != 0 && self.map.edge(x as usize, y as usize) & EDGE_DRAW_TILE != 0)
-                .unwrap_or((GRID as u16 / 2, GRID as u16 / 2));
+            // Il arrive par l'entrée de la carte.
+            let at = self.city_entrance();
             self.figures.push(Figure {
                 image_base: 1,
                 x: at.0 as f32,
@@ -1556,6 +1561,78 @@ impl World {
                 source: Source::Monster(monster),
             });
         }
+    }
+
+    /// Ravage d'un monstre ou d'un dieu arrivé au bout de son chemin : il détruit sa
+    /// cible, se repose `rest` pas, puis marche vers un autre bâtiment. Rend la
+    /// nouvelle cible et la fin du repos.
+    fn rampage(&mut self, index: usize, at: (u16, u16), target: u16, rest_until: u64, rest: u64) -> (u16, u64) {
+        let now = self.ticks;
+        if target != NO_TARGET {
+            if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
+                let (kind, x, y) = (building.kind, building.x, building.y);
+                self.remove_building(target, Cell::Rubble(0));
+                self.disasters.push(Disaster { fire: false, kind, x, y });
+            }
+            return (NO_TARGET, now + rest);
+        }
+        if now < rest_until {
+            return (NO_TARGET, rest_until);
+        }
+        let standing: Vec<u16> = (0..self.buildings.len()).filter(|&i| self.buildings[i].is_some()).map(|i| i as u16).collect();
+        if standing.is_empty() {
+            return (NO_TARGET, rest_until);
+        }
+        let target = standing[self.next_random() as usize % standing.len()];
+        let building = self.buildings[target as usize].as_ref().unwrap();
+        let path = straight_path(at, (building.x as u16, building.y as u16));
+        let figure = &mut self.figures[index];
+        if let Some(&next) = path.last() {
+            figure.direction = direction(at, next);
+        }
+        figure.path = path;
+        (target, rest_until)
+    }
+
+    /// Programme la venue d'un dieu hostile.
+    pub fn schedule_god(&mut self, god: u8, month: u8, years: (i16, i16)) {
+        let at = self.date_in(month, years);
+        self.invasions.push((at, god));
+    }
+
+    /// Dieux hostiles dont la venue est échue : ils entrent par l'entrée de la carte.
+    fn send_gods(&mut self) {
+        let now = self.ticks;
+        let due: Vec<u8> = self.invasions.iter().filter(|&&(at, _)| at <= now).map(|&(_, god)| god).collect();
+        self.invasions.retain(|&(at, _)| at > now);
+        for god in due {
+            let at = self.city_entrance();
+            self.figures.push(Figure {
+                image_base: 1,
+                x: at.0 as f32,
+                y: at.1 as f32,
+                direction: 0,
+                frame: 0,
+                path: Vec::new(),
+                from: at,
+                came_from: None,
+                role: Role::God { god, target: NO_TARGET, rest_until: now, leaves_at: now + GOD_STAY_TICKS },
+                source: Source::Deity(god),
+            });
+            self.god_news.push((god, true));
+        }
+    }
+
+    /// Première case dessinée en venant de l'entrée de la carte vers son centre.
+    fn city_entrance(&self) -> (u16, u16) {
+        let start = self.map.entry_points().first().copied().unwrap_or((GRID / 2, GRID / 2));
+        let inward = straight_path((start.0 as u16, start.1 as u16), (GRID as u16 / 2, GRID as u16 / 2));
+        inward
+            .iter()
+            .rev()
+            .copied()
+            .find(|&(x, y)| self.map.image(x as usize, y as usize) != 0 && self.map.edge(x as usize, y as usize) & EDGE_DRAW_TILE != 0)
+            .unwrap_or((GRID as u16 / 2, GRID as u16 / 2))
     }
 
     /// Où va un héros : vers le monstre vivant qu'il doit combattre, sinon devant son
@@ -1773,6 +1850,7 @@ impl World {
         self.call_heroes();
         self.release_monsters();
         self.place_heroes();
+        self.send_gods();
         self.change_world();
         // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
         self.year_profit += taxes - wages;
@@ -2168,27 +2246,17 @@ impl World {
                 }
                 // Monstre arrivé : il détruit sa cible, se repose, puis en choisit une autre.
                 Role::Monster { monster, target, rest_until } => {
-                    let now = self.ticks;
-                    if target != NO_TARGET {
-                        if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
-                            let (kind, x, y) = (building.kind, building.x, building.y);
-                            self.remove_building(target, Cell::Rubble(0));
-                            self.disasters.push(Disaster { fire: false, kind, x, y });
-                        }
-                        self.figures[index].role = Role::Monster { monster, target: NO_TARGET, rest_until: now + MONSTER_REST_TICKS };
-                    } else if now >= rest_until {
-                        let standing: Vec<u16> = (0..self.buildings.len()).filter(|&i| self.buildings[i].is_some()).map(|i| i as u16).collect();
-                        if !standing.is_empty() {
-                            let target = standing[self.next_random() as usize % standing.len()];
-                            let building = self.buildings[target as usize].as_ref().unwrap();
-                            let path = straight_path(at, (building.x as u16, building.y as u16));
-                            let figure = &mut self.figures[index];
-                            if let Some(&next) = path.last() {
-                                figure.direction = direction(at, next);
-                            }
-                            figure.path = path;
-                            figure.role = Role::Monster { monster, target, rest_until };
-                        }
+                    let (target, rest_until) = self.rampage(index, at, target, rest_until, MONSTER_REST_TICKS);
+                    self.figures[index].role = Role::Monster { monster, target, rest_until };
+                }
+                // Dieu hostile : il ravage de même, plus vite, jusqu'à son départ.
+                Role::God { god, target, rest_until, leaves_at } => {
+                    if self.ticks >= leaves_at {
+                        self.god_news.push((god, false));
+                        finished.push(index);
+                    } else {
+                        let (target, rest_until) = self.rampage(index, at, target, rest_until, GOD_REST_TICKS);
+                        self.figures[index].role = Role::God { god, target, rest_until, leaves_at };
                     }
                 }
                 Role::Immigrant { home, people } => {
@@ -2569,6 +2637,9 @@ impl World {
         for s in &self.scheduled {
             let _ = writeln!(out, "changement {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1);
         }
+        for &(at, god) in &self.invasions {
+            let _ = writeln!(out, "invasion {at} {god}");
+        }
         for r in &self.requests {
             let _ = writeln!(out, "demande {} {} {} {}", r.city, r.resource, r.amount, r.until);
         }
@@ -2641,6 +2712,7 @@ impl World {
                 Role::Fetch { source, vendor } => format!("achat {source} {vendor} 0 0 0"),
                 Role::Monster { monster, target, rest_until } => format!("bete {monster} {target} {rest_until} 0 0"),
                 Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
+                Role::God { god, target, rest_until, leaves_at } => format!("dieu {god} {target} {rest_until} {leaves_at} 0"),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -2673,6 +2745,7 @@ impl World {
         let (mut campaign, mut statuses): (u64, Vec<i32>) = (0, Vec::new());
         let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
         let mut requests = Vec::new();
+        let mut invasions = Vec::new();
         let mut favors: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
@@ -2706,6 +2779,7 @@ impl World {
                     cities: (number_at(2)? as i16, number_at(3)? as i16),
                     amount: (number_at(4)? as i16, number_at(5)? as i16),
                 }),
+                "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "demande" => requests.push(Request {
                     city: number_at(0)? as usize,
                     resource: number_at(1)? as u8,
@@ -2849,6 +2923,7 @@ impl World {
                         "achat" => Role::Fetch { source: a as u16, vendor: b as u16 },
                         "bete" => Role::Monster { monster: a as u8, target: b as u16, rest_until: c as u64 },
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
+                        "dieu" => Role::God { god: a as u8, target: b as u16, rest_until: c as u64, leaves_at: d as u64 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -2868,6 +2943,7 @@ impl World {
                         source: match role {
                             Role::Monster { monster, .. } => Source::Monster(monster),
                             Role::Hero { hero, .. } => Source::Hero(hero),
+                            Role::God { god, .. } => Source::Deity(god),
                             _ => Source::Figures,
                         },
                     });
@@ -2886,6 +2962,7 @@ impl World {
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
             Role::Monster { .. } => true,
             Role::Hero { hall, .. } => exists(hall),
+            Role::God { .. } => true,
         });
         self.cells = cells;
         self.fires = fires;
@@ -2904,6 +2981,7 @@ impl World {
         self.scheduled = scheduled;
         self.world_news.clear();
         (self.requests, self.request_news) = (requests, Vec::new());
+        (self.invasions, self.god_news) = (invasions, Vec::new());
         for (city, strength) in self.cities.iter_mut().zip(military) {
             city.military = strength;
         }

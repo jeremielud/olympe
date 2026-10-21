@@ -37,6 +37,8 @@ Ce qui fonctionne :
   suivis ; les monstres entrent dans la cité, où ils détruisent un bâtiment tous les
   deux mois jusqu'à ce que leur héros, venu de son temple, les tue (les monstres
   marins restent au large) ; un monstre lâché ou envahisseur arrive à sa date ;
+- dieux hostiles en personne : à la date de leur événement, ils entrent dans la
+  cité et la ravagent six mois (durée et rythme d'Olympe) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
@@ -53,8 +55,8 @@ Ce qui fonctionne :
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : les dieux eux-mêmes (visites, bienfaits, colères), animations
-de combat, batailles, commerce, tributs et colonies (une colonie part de sa carte
+Ce qui manque encore : bienfaits des dieux favorables, héros ou dieux qui chassent
+un dieu hostile, animations de combat, batailles, commerce, tributs et colonies (une colonie part de sa carte
 vierge, le trésor suit le joueur), les objectifs qui en dépendent ; scierie et
 atelier de maçonnerie se posent sans forêt ni carrière, et les marchandises mises
 de côté ne parviennent pas à la cité suivante ; conseillers, voix, vidéos, et

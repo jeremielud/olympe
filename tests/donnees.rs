@@ -176,6 +176,12 @@ fn quest_and_monster_goals_name_their_events() {
     for file in files(&data.join("adventures"), "pak") {
         let Some(settings) = Campaign::parse(&fs::read(&file).unwrap()).unwrap().settings else { continue };
         for episode in settings.parent.iter().chain(&settings.colonies) {
+            // Les venues de dieux sont celles de dieux qui existent.
+            for event in &episode.events {
+                if let Event::GodInvasion { god, .. } = event {
+                    assert!((*god as usize) < zeus::sanctuary::GODS, "{} : dieu {god}", file.display());
+                }
+            }
             for goal in &episode.goals {
                 let event = episode.events.get(goal.values[0] as usize).copied();
                 match goal.kind {

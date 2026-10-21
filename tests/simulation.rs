@@ -516,3 +516,23 @@ fn a_hero_walks_to_his_monster_then_leaves_on_his_quest() {
     (0..TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(hero(&world), None);
 }
+
+#[test]
+fn a_hostile_god_ravages_then_leaves() {
+    use zeus::map::Source;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    let before = world.buildings.iter().flatten().count();
+    world.schedule_god(5, 3, (0, 0));
+    // La sauvegarde garde la venue programmée.
+    let (mut other, ..) = self::world(&data);
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.invasions.len(), 1);
+    (0..4 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.figures.iter().any(|f| f.source == Source::Deity(5)), "Arès n'est pas venu");
+    assert_eq!(world.god_news, [(5, true)]);
+    (0..7 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.figures.iter().all(|f| f.source != Source::Deity(5)), "Arès n'est pas reparti");
+    assert!(world.buildings.iter().flatten().count() < before);
+}
