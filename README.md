@@ -47,7 +47,8 @@ Ce qui fonctionne :
   des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
   des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
-  (marchandises et quantités lues dans la carte, prix d'Olympe) ;
+  (marchandises et quantités lues dans la carte, prix d'Olympe) ; les vassales
+  paient un tribut annuel en drachmes (montant d'Olympe) ;
   les événements de l'épisode changent le monde à leur date (une cité devient
   rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
   demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
@@ -59,7 +60,7 @@ Ce qui fonctionne :
 - sauvegarde et rechargement d'une partie.
 
 Ce qui manque encore : bienfaits des dieux favorables, animations de combat,
-batailles, tributs et colonies (une colonie part de sa carte vierge, le
+batailles et colonies (une colonie part de sa carte vierge, le
 trésor suit le joueur), les objectifs qui en dépendent ; scierie et atelier de
 maçonnerie se posent sans forêt ni carrière, et les marchandises mises de côté ne
 parviennent pas à la cité suivante ; conseillers, voix, vidéos, et l'interface

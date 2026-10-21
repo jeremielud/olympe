@@ -205,6 +205,10 @@ pub enum Conquest {
 }
 
 const CONQUEST_PER_SHIELD: i32 = 24;
+/// Tribut annuel d'une vassale : une part fixe et une part par bouclier (Olympe).
+const TRIBUTE_BASE: i32 = 250;
+const TRIBUTE_PER_SHIELD: i32 = 50;
+
 /// Réserve que le commerce garde ou cherche à atteindre, par marchandise (Olympe).
 const TRADE_RESERVE: i32 = 8;
 
@@ -755,6 +759,8 @@ pub struct World {
     /// (dieu, arrivée ou départ).
     pub invasions: Vec<(u64, u8)>,
     pub god_news: Vec<(u8, bool)>,
+    /// Tributs reçus depuis la dernière lecture : (cité, drachmes).
+    pub tributes: Vec<(usize, i32)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -799,6 +805,7 @@ impl World {
             request_news: Vec::new(),
             invasions: Vec::new(),
             god_news: Vec::new(),
+            tributes: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1958,6 +1965,15 @@ impl World {
             self.year_profit = 0;
             for (best, year) in self.best_produced.iter_mut().zip(&mut self.produced) {
                 *best = (*best).max(std::mem::take(year));
+            }
+            // Tribut annuel des vassales.
+            for city in 0..self.cities.len() {
+                let c = &self.cities[city];
+                if c.active && c.status == VASSAL {
+                    let tribute = TRIBUTE_BASE + TRIBUTE_PER_SHIELD * c.military as i32;
+                    self.money += tribute;
+                    self.tributes.push((city, tribute));
+                }
             }
         }
     }

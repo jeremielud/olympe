@@ -571,3 +571,13 @@ fn trade_partners_buy_surplus_and_sell_what_is_missing() {
     assert_eq!((world.cities[0].sold, world.cities[0].bought), (70, 50));
     assert_eq!(world.money - money, 70 - 50 - world.last_month.1 + world.last_month.0);
 }
+
+#[test]
+fn vassals_pay_a_yearly_tribute() {
+    use zeus::map::{City, VASSAL};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: VASSAL, military: 2, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
+    (0..12 * TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    assert_eq!(world.tributes, [(0, 350)]);
+}

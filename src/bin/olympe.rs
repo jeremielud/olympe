@@ -2200,6 +2200,11 @@ fn run(
                 world.hero_news.clear();
             }
             // Changements dans le monde.
+            if !world.tributes.is_empty() {
+                let tributes = std::mem::take(&mut world.tributes);
+                let lines: Vec<String> = tributes.into_iter().map(|(city, amount)| format!("{} {amount} dr.", city_name(&text, &world, city))).collect();
+                notice = (format!("Tributs reçus : {}", lines.join(", ")), now);
+            }
             if let Some((god, arrived)) = world.god_news.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
                 let defenders: Vec<String> = world.sanctuaries().iter().map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
