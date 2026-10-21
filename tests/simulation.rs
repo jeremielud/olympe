@@ -650,6 +650,32 @@ fn gifts_bring_the_goods_set_aside_by_the_previous_city() {
 }
 
 #[test]
+fn wages_and_rival_armies_follow_events() {
+    use zeus::map::{City, RIVAL};
+    use zeus::world::{ARMY_AWAY, WAGE_FALL, WAGE_RISE};
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    world.cities = vec![City { active: true, kind: 2, name: 40, status: RIVAL, military: 4, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0 }];
+    let defence = world.defence(0);
+    // Les salaires montent de 6 puis baissent de 3 ; l'armée rivale part trois mois.
+    world.schedule(WAGE_RISE, (0, 0), (6, 6), 1, (0, 0));
+    world.schedule(WAGE_FALL, (0, 0), (3, 3), 2, (0, 0));
+    world.schedule(ARMY_AWAY, (0, 0), (3, 3), 1, (0, 0));
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.army_away(0));
+    assert_eq!(world.defence(0), defence / 2);
+    // La sauvegarde garde l'écart de salaire et l'absence.
+    let (mut other, ..) = self::world(&data);
+    other.cities = world.cities.clone();
+    other.load(&world.save()).unwrap();
+    assert!(other.army_away(0));
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.wage_shift, 3);
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.defence(0), defence);
+}
+
+#[test]
 fn trade_changes_move_prices_and_city_demand() {
     use zeus::map::{ALLY, City};
     let Some(data) = data() else { return };

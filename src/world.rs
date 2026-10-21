@@ -170,6 +170,13 @@ pub const GIFT: u8 = 130;
 /// Changements du commerce programmés : `TRADE_CHANGE` + 0 à 5 (demande, offre, prix ;
 /// hausse puis baisse).
 pub const TRADE_CHANGE: u8 = 200;
+/// Hausse et baisse des salaires, et départ en campagne d'une armée rivale.
+pub const WAGE_RISE: u8 = 96;
+pub const WAGE_FALL: u8 = 97;
+pub const ARMY_AWAY: u8 = 98;
+/// Salaire normal du jeu : 30 drachmes par an et par dix ouvriers, auquel les
+/// événements ajoutent ou retranchent.
+const NORMAL_WAGE: i32 = 30;
 
 /// Issue d'une invasion armée.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -807,6 +814,12 @@ pub struct World {
     /// depuis la dernière lecture : (cité, changement, ressource).
     pub price_shift: [i32; RESOURCES],
     pub trade_news: Vec<(usize, u8, u8)>,
+    /// Écart du salaire au salaire normal (drachmes par an et par dix ouvriers), et
+    /// armées rivales parties en campagne : (cité, retour).
+    pub wage_shift: i32,
+    pub armies_away: Vec<(usize, u64)>,
+    /// Hausses (positives) et baisses des salaires survenues depuis la dernière lecture.
+    pub wage_news: Vec<i32>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -858,6 +871,9 @@ impl World {
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
             trade_news: Vec::new(),
+            wage_shift: 0,
+            armies_away: Vec::new(),
+            wage_news: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1585,6 +1601,23 @@ impl World {
                 self.gifts.push((city, resource as u8, given));
                 continue;
             }
+            if matches!(event.change, WAGE_RISE | WAGE_FALL) {
+                let change = if event.change == WAGE_RISE { amount.max(1) } else { -amount.max(1) };
+                self.wage_shift = (self.wage_shift + change).max(-NORMAL_WAGE);
+                self.wage_news.push(change);
+                continue;
+            }
+            // Armée en campagne : seule une rivale est concernée ; un nouveau départ
+            // prolonge l'absence.
+            if event.change == ARMY_AWAY {
+                if self.cities.get(city).is_some_and(|c| c.active && c.kind == FOREIGN && c.status == RIVAL) {
+                    let until = now + amount.max(1) as u64 * TICKS_PER_MONTH;
+                    self.armies_away.retain(|&(c, _)| c != city);
+                    self.armies_away.push((city, until));
+                    self.world_news.push((city, ARMY_AWAY));
+                }
+                continue;
+            }
             // Une cité inactive peut reparaître ; les autres changements veulent une
             // cité active.
             if matches!(event.change, BECOMES_ACTIVE | APPEARS) {
@@ -1673,8 +1706,15 @@ impl World {
     }
 
     /// Force qu'il faut opposer à une cité : 24 par bouclier (barème d'Olympe).
+    /// Une cité dont l'armée est partie ne garde que la moitié de ses boucliers.
     pub fn defence(&self, city: usize) -> i32 {
-        self.cities.get(city).map_or(0, |c| c.military as i32 * CONQUEST_PER_SHIELD)
+        let away = self.armies_away.iter().any(|&(c, until)| c == city && until > self.ticks);
+        self.cities.get(city).map_or(0, |c| c.military as i32 * CONQUEST_PER_SHIELD / if away { 2 } else { 1 })
+    }
+
+    /// L'armée de cette cité est-elle partie en campagne ?
+    pub fn army_away(&self, city: usize) -> bool {
+        self.armies_away.iter().any(|&(c, until)| c == city && until > self.ticks)
     }
 
     /// Envoie l'armée soumettre une cité étrangère, alliée ou rivale : si elle est
@@ -2146,7 +2186,7 @@ impl World {
         }
         let taxes = taxes / 100;
         let employed: i32 = self.buildings.iter().flatten().filter(|b| b.staffed).map(|b| self.kinds[b.kind].employees).sum();
-        let wages = employed * WAGES_PER_100_WORKERS / 100;
+        let wages = employed * WAGES_PER_100_WORKERS * (NORMAL_WAGE + self.wage_shift).max(0) / (100 * NORMAL_WAGE);
         self.money += taxes - wages;
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
@@ -2962,6 +3002,10 @@ impl World {
         let _ = writeln!(out, "reserve {}", list(&self.set_aside));
         let _ = writeln!(out, "emporte {}", list(&self.carried));
         let _ = writeln!(out, "prix {}", list(&self.price_shift));
+        let _ = writeln!(out, "salaires {}", self.wage_shift);
+        for &(city, until) in &self.armies_away {
+            let _ = writeln!(out, "absente {city} {until}");
+        }
         let present: Vec<String> = self.heroes.iter().map(|&h| (h as u8).to_string()).collect();
         let _ = writeln!(out, "heros {}", present.join(" "));
         // Statut de chaque cité, plus 10 quand une route commerciale est ouverte.
@@ -3083,6 +3127,7 @@ impl World {
         let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
         let mut requests = Vec::new();
         let mut invasions = Vec::new();
+        let (mut wage_shift, mut away) = (0, Vec::new());
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -3119,6 +3164,8 @@ impl World {
                     resource: rest.get(6).and_then(|w| w.parse().ok()).unwrap_or(0),
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
+                "salaires" => wage_shift = number_at(0)? as i32,
+                "absente" => away.push((number_at(0)? as usize, number_at(1)? as u64)),
                 "demande" => requests.push(Request {
                     city: number_at(0)? as usize,
                     resource: number_at(1)? as u8,
@@ -3320,6 +3367,7 @@ impl World {
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;
+        (self.wage_shift, self.armies_away, self.wage_news) = (wage_shift, away, Vec::new());
         self.world_news.clear();
         (self.requests, self.request_news) = (requests, Vec::new());
         (self.invasions, self.god_news) = (invasions, Vec::new());

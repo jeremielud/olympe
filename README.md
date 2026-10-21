@@ -58,13 +58,16 @@ Ce qui fonctionne :
   rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
   demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
   depuis le panneau `C` : servir une cité accroît sa faveur, l'ignorer la fâche,
-  jusqu'à la rendre rivale (barème d'Olympe) ;
+  jusqu'à la rendre rivale (barème d'Olympe) ; ils font aussi varier les prix,
+  l'offre et la demande des cités, les salaires, et éloignent l'armée d'une rivale
+  (sa défense est alors réduite de moitié) ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : animations de combat, batailles et colonies (une colonie
+Ce qui manque encore : catastrophes naturelles (tremblements de terre, lave,
+raz-de-marée, glissements de terrain, terres englouties), animations de combat, batailles et colonies (une colonie
 part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
 ; scierie et atelier de maçonnerie se posent sans forêt ni carrière ; conseillers,
 voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs

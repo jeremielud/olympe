@@ -90,10 +90,16 @@ const EVENT_INVASION_TYPE: u8 = 2;
 /// Établi sur Troie, où la colonie reçoit ainsi les marchandises réservées.
 const EVENT_GIFT_TYPE: u8 = 23;
 /// Changements du commerce : demande d'une cité en hausse ou en baisse (13, 14), offre
-/// (21, 22), prix d'une marchandise pour tous (15, 16). L'ordre vient du regroupement
-/// des événements dans le jeu (0x468250) ; le partage entre demande et offre est
-/// déduit, non vérifié.
+/// (21, 22), prix d'une marchandise pour tous (15, 16). Les noms des types sont dans
+/// `zeus_editor_text.eng`, rangés par numéro (« Free Event », « Request »,
+/// « Invasion », « Earthquake »…), et le jeu les regroupe en 0x468250.
 const EVENT_TRADE_TYPES: [u8; 6] = [13, 14, 21, 22, 15, 16];
+/// Hausse et baisse des salaires (8, 9) : de tant de drachmes par an et par dix
+/// ouvriers (quantité en 16 et 18), à la date dite.
+const EVENT_WAGE_TYPES: [u8; 2] = [8, 9];
+/// Armée rivale partie en campagne (20) : la cité est affaiblie pendant tant de mois
+/// (quantité ; Olympe y lit une durée).
+const EVENT_ARMY_AWAY_TYPE: u8 = 20;
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -159,6 +165,10 @@ pub enum Event {
     TradeChange { change: u8, resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Une cité rivale envoie une armée de tant de soldats.
     Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
+    /// Les salaires montent ou baissent de tant de drachmes par an et par dix ouvriers.
+    Wages { rise: bool, amount: (i16, i16), month: u8, years: (i16, i16) },
+    /// L'armée d'une cité rivale part pour tant de mois.
+    ArmyAway { cities: (i16, i16), months: (i16, i16), month: u8, years: (i16, i16) },
     Other,
 }
 
@@ -249,6 +259,18 @@ impl Settings {
                                 soldiers: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
                                 month: event[EVENT_MONTH] % 12,
                                 years: either(EVENT_YEAR, EVENT_YEARS),
+                            }
+                        }
+                        kind @ (EVENT_ARMY_AWAY_TYPE | 8 | 9) => {
+                            let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                            let either = |one: usize, range: usize| match short(one) {
+                                n if n >= 0 => (n, n),
+                                _ => (short(range), short(range + 2)),
+                            };
+                            let (amount, month, years) = ((short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)), event[EVENT_MONTH] % 12, either(EVENT_YEAR, EVENT_YEARS));
+                            match kind {
+                                EVENT_ARMY_AWAY_TYPE => Event::ArmyAway { cities: either(EVENT_CITY, EVENT_CITIES), months: amount, month, years },
+                                _ => Event::Wages { rise: kind == EVENT_WAGE_TYPES[0], amount, month, years },
                             }
                         }
                         kind if EVENT_TRADE_TYPES.contains(&kind) => {

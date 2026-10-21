@@ -210,6 +210,13 @@ fn quest_and_monster_goals_name_their_events() {
     // a quittée, se retire du monde (19).
     assert!(matches!(troy.parent[3].events[0], Event::World { change: 15, cities: (6, 6), .. }));
     assert!(matches!(troy.parent[2].events[1], Event::World { change: 19, cities: (13, 13), .. }));
+    // Péloponnèse : l'armée de cités rivales part en campagne ; Jason : les salaires
+    // montent de 3 à 6 drachmes.
+    let all = |s: &zeus::pak::Settings| s.parent.iter().chain(&s.colonies).flat_map(|e| e.events.clone()).collect::<Vec<_>>();
+    let war = Campaign::parse(&fs::read(data.join("adventures/^guerre du péloponnèse.pak")).unwrap()).unwrap().settings.unwrap();
+    assert_eq!(all(&war).iter().filter(|e| matches!(e, Event::ArmyAway { months: (5, 10), .. })).count(), 4);
+    assert!(all(&war).contains(&Event::ArmyAway { cities: (8, 8), months: (5, 10), month: 3, years: (4, 4) }));
+    assert!(all(&jason).iter().any(|e| matches!(e, Event::Wages { rise: true, amount: (3, 6), .. })));
     // La colonie de Ténédos reçoit de la cité mère ce qu'elle a mis de côté.
     assert!(matches!(troy.colonies[0].events[1], Event::Gift { resource: 14, cities: (0, 0), amount: (-1, -1), .. }));
     // Une cité demande entre 1000 et 2000 drachmes (19 dans la numérotation de Zeus).

@@ -773,7 +773,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::TradeChange { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::TradeChange { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Wages { .. } | Event::ArmyAway { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -1010,6 +1010,10 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 world.schedule(zeus::world::GIFT.saturating_add(resource), cities, amount, month, years)
             }
             Event::Invasion { cities, soldiers, month, years } => world.schedule(zeus::world::INVASION, cities, soldiers, month, years),
+            Event::Wages { rise, amount, month, years } => {
+                world.schedule(if rise { zeus::world::WAGE_RISE } else { zeus::world::WAGE_FALL }, (0, 0), amount, month, years)
+            }
+            Event::ArmyAway { cities, months, month, years } => world.schedule(zeus::world::ARMY_AWAY, cities, months, month, years),
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
             }
@@ -2294,6 +2298,11 @@ fn run(
                 };
                 world.request_news.clear();
             }
+            if let Some(change) = world.wage_news.pop() {
+                let (verb, normal) = (if change > 0 { "montent" } else { "baissent" }, 30 + world.wage_shift);
+                notice = (format!("Les salaires {verb} de {} dr. : {normal} dr. par an pour dix ouvriers", change.abs()), now);
+                world.wage_news.clear();
+            }
             if let Some((city, change)) = world.world_news.pop() {
                 let name = city_name(&text, &world, city);
                 let line = match change {
@@ -2305,6 +2314,7 @@ fn run(
                     zeus::world::MILITARY_DECLINE => format!("L'armée de {name} s'affaiblit"),
                     zeus::world::TRADE_SHUTS => format!("{name} cesse de commercer avec vous"),
                     zeus::world::TRADE_OPENS => format!("{name} ouvre son commerce avec vous"),
+                    zeus::world::ARMY_AWAY => format!("L'armée de {name} part en campagne : la cité est vulnérable"),
                     zeus::world::BECOMES_INACTIVE | zeus::world::DISAPPEARS => format!("{name} se retire du monde"),
                     _ => format!("{name} reparaît dans le monde"),
                 };
@@ -3110,7 +3120,7 @@ fn run(
                             (false, false) => format!("  [ouvrir le commerce : {} dr.]", zeus::world::TRADE_ROUTE_COST),
                             (false, true) => String::new(),
                         };
-                        (i, format!("{} ({status}, faveur {}, force {}{action})", city_name(&text, &world, i), c.favor, c.military), trade)
+                        (i, format!("{} ({status}, faveur {}, force {}{}{action})", city_name(&text, &world, i), c.favor, c.military, if world.army_away(i) { ", armée partie" } else { "" }), trade)
                     })
                     .collect();
                 let line_width = |(_, city, trade): &(usize, String, String)| graphics.text_width(FONT_TEXT, city) + graphics.text_width(FONT_TEXT, trade);
