@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use zeus::goals::{Goal, Kind as GoalKind, Status};
 use zeus::map::{GRID, Map};
 use zeus::model::Model;
 use zeus::world::{Function, Kind, Service, WalkerImages, World};
@@ -133,4 +134,33 @@ fn a_fishery_must_touch_water() {
     let shore = (0..GRID as i32).flat_map(|ty| (0..GRID as i32).map(move |tx| (tx, ty))).find(|&(tx, ty)| world.can_place(fishery, tx, ty));
     let (sx, sy) = shore.expect("aucun rivage constructible");
     assert!(world.place_building(fishery, sx, sy));
+}
+
+#[test]
+fn goals_follow_the_city() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    let goal = |kind, values| Goal { kind, values };
+    let population = goal(GoalKind::Population, [32, 0, 0]);
+    let treasury = goal(GoalKind::Treasury, [20_000, 0, 0]);
+    // Huit personnes en masure ou mieux : les huttes, sans vivres, ne comptent pas.
+    let housing = goal(GoalKind::Housing, [1, 8, 0]);
+    let profit = goal(GoalKind::Profit, [0, 0, 0]);
+    assert_eq!(population.status(&world), Status::Pending(Some(0)));
+    // Aucune année n'est encore close.
+    assert_eq!(profit.status(&world), Status::Pending(None));
+    (0..9600).for_each(|_| world.tick());
+    assert_eq!(population.status(&world), Status::Met);
+    assert_eq!(treasury.status(&world), Status::Pending(Some(world.money)));
+    assert_eq!(housing.status(&world), Status::Pending(Some(0)));
+    // Ni impôts ni salaires dans cette rue : une année à l'équilibre.
+    assert_eq!(world.best_year_profit, Some(0));
+    assert_eq!(profit.status(&world), Status::Met);
+    assert_eq!(goal(GoalKind::Quest, [0, 0, 0]).status(&world), Status::Unsupported);
+    // Le bilan annuel passe par la sauvegarde.
+    let (mut other, ..) = self::world(&data);
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.best_year_profit, Some(0));
 }

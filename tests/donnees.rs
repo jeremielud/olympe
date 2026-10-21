@@ -3,10 +3,11 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use zeus::goals::{Goal, Kind};
 use zeus::map::Map;
 use zeus::messages::Messages;
 use zeus::model::Model;
-use zeus::pak::Campaign;
+use zeus::pak::{Campaign, Settings};
 use zeus::sg::Catalog;
 use zeus::text::Text;
 
@@ -51,7 +52,37 @@ fn every_adventure_parses() {
         let settings = campaign.settings.unwrap_or_else(|| panic!("{} : réglages absents", file.display()));
         assert!((100..=100_000).contains(&settings.funds), "{} : trésor {}", file.display(), settings.funds);
         assert!((-4000..=0).contains(&settings.start_year), "{} : année {}", file.display(), settings.start_year);
+        // La table des objectifs se lit pour chaque aventure, cité mère et colonies.
+        assert_eq!(settings.goals.parent.len(), 10, "{}", file.display());
+        assert_eq!(settings.goals.colonies.len(), 4, "{}", file.display());
     }
+    for file in files(&adventures, "set") {
+        let settings = Settings::parse(&fs::read(&file).unwrap()).unwrap();
+        assert_eq!(settings.goals.parent.len(), 10, "{}", file.display());
+    }
+}
+
+#[test]
+fn episode_goals_and_resources() {
+    let Some(data) = data() else { return };
+    let settings = |name: &str| Campaign::parse(&fs::read(data.join("adventures").join(name)).unwrap()).unwrap().settings.unwrap();
+    let goal = |kind, values| Goal { kind, values };
+    let jason = settings("[les aventures de jason.pak");
+    // Premier épisode : la quête, le monstre, 3000 drachmes.
+    assert_eq!(jason.goals.parent[0], [goal(Kind::Quest, [0, 0, 0]), goal(Kind::Slay, [12, 0, 0]), goal(Kind::Treasury, [3000, 0, 0])]);
+    assert_eq!(jason.goals.parent[3][4], goal(Kind::Housing, [11, 72, 0]));
+    // Mise de côté dans une aventure de Zeus : la laine, ancien numéro 13, devient 14 ;
+    // de 4881 (0x1311), le jeu ne lit que l'octet bas, 17, l'huile d'olive, devenue 20.
+    assert_eq!(jason.goals.parent[2][3], goal(Kind::SetAside, [14, 24, 0]));
+    assert_eq!(jason.goals.parent[2][2], goal(Kind::SetAside, [20, 24, 0]));
+    // Ressources renumérotées comme le fait le jeu : bois et laine, pas oranges et olives.
+    assert_eq!(jason.resources, [2, 4, 5, 7, 9, 14]);
+    assert_eq!(settings("firstcity.pak").goals.parent[0].len(), 1);
+    assert!(settings("}jeu ouvert - bac à sable.pak").goals.parent[0].is_empty());
+    // Poséidon (version 26) : les marchandises gardent leur numéro.
+    let atlantis = settings("#la naissance de l'atlantide.pak");
+    assert_eq!(atlantis.goals.parent[1][3], goal(Kind::Pyramid, [1, 100, 0]));
+    assert_eq!(atlantis.goals.parent[6][3], goal(Kind::Hippodrome, [40, 0, 0]));
 }
 
 #[test]

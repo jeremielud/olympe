@@ -22,10 +22,14 @@ Ce qui fonctionne :
 - simulation : immigrants, emploi, tournées des marcheurs, vivres et marchandises,
   attrait des quartiers, évolution des logements, impôts, incendies et effondrements ;
 - musique et bruitages d'ambiance d'origine ;
+- objectifs de l'épisode, lus dans l'aventure (touche `O`) : population, trésor,
+  logement et profit annuel sont suivis, et l'épisode se termine sur son récit de
+  victoire quand tous sont atteints ;
 - sauvegarde et rechargement d'une partie.
 
 Ce qui manque encore : sanctuaires, dieux, héros et monstres, armée, commerce et
-colonies, objectifs des épisodes, conseillers, voix, vidéos, et l'interface d'origine
+colonies, les objectifs qui en dépendent (et la production annuelle), les épisodes
+suivant le premier, conseillers, voix, vidéos, et l'interface d'origine
 (celle d'Olympe est provisoire). Plusieurs réglages d'équilibre (rendements,
 consommations) sont approchés et non repris du jeu.
 

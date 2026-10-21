@@ -476,6 +476,9 @@ pub struct World {
     random: u32,
     /// Dernier bilan mensuel : (impôts perçus, salaires versés).
     pub last_month: (i32, i32),
+    /// Bénéfice de l'année civile en cours, et meilleur bénéfice d'une année achevée.
+    pub year_profit: i32,
+    pub best_year_profit: Option<i32>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -502,6 +505,8 @@ impl World {
             next_house: 0,
             random: 0x2545_F491,
             last_month: (0, 0),
+            year_profit: 0,
+            best_year_profit: None,
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -864,6 +869,11 @@ impl World {
         self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).map(|h| h.population).sum()
     }
 
+    /// Habitants des maisons de ce niveau de logement ou d'un niveau supérieur.
+    pub fn people_housed_from(&self, level: usize) -> i32 {
+        self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.level >= level).map(|h| h.population).sum()
+    }
+
     /// Date courante : (jour du mois, mois, année), tous à partir de 0.
     pub fn date(&self) -> (u64, u64, u64) {
         let days = self.ticks / TICKS_PER_DAY;
@@ -996,6 +1006,12 @@ impl World {
         let wages = employed * WAGES_PER_100_WORKERS / 100;
         self.money += taxes - wages;
         self.last_month = (taxes, wages);
+        // Le bilan qui vient d'être fait est celui de décembre : l'année est close.
+        self.year_profit += taxes - wages;
+        if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {
+            self.best_year_profit = Some(self.best_year_profit.map_or(self.year_profit, |best| best.max(self.year_profit)));
+            self.year_profit = 0;
+        }
     }
 
     fn next_random(&mut self) -> u32 {
@@ -1678,8 +1694,16 @@ impl World {
         let mut out = format!("{SAVE_HEADER}\n");
         let _ = writeln!(
             out,
-            "etat {} {} {} {} {} {} {}",
-            self.ticks, self.money, self.next_house, self.random, self.last_month.0, self.last_month.1, self.kinds.len()
+            "etat {} {} {} {} {} {} {} {} {}",
+            self.ticks,
+            self.money,
+            self.next_house,
+            self.random,
+            self.last_month.0,
+            self.last_month.1,
+            self.kinds.len(),
+            self.year_profit,
+            self.best_year_profit.map_or("-".to_string(), |best| best.to_string())
         );
         for (index, cell) in self.cells.iter().enumerate() {
             let _ = match *cell {
@@ -1749,6 +1773,7 @@ impl World {
         let mut cells = vec![Cell::Terrain; GRID * GRID];
         let (mut buildings, mut figures, mut fires) = (Vec::new(), Vec::new(), Vec::new());
         let mut state = None;
+        let mut profits = (0, None);
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -1762,6 +1787,8 @@ impl World {
                         return Err("sauvegarde faite avec une autre liste de bâtiments".into());
                     }
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));
+                    // Bénéfices annuels : absents des sauvegardes plus anciennes.
+                    profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
                 }
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
@@ -1899,6 +1926,7 @@ impl World {
         self.next_house = next_house as usize;
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
+        (self.year_profit, self.best_year_profit) = profits;
         self.rebuild_appeal();
         Ok(())
     }

@@ -3,6 +3,7 @@
 pub mod ambience;
 pub mod cabinet;
 pub mod font;
+pub mod goals;
 pub mod inflate;
 pub mod install;
 pub mod iso;

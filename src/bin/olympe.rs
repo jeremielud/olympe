@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use zeus::font::Font;
+use zeus::goals::{Goal, Status};
 use zeus::jpeg;
 use zeus::messages::{self, Messages};
 use zeus::map::{GRID, Map, Source};
@@ -43,7 +44,7 @@ options :
   --capture IMAGE    enregistre la première image rendue et quitte
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
-                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h,
+                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o,
                      t:n (pas), p:ms (pause)
 en jeu : H affiche l'aide";
 
@@ -269,7 +270,7 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 14] = [
+const HELP: [&str; 15] = [
     "Clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
@@ -282,6 +283,7 @@ const HELP: [&str; 14] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
+    "O : objectifs de l'épisode",
     "Survoler un bâtiment : ses informations",
     "H : refermer cette aide",
 ];
@@ -618,6 +620,20 @@ fn briefing(data: &Path, map_path: &Path, settings: Option<Settings>) -> Option<
         return Some((entry("Adventure_Title")?, paragraphs)).filter(|(_, paragraphs)| !paragraphs.is_empty());
     }
     let id = usize::try_from(settings?.first_message).ok()?;
+    let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(id)?;
+    Some((message.title, message.paragraphs))
+}
+
+/// Récit de fin du premier épisode, pris au même endroit que son récit d'ouverture.
+fn victory_story(data: &Path, map_path: &Path, settings: Option<Settings>) -> Option<(String, Vec<String>)> {
+    let folder = map_path.parent()?;
+    let texts = fs::read_dir(folder).ok()?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|e| e == "txt"));
+    if let Some(file) = texts.filter(|_| folder.file_name().is_some_and(|name| name != "adventures")) {
+        let text = adventure_texts(&file)?;
+        let paragraphs = messages::paragraphs(&text_entry(&text, "Parent_Episode_1_Complete")?);
+        return Some((text_entry(&text, "Parent_Episode_1_Title").unwrap_or_default(), paragraphs));
+    }
+    let id = usize::try_from(settings?.victory_message).ok()?;
     let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(id)?;
     Some((message.title, message.paragraphs))
 }
@@ -1487,6 +1503,11 @@ fn run(
         // Récit d'ouverture, affiché jusqu'au premier clic ou à la première touche. Pas
         // en capture, sauf si le script commence par « intro ».
         let mut intro = briefing(data, map_path, settings.clone()).filter(|_| capture.is_none() || script.split_whitespace().next() == Some("intro"));
+        // Objectifs du premier épisode de la cité mère, le seul que l'on joue ; ceux
+        // déjà atteints, pour n'annoncer que les nouveaux ; panneau ouvert par O.
+        let goals: Vec<Goal> = settings.as_ref().and_then(|s| s.goals.parent.first().cloned()).unwrap_or_default();
+        let mut goals_met = vec![false; goals.len()];
+        let (mut goals_panel, mut won) = (false, false);
         let mut clock = sdl::SDL_GetTicks();
         let mut paused = false;
         let mut speed = NORMAL_SPEED;
@@ -1613,6 +1634,7 @@ fn run(
                         "f5" => Some(sdl::Event::key_down(0, sdl::KEY_F5)),
                         "f9" => Some(sdl::Event::key_down(0, sdl::KEY_F9)),
                         "h" => Some(sdl::Event::key_down(0, sdl::KEY_H)),
+                        "o" => Some(sdl::Event::key_down(0, sdl::KEY_O)),
                         _ => None,
                     },
                     // Pause en temps réel, pour laisser vivre ce qui en dépend (son).
@@ -1655,6 +1677,22 @@ fn run(
                 let what = if disaster.fire { "Incendie" } else { "Effondrement" };
                 notice = (format!("{what} : {}", world.kinds[disaster.kind].name), now);
                 world.disasters.clear();
+            }
+
+            // Objectifs atteints depuis la dernière image, puis fin de l'épisode quand
+            // tous le sont. Un épisode sans objectif se joue sans fin.
+            let statuses: Vec<Status> = goals.iter().map(|goal| goal.status(&world)).collect();
+            for (i, status) in statuses.iter().enumerate() {
+                let met = *status == Status::Met;
+                if met && !goals_met[i] {
+                    notice = (goals[i].achieved(&text), now);
+                }
+                goals_met[i] = met;
+            }
+            if !won && !goals.is_empty() && goals_met.iter().all(|&met| met) {
+                won = true;
+                let fallback = ("Épisode terminé".to_string(), vec!["Tous les objectifs de l'épisode sont atteints.".to_string()]);
+                intro = Some(victory_story(data, map_path, settings.clone()).unwrap_or(fallback));
             }
 
             while sdl::SDL_PollEvent(&mut event) {
@@ -1717,6 +1755,7 @@ fn run(
                             }
                         }
                         sdl::KEY_H => help = !help,
+                        sdl::KEY_O => goals_panel = !goals_panel,
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
                                 ambience.enabled = !ambience.enabled;
@@ -2230,6 +2269,38 @@ fn run(
                 graphics.draw_text(FONT_TITLE, heading, px + (width - heading_width) / 2.0, py + 12.0);
                 for (i, l) in lines.iter().enumerate() {
                     graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 28.0 + row * i as f32);
+                }
+            }
+
+            // Objectifs de l'épisode et où ils en sont.
+            if goals_panel {
+                let heading = text.get(44, 45);
+                let mut lines: Vec<String> = goals
+                    .iter()
+                    .zip(&statuses)
+                    .map(|(goal, status)| {
+                        // La police du jeu n'a pas de tiret long : l'état va entre parenthèses.
+                        let state = match status {
+                            Status::Met => text.get(194, 62).to_lowercase(),
+                            Status::Pending(Some(current)) => format!("actuellement {current}"),
+                            Status::Pending(None) => text.get(194, 52),
+                            Status::Unsupported => "pas encore simulé par Olympe".to_string(),
+                        };
+                        format!("{} ({state})", goal.describe(&text, &level_names))
+                    })
+                    .collect();
+                if lines.is_empty() {
+                    lines.push(text.get(44, 280));
+                }
+                let width = lines.iter().chain([&heading]).map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 48.0;
+                let height = title_line + 32.0 + row * lines.len() as f32;
+                let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
+                graphics.panel(px, py, width, height);
+                graphics.panel(px, py, width, height);
+                let heading_width = graphics.text_width(FONT_TITLE, &heading);
+                graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
+                for (i, l) in lines.iter().enumerate() {
+                    graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 24.0 + row * i as f32);
                 }
             }
 
