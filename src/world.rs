@@ -21,6 +21,12 @@ pub const TERRAIN_RAMP: u32 = 0x400;
 pub const TERRAIN_ORE: u32 = 0x800;
 pub const TERRAIN_BEACH: u32 = 0x1_0000;
 pub const TERRAIN_MARSH: u32 = 0x4_0000;
+/// Zones de catastrophe peintes dans l'éditeur : lave, raz-de-marée et fissure de
+/// tremblement de terre (Zeus.exe, 0x51eff0, choisit la catastrophe d'après ces bits
+/// sous le point de départ).
+pub const TERRAIN_LAVA_ZONE: u32 = 0x10;
+pub const TERRAIN_FLOOD_ZONE: u32 = 0x100;
+pub const TERRAIN_FISSURE: u32 = 0x200_0000;
 
 /// Terrains sur lesquels on ne peut rien poser.
 const BLOCKED: u32 = TERRAIN_TREE
@@ -37,6 +43,8 @@ const IMPASSABLE: u32 = TERRAIN_TREE | TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_EL
 
 /// Première tuile de route dans le catalogue de terrain ; 18 variantes selon les bords.
 const ROAD_FIRST_IMAGE: usize = 897;
+/// Eau profonde, quand la carte n'en a pas à imiter.
+const WATER_IMAGE: usize = 764;
 /// Variante de route pour chaque combinaison de bords sans route voisine
 /// (bit 0 = nord-est, 1 = sud-est, 2 = sud-ouest, 3 = nord-ouest).
 const ROAD_VARIANT: [usize; 16] = [17, 14, 15, 6, 16, 1, 7, 11, 13, 5, 0, 10, 4, 9, 8, 12];
@@ -174,6 +182,21 @@ pub const TRADE_CHANGE: u8 = 200;
 pub const WAGE_RISE: u8 = 96;
 pub const WAGE_FALL: u8 = 97;
 pub const ARMY_AWAY: u8 = 98;
+/// Catastrophes programmées : `cities` y désigne le point de catastrophe de la carte.
+pub const EARTHQUAKE: u8 = 90;
+pub const LAVA: u8 = 91;
+pub const TIDAL_WAVE: u8 = 92;
+/// Raz-de-marée dont les eaux ne se retirent pas.
+pub const FLOOD: u8 = 93;
+/// Images du terrain : morceaux de fissure posés sur le sol, lave refroidie.
+const CHASM_FIRST_IMAGE: usize = 1107;
+const CHASM_IMAGES: usize = 16;
+const LAVA_FIRST_IMAGE: usize = 1101;
+const LAVA_IMAGES: usize = 6;
+/// Les eaux d'un raz-de-marée se retirent au bout de six mois (durée d'Olympe).
+const FLOOD_TICKS: u64 = 6 * TICKS_PER_MONTH;
+/// Distance, en cases, à laquelle une zone peinte est rattachée à son point de départ.
+const DISASTER_REACH: i32 = 3;
 /// Salaire normal du jeu : 30 drachmes par an et par dix ouvriers, auquel les
 /// événements ajoutent ou retranchent.
 const NORMAL_WAGE: i32 = 30;
@@ -725,6 +748,11 @@ enum Cell {
     Rubble(u8),
     /// Case en flammes ; deviendra des décombres.
     Fire(u8),
+    /// Fissure ouverte par un tremblement de terre, lave refroidie, eaux d'un
+    /// raz-de-marée : on n'y bâtit plus.
+    Chasm(u8),
+    Lava(u8),
+    Flood,
     Road,
     /// Route dallée d'une agora.
     AgoraRoad,
@@ -820,6 +848,10 @@ pub struct World {
     pub armies_away: Vec<(usize, u64)>,
     /// Hausses (positives) et baisses des salaires survenues depuis la dernière lecture.
     pub wage_news: Vec<i32>,
+    /// Catastrophes survenues depuis la dernière lecture : (nature, bâtiments détruits).
+    pub disaster_news: Vec<(u8, i32)>,
+    /// Cases inondées dont l'eau se retire à ce pas de simulation.
+    floods: Vec<(u16, u16, u64)>,
     /// Types de bâtiments que le scénario n'offre pas (indexé comme `kinds` ; vide =
     /// tout est permis).
     pub locked: Vec<bool>,
@@ -874,6 +906,8 @@ impl World {
             wage_shift: 0,
             armies_away: Vec::new(),
             wage_news: Vec::new(),
+            disaster_news: Vec::new(),
+            floods: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -957,7 +991,7 @@ impl World {
     }
 
     fn is_walkable(&self, x: i32, y: i32) -> bool {
-        if !self.in_map(x, y) || matches!(self.cell(x as usize, y as usize), Cell::Building(_)) {
+        if !self.in_map(x, y) || matches!(self.cell(x as usize, y as usize), Cell::Building(_) | Cell::Chasm(_) | Cell::Flood) {
             return false;
         }
         let terrain = self.map.terrain(x as usize, y as usize);
@@ -1146,7 +1180,7 @@ impl World {
             return false;
         }
         match self.cell(x as usize, y as usize) {
-            Cell::Terrain | Cell::Fire(_) => false,
+            Cell::Terrain | Cell::Fire(_) | Cell::Chasm(_) | Cell::Lava(_) | Cell::Flood => false,
             Cell::Rubble(_) | Cell::Road | Cell::AgoraRoad => {
                 self.cells[y as usize * GRID + x as usize] = Cell::Terrain;
                 true
@@ -1218,6 +1252,21 @@ impl World {
                 overlay: None,
                 ground: None,
             }),
+            Cell::Chasm(variant) => Some(Draw {
+                source: Source::Terrain,
+                image: CHASM_FIRST_IMAGE + variant as usize % CHASM_IMAGES,
+                burning: false,
+                overlay: None,
+                ground: self.map.resolve(self.map.image(x, y)),
+            }),
+            Cell::Lava(variant) => Some(Draw {
+                source: Source::Terrain,
+                image: LAVA_FIRST_IMAGE + variant as usize % LAVA_IMAGES,
+                burning: false,
+                overlay: None,
+                ground: None,
+            }),
+            Cell::Flood => Some(Draw { source: self.water_image().0, image: self.water_image().1, burning: false, overlay: None, ground: None }),
             Cell::AgoraRoad => Some(Draw {
                 source: Source::General,
                 image: AGORA_ROAD_FIRST_IMAGE + (x + y) % AGORA_ROAD_IMAGES,
@@ -1599,6 +1648,10 @@ impl World {
                     _ => self.store(resource, amount),
                 };
                 self.gifts.push((city, resource as u8, given));
+                continue;
+            }
+            if (EARTHQUAKE..=FLOOD).contains(&event.change) {
+                self.strike(event.change, city);
                 continue;
             }
             if matches!(event.change, WAGE_RISE | WAGE_FALL) {
@@ -2094,6 +2147,7 @@ impl World {
         }
         self.run_buildings();
         self.burn_out();
+        self.recede();
         if self.ticks % TICKS_PER_DAY == 0 {
             self.update_risks();
         }
@@ -2102,6 +2156,106 @@ impl World {
             self.assign_workers();
             self.settle_month();
         }
+    }
+
+    /// Les eaux des raz-de-marée se retirent à leur date.
+    fn recede(&mut self) {
+        if self.floods.iter().all(|&(.., until)| until > self.ticks) {
+            return;
+        }
+        let now = self.ticks;
+        for &(x, y, _) in self.floods.iter().filter(|&&(.., until)| until <= now) {
+            let cell = &mut self.cells[y as usize * GRID + x as usize];
+            if *cell == Cell::Flood {
+                *cell = Cell::Terrain;
+            }
+        }
+        self.floods.retain(|&(.., until)| until > now);
+    }
+
+    /// Image de l'eau de la carte : la plus fréquente parmi ses cases d'eau.
+    fn water_image(&self) -> (Source, usize) {
+        let mut counts = std::collections::HashMap::new();
+        for y in (0..GRID).step_by(3) {
+            for x in (0..GRID).step_by(3) {
+                if self.map.terrain(x, y) & TERRAIN_WATER != 0 && self.map.image(x, y) != 0 {
+                    *counts.entry(self.map.image(x, y)).or_insert(0) += 1;
+                }
+            }
+        }
+        let commonest = counts.into_iter().max_by_key(|&(id, n)| (n, id)).map(|(id, _)| id);
+        commonest.and_then(|id| self.map.resolve(id)).unwrap_or((Source::Terrain, WATER_IMAGE))
+    }
+
+    /// Catastrophe partie du point `point` de la carte : la zone peinte dans
+    /// l'éditeur (fissure, lave ou eau) qui passe à moins de trois cases du point, ou
+    /// toute la zone de la carte si le point n'en touche aucune. Le jeu la fait
+    /// progresser case à case ; Olympe la frappe d'un coup. Les bâtiments touchés sont
+    /// détruits ; la lave et la fissure rendent les cases inutilisables, l'eau d'un
+    /// raz-de-marée se retire au bout de six mois, sauf inondation.
+    pub fn strike(&mut self, change: u8, point: usize) -> i32 {
+        let bit = match change {
+            EARTHQUAKE => TERRAIN_FISSURE,
+            LAVA => TERRAIN_LAVA_ZONE,
+            _ => TERRAIN_FLOOD_ZONE,
+        };
+        let in_zone = |w: &World, x: i32, y: i32| {
+            w.in_map(x, y)
+                && w.map.terrain(x as usize, y as usize) & bit != 0
+                && (bit != TERRAIN_FLOOD_ZONE || w.map.terrain(x as usize, y as usize) & TERRAIN_WATER == 0)
+                && !matches!(w.cell(x as usize, y as usize), Cell::Chasm(_) | Cell::Lava(_) | Cell::Flood)
+        };
+        let mut zone = vec![false; GRID * GRID];
+        let mut queue: VecDeque<(i32, i32)> = VecDeque::new();
+        if let Some((px, py)) = self.map.disaster_point(point) {
+            let (px, py) = (px as i32, py as i32);
+            for y in py - DISASTER_REACH..=py + DISASTER_REACH {
+                for x in px - DISASTER_REACH..=px + DISASTER_REACH {
+                    if in_zone(self, x, y) {
+                        queue.push_back((x, y));
+                    }
+                }
+            }
+        }
+        if queue.is_empty() {
+            queue = (0..GRID as i32 * GRID as i32).map(|i| (i % GRID as i32, i / GRID as i32)).filter(|&(x, y)| in_zone(self, x, y)).collect();
+        }
+        for &(x, y) in &queue {
+            zone[y as usize * GRID + x as usize] = true;
+        }
+        while let Some((x, y)) = queue.pop_front() {
+            for (nx, ny) in (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (x + dx, y + dy))) {
+                if in_zone(self, nx, ny) && !std::mem::replace(&mut zone[ny as usize * GRID + nx as usize], true) {
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+        let mut struck: Vec<u16> = zone.iter().enumerate().filter(|&(_, &z)| z).filter_map(|(i, _)| match self.cells[i] {
+            Cell::Building(id) => Some(id),
+            _ => None,
+        }).collect();
+        struck.sort_unstable();
+        struck.dedup();
+        for &id in &struck {
+            let left = if change == LAVA { Cell::Fire(0) } else { Cell::Rubble(0) };
+            self.remove_building(id, left);
+        }
+        let until = if change == TIDAL_WAVE { self.ticks + FLOOD_TICKS } else { 0 };
+        for (i, _) in zone.iter().enumerate().filter(|&(_, &z)| z) {
+            let (x, y) = (i % GRID, i / GRID);
+            self.cells[i] = match change {
+                EARTHQUAKE => Cell::Chasm(((x * 31 + y * 17) % CHASM_IMAGES) as u8),
+                LAVA => Cell::Lava(((x * 7 + y * 3) % LAVA_IMAGES) as u8),
+                _ => Cell::Flood,
+            };
+            if until > 0 {
+                self.floods.push((x as u16, y as u16, until));
+            }
+        }
+        // Les flammes de la lave s'éteignent sous elle.
+        self.fires.retain(|&(x, y, _)| !zone[y as usize * GRID + x as usize]);
+        self.disaster_news.push((change, struck.len() as i32));
+        struck.len() as i32
     }
 
     /// Les incendies arrivés à leur terme ne laissent que des décombres.
@@ -3045,6 +3199,12 @@ impl World {
                 Cell::Road => writeln!(out, "route {} {}", index % GRID, index / GRID),
                 Cell::AgoraRoad => writeln!(out, "dallage {} {}", index % GRID, index / GRID),
                 Cell::Rubble(variant) => writeln!(out, "ruine {} {} {variant}", index % GRID, index / GRID),
+                Cell::Chasm(variant) => writeln!(out, "gouffre {} {} {variant}", index % GRID, index / GRID),
+                Cell::Lava(variant) => writeln!(out, "lave {} {} {variant}", index % GRID, index / GRID),
+                Cell::Flood => {
+                    let until = self.floods.iter().find(|&&(x, y, _)| y as usize * GRID + x as usize == index).map_or(0, |f| f.2);
+                    writeln!(out, "inondation {} {} {until}", index % GRID, index / GRID)
+                }
                 _ => Ok(()),
             };
         }
@@ -3127,7 +3287,7 @@ impl World {
         let (mut scheduled, mut military): (Vec<Scheduled>, Vec<u8>) = (Vec::new(), Vec::new());
         let mut requests = Vec::new();
         let mut invasions = Vec::new();
-        let (mut wage_shift, mut away) = (0, Vec::new());
+        let (mut wage_shift, mut away, mut floods) = (0, Vec::new(), Vec::new());
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -3202,6 +3362,17 @@ impl World {
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
                     *cells.get_mut(y * GRID + x).ok_or_else(bad)? = if kind == "route" { Cell::Road } else { Cell::AgoraRoad };
+                }
+                "gouffre" | "lave" | "inondation" => {
+                    let (x, y, value) = (number_at(0)? as usize, number_at(1)? as usize, number_at(2)?);
+                    *cells.get_mut(y * GRID + x).ok_or_else(bad)? = match kind {
+                        "gouffre" => Cell::Chasm(value as u8),
+                        "lave" => Cell::Lava(value as u8),
+                        _ => Cell::Flood,
+                    };
+                    if kind == "inondation" && value > 0 {
+                        floods.push((x as u16, y as u16, value as u64));
+                    }
                 }
                 "ruine" | "feu" => {
                     let (x, y, variant) = (number_at(0)? as usize, number_at(1)? as usize, number_at(2)? as u8 % RUBBLE_IMAGES);
@@ -3354,6 +3525,7 @@ impl World {
         });
         self.cells = cells;
         self.fires = fires;
+        (self.floods, self.disaster_news) = (floods, Vec::new());
         self.disasters.clear();
         self.buildings = buildings;
         self.figures = figures;

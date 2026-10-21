@@ -60,14 +60,16 @@ Ce qui fonctionne :
   depuis le panneau `C` : servir une cité accroît sa faveur, l'ignorer la fâche,
   jusqu'à la rendre rivale (barème d'Olympe) ; ils font aussi varier les prix,
   l'offre et la demande des cités, les salaires, et éloignent l'armée d'une rivale
-  (sa défense est alors réduite de moitié) ;
+  (sa défense est alors réduite de moitié) ; les catastrophes frappent les zones
+  peintes dans l'éditeur à partir de leur point de départ : un tremblement de terre
+  ouvre la fissure, la lave recouvre le pays, un raz-de-marée inonde la côte six mois
+  (pour toujours si l'aventure le veut), et les bâtiments touchés sont détruits ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : catastrophes naturelles (tremblements de terre, lave,
-raz-de-marée, glissements de terrain, terres englouties), animations de combat, batailles et colonies (une colonie
+Ce qui manque encore : glissements de terrain et terres englouties, animations de combat, batailles et colonies (une colonie
 part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
 ; scierie et atelier de maçonnerie se posent sans forêt ni carrière ; conseillers,
 voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs

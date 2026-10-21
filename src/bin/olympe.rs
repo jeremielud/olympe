@@ -773,7 +773,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::HeroHall(hero) => !episode.events.iter().any(|event| match *event {
                 Event::Quest { hero: wanted, .. } => wanted == hero,
                 Event::Monster { monster, .. } => heroes::hero_against(monster) == Some(hero),
-                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::TradeChange { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Wages { .. } | Event::ArmyAway { .. } | Event::Other => false,
+                Event::World { .. } | Event::Request { .. } | Event::Gift { .. } | Event::TradeChange { .. } | Event::GodInvasion { .. } | Event::Invasion { .. } | Event::Wages { .. } | Event::ArmyAway { .. } | Event::Disaster { .. } | Event::Other => false,
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
@@ -1014,6 +1014,17 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 world.schedule(if rise { zeus::world::WAGE_RISE } else { zeus::world::WAGE_FALL }, (0, 0), amount, month, years)
             }
             Event::ArmyAway { cities, months, month, years } => world.schedule(zeus::world::ARMY_AWAY, cities, months, month, years),
+            // Glissements de terrain et terres englouties ne sont pas simulés.
+            Event::Disaster { kind, points, permanent, month, years } => {
+                let change = match kind {
+                    3 => zeus::world::EARTHQUAKE,
+                    24 => zeus::world::LAVA,
+                    25 if permanent => zeus::world::FLOOD,
+                    25 => zeus::world::TIDAL_WAVE,
+                    _ => continue,
+                };
+                world.schedule(change, points, (0, 0), month, years)
+            }
             Event::Request { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::REQUEST.saturating_add(resource), cities, amount, month, years)
             }
@@ -2297,6 +2308,21 @@ fn run(
                     zeus::world::RequestNews::Expired(_) => (format!("La demande de {name} n'a pas été satisfaite"), now),
                 };
                 world.request_news.clear();
+            }
+            if let Some((change, destroyed)) = world.disaster_news.pop() {
+                let what = match change {
+                    zeus::world::EARTHQUAKE => "Tremblement de terre ! La terre s'ouvre",
+                    zeus::world::LAVA => "Éruption ! La lave recouvre le pays",
+                    zeus::world::TIDAL_WAVE => "Raz-de-marée ! Les eaux envahissent la côte",
+                    _ => "Inondation ! La mer engloutit la côte pour toujours",
+                };
+                let toll = match destroyed {
+                    0 => String::new(),
+                    1 => " : un bâtiment détruit".to_string(),
+                    n => format!(" : {n} bâtiments détruits"),
+                };
+                notice = (format!("{what}{toll}"), now);
+                world.disaster_news.clear();
             }
             if let Some(change) = world.wage_news.pop() {
                 let (verb, normal) = (if change > 0 { "montent" } else { "baissent" }, 30 + world.wage_shift);

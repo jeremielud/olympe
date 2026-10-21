@@ -100,6 +100,12 @@ const EVENT_WAGE_TYPES: [u8; 2] = [8, 9];
 /// Armée rivale partie en campagne (20) : la cité est affaiblie pendant tant de mois
 /// (quantité ; Olympe y lit une durée).
 const EVENT_ARMY_AWAY_TYPE: u8 = 20;
+/// Catastrophes : tremblement de terre (3), glissement de terrain (5), coulée de lave
+/// (24), raz-de-marée (25), terres englouties (28). Le point de départ est un point de
+/// catastrophe de la carte (comme une cité : seul en 30, intervalle en 32 et 34) ; un
+/// raz-de-marée permanent (octet 121) est une inondation.
+const EVENT_DISASTER_TYPES: [u8; 5] = [3, 5, 24, 25, 28];
+const EVENT_PERMANENT: usize = 121;
 const EVENT_GOOD: usize = 6;
 const EVENT_MONTH: usize = 3;
 const EVENT_AMOUNT: usize = 16;
@@ -167,6 +173,9 @@ pub enum Event {
     Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
     /// Les salaires montent ou baissent de tant de drachmes par an et par dix ouvriers.
     Wages { rise: bool, amount: (i16, i16), month: u8, years: (i16, i16) },
+    /// Catastrophe naturelle du type de l'éditeur (3, 5, 24, 25, 28), partant d'un
+    /// point de catastrophe de la carte.
+    Disaster { kind: u8, points: (i16, i16), permanent: bool, month: u8, years: (i16, i16) },
     /// L'armée d'une cité rivale part pour tant de mois.
     ArmyAway { cities: (i16, i16), months: (i16, i16), month: u8, years: (i16, i16) },
     Other,
@@ -257,6 +266,20 @@ impl Settings {
                             Event::Invasion {
                                 cities: either(EVENT_CITY, EVENT_CITIES),
                                 soldiers: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                month: event[EVENT_MONTH] % 12,
+                                years: either(EVENT_YEAR, EVENT_YEARS),
+                            }
+                        }
+                        kind if EVENT_DISASTER_TYPES.contains(&kind) => {
+                            let short = |at: usize| i16::from_le_bytes([event[at], event[at + 1]]);
+                            let either = |one: usize, range: usize| match short(one) {
+                                n if n >= 0 => (n, n),
+                                _ => (short(range), short(range + 2)),
+                            };
+                            Event::Disaster {
+                                kind,
+                                points: either(EVENT_CITY, EVENT_CITIES),
+                                permanent: event[EVENT_PERMANENT] != 0,
                                 month: event[EVENT_MONTH] % 12,
                                 years: either(EVENT_YEAR, EVENT_YEARS),
                             }

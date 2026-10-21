@@ -217,6 +217,10 @@ fn quest_and_monster_goals_name_their_events() {
     assert_eq!(all(&war).iter().filter(|e| matches!(e, Event::ArmyAway { months: (5, 10), .. })).count(), 4);
     assert!(all(&war).contains(&Event::ArmyAway { cities: (8, 8), months: (5, 10), month: 3, years: (4, 4) }));
     assert!(all(&jason).iter().any(|e| matches!(e, Event::Wages { rise: true, amount: (3, 6), .. })));
+    // Persée : un tremblement de terre au point 2 et des raz-de-marée aux points 3 à 5.
+    let perseus = Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap().settings.unwrap();
+    let disasters: Vec<(u8, (i16, i16))> = all(&perseus).into_iter().filter_map(|e| match e { Event::Disaster { kind, points, .. } => Some((kind, points)), _ => None }).collect();
+    assert_eq!(disasters, [(3, (1, 2)), (25, (3, 5))]);
     // La colonie de Ténédos reçoit de la cité mère ce qu'elle a mis de côté.
     assert!(matches!(troy.colonies[0].events[1], Event::Gift { resource: 14, cities: (0, 0), amount: (-1, -1), .. }));
     // Une cité demande entre 1000 et 2000 drachmes (19 dans la numérotation de Zeus).

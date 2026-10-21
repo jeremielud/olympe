@@ -650,6 +650,32 @@ fn gifts_bring_the_goods_set_aside_by_the_previous_city() {
 }
 
 #[test]
+fn disasters_strike_the_zones_painted_on_the_map() {
+    use zeus::world::{EARTHQUAKE, TIDAL_WAVE};
+    let Some(data) = data() else { return };
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Model::parse(&fs::read(data.join("model/zeus_model_normal.txt")).unwrap()).unwrap().houses, WalkerImages::default(), 10_000);
+    // Le point 2 de Persée est sur la fissure, le point 3 dans la zone du raz-de-marée.
+    let (fx, fy) = world.map.disaster_point(2).unwrap();
+    assert_ne!(world.map.terrain(fx, fy) & zeus::world::TERRAIN_FISSURE, 0);
+    let (wx, wy) = world.map.disaster_point(3).unwrap();
+    assert!(world.can_build(fx as i32, fy as i32, 1) && world.can_build(wx as i32, wy as i32, 1));
+    assert!(world.place_building(HOUSE, fx as i32, fy as i32));
+    assert_eq!(world.strike(EARTHQUAKE, 2), 1);
+    assert!(world.building_at(fx as i32, fy as i32).is_none() && !world.can_build(fx as i32, fy as i32, 1));
+    world.strike(TIDAL_WAVE, 3);
+    assert!(!world.can_build(wx as i32, wy as i32, 1));
+    // La sauvegarde garde la fissure et l'eau ; l'eau se retire au bout de six mois.
+    let saved = world.save();
+    let mut other = World::new(campaign.parent().clone(), world.kinds.clone(), Vec::new(), WalkerImages::default(), 0);
+    other.load(&saved).unwrap();
+    assert_eq!(other.save(), saved);
+    (0..6 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.can_build(wx as i32, wy as i32, 1) && !world.can_build(fx as i32, fy as i32, 1));
+}
+
+#[test]
 fn wages_and_rival_armies_follow_events() {
     use zeus::map::{City, RIVAL};
     use zeus::world::{ARMY_AWAY, WAGE_FALL, WAGE_RISE};

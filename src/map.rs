@@ -35,6 +35,11 @@ const TERRAIN: usize = 6;
 /// sortie des voyageurs.
 const SCENARIO: usize = 14;
 const ENTRY_POINTS_OFFSET: usize = 908;
+/// Points de catastrophe de l'éditeur : huit abscisses (16 bits) en 916, huit
+/// ordonnées en 932 (lus par Zeus.exe en 0x51eff0, rangés en 0x902cbc et 0x902ccc).
+const DISASTER_X_OFFSET: usize = 916;
+const DISASTER_Y_OFFSET: usize = 932;
+const DISASTER_POINTS: usize = 8;
 
 /// Cités du monde : un bloc de 22 enregistrements, de 476 octets dans les cartes de
 /// Zeus et de 572 dans celles de Poséidon (la forme qu'ils ont en mémoire). Les
@@ -202,6 +207,16 @@ impl Map {
             .filter(|&(x, y)| in_grid(x) && in_grid(y))
             .map(|(x, y)| (x as usize, y as usize))
             .collect()
+    }
+
+    /// Point de catastrophe `n` (de 1 à 8), s'il tombe dans la grille.
+    pub fn disaster_point(&self, n: usize) -> Option<(usize, usize)> {
+        let data = &self.blocks.get(SCENARIO)?.data;
+        let i = n.checked_sub(1).filter(|&i| i < DISASTER_POINTS)?;
+        let value = |at: usize| data.get(at..at + 2).map(|b| i16::from_le_bytes([b[0], b[1]]));
+        let (x, y) = (value(DISASTER_X_OFFSET + 2 * i)?, value(DISASTER_Y_OFFSET + 2 * i)?);
+        let in_grid = |v: i16| (0..GRID as i16).contains(&v);
+        (in_grid(x) && in_grid(y)).then_some((x as usize, y as usize))
     }
 
     /// Cités du monde, vide pour une carte qui n'en décrit pas.
