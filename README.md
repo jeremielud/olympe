@@ -29,7 +29,8 @@ Ce qui fonctionne :
   l'entrepôt) ; l'épisode se termine sur son récit de victoire quand tous sont atteints ;
 - sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
   comme dans le jeu ; le chantier prend marbre, bois et sculptures à l'entrepôt
-  (quantités provisoires), et les objectifs de sanctuaire sont suivis ;
+  (quantités provisoires), et les objectifs de sanctuaire sont suivis ; achevés, ceux
+  d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
   ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont

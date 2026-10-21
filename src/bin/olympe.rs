@@ -725,7 +725,9 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
 /// pêcheries, la restriction ne s'applique qu'aux épisodes qui en permettent au moins
 /// une : les autres resteraient sans vivres.
 fn lock_resources(world: &mut World, episode: &Episode) {
-    let has = |resource: u8| episode.resources.contains(&resource);
+    // Un sanctuaire achevé apporte sa ressource (éditeur d'aventures, annexe 2).
+    let granted: Vec<u8> = world.sanctuaries().iter().filter_map(|&god| SANCTUARY_RESOURCES.iter().find(|&&(g, _)| g == god).map(|&(_, r)| r)).collect();
+    let has = |resource: u8| episode.resources.contains(&resource) || granted.contains(&resource);
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
     world.locked = world
@@ -871,6 +873,10 @@ fn set_aside(world: &mut World, goals: &[Goal], text: &Text) -> String {
     }
     report.join(" ; ")
 }
+
+/// Ressource qu'apporte le sanctuaire d'un dieu : les oliviers d'Athéna, la vigne de
+/// Dionysos, le bronze d'Héphaïstos (les orangers d'Héra ne sont pas simulés).
+const SANCTUARY_RESOURCES: [(u8, u8); 3] = [(8, RESOURCE_OLIVES), (10, RESOURCE_GRAPES), (9, RESOURCE_BRONZE)];
 
 /// Élément d'un sanctuaire : son image et son catalogue.
 fn sanctuary_part(dx: usize, dy: usize, piece: Piece) -> Part {
@@ -1951,6 +1957,8 @@ fn run(
         let (mut goals_panel, mut won) = (false, false);
         // Panneau des cités du monde, ouvert par C.
         let mut cities_panel = false;
+        // Sanctuaires achevés, pour débloquer ce qu'ils apportent dès leur achèvement.
+        let mut sanctuaries_built = world.sanctuaries().len();
         // Étape « fin » d'un essai scripté : l'épisode se termine comme si ses objectifs
         // étaient atteints.
         let mut force_end = false;
@@ -2108,6 +2116,22 @@ fn run(
             }
 
             // Sinistres survenus pendant la simulation : on prévient le joueur.
+            // Un sanctuaire vient d'être achevé : son dieu apporte sa ressource.
+            let built = world.sanctuaries();
+            if built.len() != sanctuaries_built {
+                sanctuaries_built = built.len();
+                if let Some(episode) = episode(journey.step()).filter(|_| !demo) {
+                    lock_resources(&mut world, episode);
+                }
+                if let Some(&god) = built.last() {
+                    let gift = SANCTUARY_RESOURCES.iter().find(|&&(g, _)| g == god).map(|&(_, r)| text.get(23, r as usize).to_lowercase());
+                    let name = text.get(sanctuary::TEXT_GODS, god as usize);
+                    notice = match gift {
+                        Some(gift) => (format!("Sanctuaire de {name} achevé : {name} vous offre {gift}"), now),
+                        None => (format!("Sanctuaire de {name} achevé"), now),
+                    };
+                }
+            }
             // Héros : arrivées, départs en quête, combats.
             if let Some(news) = world.hero_news.pop() {
                 let events = episode(journey.step()).map_or(&[][..], |e| &e.events[..]);
@@ -2151,6 +2175,7 @@ fn run(
                 if next < journey.order.len() {
                     if journey.travel(&mut world, next) {
                         minimap_at = arrive(&world, &mut graphics, &mut view);
+                        sanctuaries_built = world.sanctuaries().len();
                         (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
                     }
                     let step = journey.step();
@@ -2214,6 +2239,7 @@ fn run(
                             notice = match journey.load(&mut world, &save_file) {
                                 Ok(()) => {
                                     minimap_at = arrive(&world, &mut graphics, &mut view);
+                        sanctuaries_built = world.sanctuaries().len();
                                     (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
                                     let step = journey.step();
                                     if let Some(episode) = episode(step).filter(|_| !demo) {
