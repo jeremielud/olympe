@@ -418,7 +418,10 @@ pub enum Conquest {
 }
 
 const CONQUEST_PER_SHIELD: i32 = 24;
-/// Tribut annuel d'une vassale : une part fixe et une part par bouclier (Olympe).
+/// Genre d'une colonie dans la fiche d'une cité.
+const COLONY_KIND: u8 = 1;
+/// Tribut annuel d'une vassale dont la carte ne fixe pas le montant : une part fixe
+/// et une part par bouclier (Olympe).
 const TRIBUTE_BASE: i32 = 250;
 const TRIBUTE_PER_SHIELD: i32 = 50;
 
@@ -3083,11 +3086,13 @@ impl World {
             for god in self.sanctuaries() {
                 self.bless(god);
             }
-            // Tribut annuel des vassales.
+            // Tribut annuel des vassales et des colonies fondées : le montant réglé
+            // dans l'éditeur, ou à défaut le barème d'Olympe.
             for city in 0..self.cities.len() {
                 let c = &self.cities[city];
-                if c.active && c.status == VASSAL {
-                    let tribute = TRIBUTE_BASE + TRIBUTE_PER_SHIELD * c.military as i32;
+                let colony = c.kind == COLONY_KIND && c.status == crate::map::COLONY && c.tribute_paid > 0;
+                if c.active && (c.status == VASSAL || colony) {
+                    let tribute = if c.tribute_paid > 0 { c.tribute_paid } else { TRIBUTE_BASE + TRIBUTE_PER_SHIELD * c.military as i32 };
                     self.money += tribute;
                     self.tributes.push((city, tribute));
                 }

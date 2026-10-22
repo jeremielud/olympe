@@ -61,6 +61,8 @@ const CITY_STATUS: usize = 212;
 const CITY_MILITARY: usize = 220;
 /// Nation de l'armée (octet 204 : Troie 1, Sardes 2, Cymé 4…).
 const CITY_ARMY: usize = 204;
+const CITY_TRIBUTE_RECEIVED: usize = 228;
+const CITY_TRIBUTE_PAID: usize = 232;
 /// Attitude envers le joueur (entier en 340 : de 50 à 85 dans les aventures, 80
 /// pour les colonies à fonder) ; Olympe en fait la faveur de la cité.
 const CITY_FAVOR: usize = 340;
@@ -99,6 +101,10 @@ pub struct City {
     /// 2 perse, 3 centaures, 4 amazones, 5 égyptienne, 6 maya, 7 phénicienne,
     /// 8 océanides, 9 atlante.
     pub army: u8,
+    /// Tributs réglés dans l'éditeur : ce que la cité recevrait du joueur (« Rec »,
+    /// entier en 228) et ce qu'elle lui paie (« Pay », entier en 232), en drachmes.
+    pub tribute_received: i32,
+    pub tribute_paid: i32,
 }
 
 /// Catalogue d'où provient une image de terrain.
@@ -297,6 +303,8 @@ impl Map {
                 sold: 0,
                 bought: 0,
                 army: r[CITY_ARMY],
+                tribute_received: le32(r, CITY_TRIBUTE_RECEIVED) as i32,
+                tribute_paid: le32(r, CITY_TRIBUTE_PAID) as i32,
             })
             .collect()
     }

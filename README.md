@@ -67,7 +67,8 @@ Ce qui fonctionne :
   des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
   (marchandises, quantités et prix lus dans la carte) ; les vassales
-  paient un tribut annuel en drachmes (montant d'Olympe) ; les cités rivales
+  et les colonies fondées
+  paient chaque année le tribut réglé dans l'éditeur ; les cités rivales
   envoient leurs armées à la date prévue : les soldats entrent par un point
   d'invasion de la carte, les hoplites de la cité sortent du palais à leur rencontre
   et ils se battent au corps à corps (Grecs, Troyens, Perses, centaures, amazones,
