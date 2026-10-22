@@ -1967,7 +1967,7 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     put_farm(world, 3);
     put(world, service(world, Service::Tax), x - 1, y - 3);
     put(world, kind_of(world, &role(Function::Palace)), x + 14, y + 1);
-    // Immeubles : huile, garde.
+    // Immeubles : huile, garde, hôpital.
     stage.set(480);
     put_maker(world, Function::Supplier(Raw::Crops));
     put_maker(world, Function::Workshop(Good::Oil));
@@ -1977,6 +1977,7 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     put_farm(world, 4);
     put_farm(world, 5);
     put(world, service(world, Service::Security), x - 1, y - 5);
+    put(world, service(world, Service::Health), x + 27, y + 8);
     // Appartements : le quartier riche et ce qu'il consomme.
     stage.set(600);
     put(world, kind_of(world, &|k| k.function == Function::House && k.size == 4), x + 8, y - 16);
@@ -2941,6 +2942,13 @@ fn run(
                 };
                 notice = (line, now);
                 world.world_news.clear();
+            }
+            if let Some(incident) = world.incidents.pop() {
+                notice = match incident {
+                    zeus::world::Incident::Theft { amount, .. } => (format!("Un voleur a dérobé {amount} dr. au trésor : postez des gardes"), now),
+                    zeus::world::Incident::Plague { dead, .. } => (format!("Une épidémie a emporté {dead} habitants : bâtissez des infirmeries"), now),
+                };
+                world.incidents.clear();
             }
             if let Some(disaster) = world.disasters.pop() {
                 let what = if disaster.fire { "Incendie" } else { "Effondrement" };

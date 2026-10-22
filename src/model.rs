@@ -34,6 +34,11 @@ pub struct HouseModel {
     pub arms: i32,
     pub capacity: i32,
     pub tax_multiplier: i32,
+    /// Risques de criminalité (incrément et base) et de maladie, qui montent comme
+    /// celui d'incendie ; négatifs, ils n'en font courir aucun.
+    pub crime: i32,
+    pub crime_base: i32,
+    pub disease: i32,
 }
 
 pub struct Model {
@@ -70,6 +75,9 @@ impl Model {
                             arms: values[12],
                             capacity: values[17],
                             tax_multiplier: values[18],
+                            crime: values[14],
+                            crime_base: values[15],
+                            disease: values.get(20).copied().unwrap_or(0),
                         });
                     }
                     continue;

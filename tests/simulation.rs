@@ -951,3 +951,32 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
     other.load(&saved).unwrap();
     assert_eq!((other.tax_level, other.sentiment), (0, world.sentiment));
 }
+
+#[test]
+fn guards_and_doctors_keep_thieves_and_plague_away() {
+    let Some(data) = data() else { return };
+    let run = |protected: bool| {
+        let (mut world, x, y) = world(&data);
+        street(&mut world, x, y);
+        assert!(world.place_building(MAINTENANCE, x + 8, y + 5));
+        assert!(world.place_building(FOUNTAIN, x + 8, y + 2));
+        if protected {
+            world.kinds.push(Kind::simple("infirmerie".into(), 20, 2, 1075, Function::Service(Service::Health), 0));
+            world.kinds.push(Kind::simple("garde".into(), 20, 2, 1075, Function::Service(Service::Security), 0));
+            assert!(world.place_building(world.kinds.len() - 2, x, y + 5));
+            assert!(world.place_building(world.kinds.len() - 1, x + 4, y + 5));
+        }
+        let mut incidents = Vec::new();
+        for _ in 0..24 * TICKS_PER_MONTH {
+            world.tick();
+            incidents.append(&mut world.incidents);
+        }
+        incidents
+    };
+    let plague = |i: &zeus::world::Incident| matches!(i, zeus::world::Incident::Plague { .. });
+    let theft = |i: &zeus::world::Incident| matches!(i, zeus::world::Incident::Theft { .. });
+    let exposed = run(false);
+    assert!(exposed.iter().any(plague) && exposed.iter().any(theft), "{exposed:?}");
+    let protected = run(true);
+    assert!(protected.is_empty(), "{protected:?}");
+}

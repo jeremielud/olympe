@@ -106,6 +106,9 @@ Ce qui fonctionne :
   les taux du jeu, et humeur de la cité qui en dépend selon la table du jeu et la
   difficulté (`tax_sentiment_model.txt`) : une cité mécontente n'attire plus
   d'immigrants, puis ses habitants s'en vont ;
+- criminalité et maladie, qui montent dans chaque maison selon son niveau de logement
+  (valeurs du jeu) et, pour la criminalité, le mécontentement : sans poste de garde
+  un voleur puise au trésor, sans hôpital une épidémie emporte des habitants ;
 - sauvegarde et rechargement d'une partie.
 
 Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
@@ -120,7 +123,8 @@ sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
 figurés par des obélisques ; 
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
-repris du jeu, de même que les seuils d'humeur et l'effet du chômage sur elle.
+repris du jeu, de même que les seuils d'humeur et l'effet du chômage sur elle, le montant des vols
+et la part des habitants qu'emporte une épidémie.
 
 
 ## Installation

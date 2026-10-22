@@ -556,6 +556,12 @@ const APPEAL_LIMIT: i32 = 100;
 /// moteur descend ; ils ne sont pas vérifiés dans Zeus.
 const RISK_LIMIT: i32 = 200;
 const RISK_DAILY_CHANCE: u32 = 8;
+/// Criminalité et maladie (Olympe) : un cran de criminalité de plus par tranche de
+/// cinq points d'humeur sous l'humeur de départ ; un voleur emporte deux drachmes par
+/// habitant de sa maison ; une épidémie emporte la moitié des habitants.
+const DISCONTENT_PER_CRIME: i32 = 5;
+const THEFT_PER_PERSON: i32 = 2;
+const PLAGUE_PERCENT: i32 = 50;
 /// Durée d'un incendie avant qu'il ne reste que des décombres.
 const FIRE_TICKS: u64 = TICKS_PER_MONTH;
 /// Images de décombres dans `zeus_terrain.sg3`.
@@ -890,6 +896,10 @@ pub struct House {
     covered_until: [u64; SERVICES.len()],
     /// Réserves de la maison, en chargements, dans l'ordre de `GOODS`.
     pub goods: [i32; GOODS.len()],
+    /// Risques de criminalité et de maladie accumulés depuis le dernier passage d'un
+    /// garde ou d'un médecin.
+    pub crime: i32,
+    pub disease: i32,
 }
 
 impl House {
@@ -1071,6 +1081,15 @@ pub struct Disaster {
     pub y: usize,
 }
 
+/// Méfait ou épidémie dans une maison.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Incident {
+    /// Un voleur a pris ces drachmes au trésor.
+    Theft { amount: i32, x: usize, y: usize },
+    /// La maladie a emporté ces habitants.
+    Plague { dead: i32, x: usize, y: usize },
+}
+
 /// Ce qu'il faut dessiner sur une case.
 pub struct Draw {
     pub source: Source,
@@ -1182,6 +1201,8 @@ pub struct World {
     fires: Vec<(u16, u16, u64)>,
     /// Sinistres survenus depuis la dernière lecture, pour avertir le joueur.
     pub disasters: Vec<Disaster>,
+    /// Vols et épidémies survenus depuis la dernière lecture.
+    pub incidents: Vec<Incident>,
     /// Attrait de chaque case, recalculé quand un bâtiment apparaît ou disparaît.
     appeal: Vec<i16>,
 }
@@ -1243,6 +1264,7 @@ impl World {
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
+            incidents: Vec::new(),
             appeal: vec![0; GRID * GRID],
         };
         // Prix réglés dans l'éditeur pour cette carte.
@@ -1561,7 +1583,7 @@ impl World {
         let id = self.buildings.len() as u16;
         let first_level = if size == ELITE_SIZE { ELITE_FIRST_LEVEL } else { 0 };
         let house = (function == Function::House)
-            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()] });
+            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()], crime: 0, disease: 0 });
         self.buildings.push(Some(Building {
             kind,
             x: x as usize,
@@ -3204,6 +3226,7 @@ impl World {
             if self.next_random() % RISK_DAILY_CHANCE != 0 {
                 continue;
             }
+            self.update_house_risks(id);
             let Some(building) = self.buildings[id].as_mut() else { continue };
             let kind = &self.kinds[building.kind];
             building.fire += kind.fire_risk;
@@ -3213,6 +3236,38 @@ impl World {
             if burns || collapses {
                 self.remove_building(id as u16, if burns { Cell::Fire(0) } else { Cell::Rubble(0) });
                 self.disasters.push(Disaster { fire: burns, kind, x, y });
+            }
+        }
+    }
+
+    /// Criminalité et maladie d'une maison habitée, au même rythme que l'incendie :
+    /// les incréments du niveau de logement, et pour la criminalité le mécontentement
+    /// de la cité. Passé le seuil, un voleur puise au trésor, ou la maladie emporte
+    /// une part des habitants.
+    fn update_house_risks(&mut self, id: usize) {
+        let discontent = (START_SENTIMENT - self.sentiment).max(0) / DISCONTENT_PER_CRIME;
+        let Some(building) = self.buildings[id].as_mut() else { return };
+        let (x, y) = (building.x, building.y);
+        let Some(house) = building.house.as_mut() else { return };
+        let Some(model) = self.house_levels.get(house.level) else { return };
+        if model.crime > 0 {
+            house.crime += (model.crime + model.crime_base + discontent).max(0);
+        }
+        house.disease += model.disease.max(0);
+        if house.crime > RISK_LIMIT {
+            house.crime = 0;
+            let amount = (house.population * THEFT_PER_PERSON).min(self.money.max(0));
+            if amount > 0 {
+                self.money -= amount;
+                self.incidents.push(Incident::Theft { amount, x, y });
+            }
+        }
+        if house.disease > RISK_LIMIT {
+            house.disease = 0;
+            let dead = house.population * PLAGUE_PERCENT / 100;
+            if dead > 0 {
+                house.population -= dead;
+                self.incidents.push(Incident::Plague { dead, x, y });
             }
         }
     }
@@ -3668,7 +3723,15 @@ impl World {
             }
             let Some(house) = self.buildings[id as usize].as_mut().and_then(|b| b.house.as_mut()) else { continue };
             match &mut rounds {
-                Rounds::Service(service) => house.covered_until[*service as usize] = until,
+                Rounds::Service(service) => {
+                    house.covered_until[*service as usize] = until;
+                    // Le garde chasse les voleurs, le médecin soigne.
+                    match service {
+                        Service::Security => house.crime = 0,
+                        Service::Health => house.disease = 0,
+                        _ => {}
+                    }
+                }
                 Rounds::Goods { good, carried, .. } => {
                     // La maison prend de quoi tenir quelques mois.
                     let reserve = match good {
@@ -4222,6 +4285,9 @@ impl World {
                 let goods: Vec<String> = h.goods.iter().map(i32::to_string).collect();
                 let _ = write!(out, " maison {} {} {} {} {}", h.level, h.population, h.arriving, goods.join(" "), covered.join(" "));
             }
+            if let Some(h) = b.house.as_ref().filter(|h| h.crime != 0 || h.disease != 0) {
+                let _ = write!(out, " risques {} {}", h.crime, h.disease);
+            }
             if b.foods.iter().any(|&f| f != 0) {
                 let _ = write!(out, " vivres {}", b.foods.iter().map(i32::to_string).collect::<Vec<_>>().join(" "));
             }
@@ -4404,10 +4470,16 @@ impl World {
                                 arriving: number_at(15 + goods_len)? as i32,
                                 goods,
                                 covered_until,
+                                crime: 0,
+                                disease: 0,
                             })
                         }
                         _ => None,
                     };
+                    let mut house = house;
+                    if let (Some(house), Some(at)) = (house.as_mut(), rest.iter().position(|&w| w == "risques")) {
+                        (house.crime, house.disease) = (number_at(at + 1)? as i32, number_at(at + 2)? as i32);
+                    }
                     // Vivres du grenier par ressource : absents des sauvegardes plus
                     // anciennes, où tout le stock passe pour d'origine inconnue.
                     let stock = number_at(3)? as i32;
@@ -4529,6 +4601,7 @@ impl World {
         self.fires = fires;
         (self.floods, self.disaster_news) = (floods, Vec::new());
         self.disasters.clear();
+        self.incidents.clear();
         self.buildings = buildings;
         self.figures = figures;
         self.ticks = ticks as u64;
