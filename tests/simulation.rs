@@ -280,13 +280,15 @@ fn a_sanctuary_is_built_from_storehouse_materials() {
     world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
     assert!(world.place_building(first + 1, x, y), "entrepôt");
     assert!(world.place_building(first, x + 4, y), "sanctuaire");
+    // Une case de route entre l'entrepôt et le chantier : les porteurs y passent.
+    assert!(world.place_road(x + 3, y + 1, 0));
     let hermes = Goal { kind: GoalKind::Sanctuary, values: [7, 1, 0] };
     let any_two = Goal { kind: GoalKind::Sanctuary, values: [-1, 2, 0] };
     // Un seul sanctuaire par dieu.
     assert!(!world.can_place(first, x + 8, y));
     (0..TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(hermes.status(&world), Status::Pending(None));
-    // Les matériaux arrivent à l'entrepôt ; le chantier les prend le mois suivant.
+    // Les matériaux arrivent à l'entrepôt ; des porteurs les apportent au chantier.
     let storehouse = world.buildings.iter_mut().flatten().find(|b| b.kind == first + 1).unwrap();
     storehouse.goods[Good::Marble as usize] = 4;
     storehouse.goods[Good::Wood as usize] = 4;
@@ -311,8 +313,14 @@ fn a_wharf_builds_a_trireme_from_wood() {
     let (wx, wy) = world.map.disaster_point(3).unwrap();
     let shore = (-12..12).flat_map(|dy| (-12..12).map(move |dx| (wx as i32 + dx, wy as i32 + dy))).find(|&(x, y)| world.can_place(wharf, x, y)).unwrap();
     assert!(world.place_building(wharf, shore.0, shore.1));
-    let site = (-30..30).flat_map(|dy| (-30..30).map(move |dx| (wx as i32 + dx, wy as i32 + dy))).find(|&(x, y)| world.can_place(storehouse, x, y) && world.can_build(x - 1, y - 1, 5)).unwrap();
+    // Une case de route le long du quai, et l'entrepôt contre elle.
+    let around = |(x, y): (i32, i32), size: i32| (0..size).flat_map(move |d| [(x + d, y - 1), (x + d, y + size), (x - 1, y + d), (x + size, y + d)]);
+    let (road, site) = around(shore, 3)
+        .filter(|&(rx, ry)| world.can_build(rx, ry, 1))
+        .find_map(|road| (-3..=1).flat_map(|dy| (-3..=1).map(move |dx| (road.0 + dx, road.1 + dy))).find(|&s| world.can_place(storehouse, s.0, s.1) && around(s, 3).any(|t| t == road) && !(s.0..s.0 + 3).contains(&road.0) | !(s.1..s.1 + 3).contains(&road.1)).map(|s| (road, s)))
+        .unwrap();
     assert!(world.place_building(storehouse, site.0, site.1));
+    assert!(world.place_road(road.0, road.1, 0));
     world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Wood as usize] = 6;
     let goal = Goal { kind: GoalKind::Support, values: [57, 1, 0] };
     assert_eq!(goal.status(&world), Status::Pending(Some(0)));
@@ -364,6 +372,7 @@ fn a_pyramid_rises_with_its_materials() {
     world.monument_layouts = vec![layout.clone(), layout];
     assert!(world.place_building(first + 1, x, y), "entrepôt");
     assert!(world.place_building(first, x + 4, y), "pyramide");
+    assert!(world.place_road(x + 3, y + 1, 0));
     // Une pyramide traditionnelle (101), comme dans « La naissance de l'Atlantide ».
     let goal = Goal { kind: GoalKind::Pyramid, values: [1, 101, 0] };
     let any = Goal { kind: GoalKind::Pyramid, values: [2, -1, 0] };
@@ -375,7 +384,7 @@ fn a_pyramid_rises_with_its_materials() {
     let storehouse = world.buildings.iter_mut().flatten().find(|b| b.kind == first + 1).unwrap();
     storehouse.goods[Good::Marble as usize] = needs[0] as i32;
     storehouse.goods[Good::Wood as usize] = needs[1] as i32;
-    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(goal.status(&world), Status::Met);
     assert_eq!(any.status(&world), Status::Pending(Some(1)));
     // Achevée, elle porte son sommet quatre niveaux plus haut.

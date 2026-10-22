@@ -28,7 +28,7 @@ Ce qui fonctionne :
   grenier ; laine, huile, vin, armement, bronze, bois, marbre et sculptures de
   l'entrepôt) ; l'épisode se termine sur son récit de victoire quand tous sont atteints ;
 - sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
-  comme dans le jeu ; le chantier prend marbre, bois et sculptures à l'entrepôt
+  comme dans le jeu ; des porteurs apportent au chantier, par la route, le marbre, le bois et les sculptures de l'entrepôt
   (quantités provisoires), et les objectifs de sanctuaire sont suivis ; achevés, ceux
   d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze, et
   chaque année le dieu vient en personne laisser un bienfait (choix d'Olympe) ;
@@ -97,7 +97,7 @@ s'enchaîne jusqu'à son récit de fin.
 Ce qui reste approché ou absent : les batailles se règlent par comparaison des forces,
 sans combat animé ; une colonie part de sa carte vierge et le trésor suit le joueur ;
 scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
-forêt, carrière ni mine ; les chantiers se servent à l'entrepôt sans porteurs ; pentes
+forêt, carrière ni mine ; pentes
 des pyramides en blocs ; pas de conseillers ni de vidéos ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non

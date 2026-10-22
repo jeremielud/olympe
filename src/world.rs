@@ -783,6 +783,9 @@ enum Role {
     Return { home: u16, good: Good, carried: i32 },
     /// Porteur qui livre des chargements à un bâtiment.
     Deliver { to: u16, load: i32, from: u16 },
+    /// Porteur parti de l'entrepôt avec des matériaux pour un chantier (sanctuaire,
+    /// monument, quai des trières).
+    Supply { to: u16, good: Good, load: i32 },
     /// Acheteuse en route vers un fournisseur pour le compte d'une échoppe.
     Fetch { source: u16, vendor: u16 },
     /// Monstre en marche vers le bâtiment `target`, qu'il détruira ; il se repose
@@ -835,7 +838,7 @@ impl Figure {
                 Service::Athletics => "ath",
                 Service::Drama => "act",
             }),
-            Role::Deliver { .. } => Some("crt"),
+            Role::Deliver { .. } | Role::Supply { .. } => Some("crt"),
             Role::Visit { god, .. } | Role::God { god, .. } => GOD_VOICES.get(god as usize).copied(),
             _ => None,
         }
@@ -1340,6 +1343,7 @@ impl World {
         self.figures.retain(|f| match f.role {
             Role::Immigrant { home, .. } => home != id,
             Role::Deliver { to, from, .. } => to != id && from != id,
+            Role::Supply { to, .. } => to != id,
             Role::Fetch { source, vendor } => source != id && vendor != id,
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
             Role::Monster { .. } => true,
@@ -2323,24 +2327,40 @@ impl World {
         self.monsters.iter().any(|m| m.event == event && m.slain)
     }
 
-    /// Chantiers des sanctuaires : chaque mois, ceux qui ont leurs ouvriers prennent
-    /// dans les entrepôts ce qui leur manque (sans porteurs, pour l'instant).
-    fn supply_sanctuaries(&mut self) {
+    /// Ce qui manque encore à un chantier : sanctuaire ou monument inachevé (s'il a ses
+    /// ouvriers), quai des trières sans trière.
+    fn site_needs(&self, building: &Building) -> Vec<(Good, i32)> {
+        let wanted: Vec<(Good, i32)> = match self.kinds[building.kind].function {
+            Function::Sanctuary { needs, .. } | Function::Monument { needs, .. } if building.staffed => {
+                SANCTUARY_MATERIALS.iter().zip(needs).map(|(&good, need)| (good, need as i32)).collect()
+            }
+            Function::Wharf if building.staffed && building.stock == 0 => vec![(Good::Wood, TRIREME_WOOD), (Good::Arms, TRIREME_ARMS)],
+            _ => Vec::new(),
+        };
+        wanted.into_iter().map(|(good, need)| (good, need - building.goods[good as usize])).filter(|&(_, missing)| missing > 0).collect()
+    }
+
+    /// Chantiers : chaque jour, un chantier relié par la route à un entrepôt qui a ce
+    /// qui lui manque y fait partir un porteur, un seul à la fois par matériau.
+    fn supply_sites(&mut self) {
         for id in 0..self.buildings.len() {
             let Some(building) = &self.buildings[id] else { continue };
-            let (Function::Sanctuary { needs, .. } | Function::Monument { needs, .. }) = self.kinds[building.kind].function else { continue };
-            if !building.staffed {
-                continue;
-            }
-            for (&good, need) in SANCTUARY_MATERIALS.iter().zip(needs) {
-                let Some(resource) = resource_of(good) else { continue };
-                let missing = need as i32 - self.buildings[id].as_ref().map_or(0, |b| b.goods[good as usize]);
-                if missing > 0 {
-                    let taken = self.take(resource as usize, missing);
-                    if let Some(building) = self.buildings[id].as_mut() {
-                        building.goods[good as usize] += taken;
-                    }
+            for (good, missing) in self.site_needs(building) {
+                let on_the_way = self.figures.iter().any(|f| matches!(f.role, Role::Supply { to, good: g, .. } if to as usize == id && g == good));
+                if on_the_way {
+                    continue;
                 }
+                let Some(start) = self.road_next_to(id) else { continue };
+                let has = |world: &World, store: u16| {
+                    world.function(store as usize) == Function::Storehouse && world.buildings[store as usize].as_ref().is_some_and(|b| b.goods[good as usize] > 0)
+                };
+                let Some((store, mut path)) = self.road_path(start, has) else { continue };
+                let Some(shelf) = self.buildings[store as usize].as_mut().map(|b| &mut b.goods[good as usize]) else { continue };
+                let load = (*shelf).min(missing).min(CARRIER_LOAD);
+                *shelf -= load;
+                // Le chemin va du chantier à l'entrepôt : le porteur le suit à rebours.
+                path.reverse();
+                self.spawn_on_path(self.walkers.carrier, path, Role::Supply { to: id as u16, good, load });
             }
         }
     }
@@ -2393,6 +2413,7 @@ impl World {
         self.recede();
         if self.ticks % TICKS_PER_DAY == 0 {
             self.update_risks();
+            self.supply_sites();
         }
         if self.ticks % TICKS_PER_MONTH == 0 {
             self.update_houses();
@@ -2625,7 +2646,6 @@ impl World {
             self.money += sections * RACETRACK_INCOME;
         }
         self.last_month = (taxes, wages);
-        self.supply_sanctuaries();
         self.call_heroes();
         self.trade();
         self.release_monsters();
@@ -2729,25 +2749,17 @@ impl World {
                 }
                 // Quai sans trière : il réunit son bois, puis la trière est lancée au
                 // bout du chantier ; elle reste à quai, comptée dans la flotte.
+                // Quai sans trière : ses porteurs lui apportent le bois ; le chantier dure
+                // trois mois une fois le bois réuni, et la trière part armée.
                 Function::Wharf if stock == 0 => {
-                    let wood = building.goods[Good::Wood as usize];
-                    if wood < TRIREME_WOOD {
-                        let taken = resource_of(Good::Wood).map_or(0, |r| self.take(r as usize, TRIREME_WOOD - wood));
-                        let building = self.buildings[id].as_mut().unwrap();
-                        building.goods[Good::Wood as usize] += taken;
-                        if wood == 0 {
-                            building.sown_at = self.ticks;
-                        }
-                    } else if self.ticks - building.sown_at >= TRIREME_TICKS {
-                        let arms = building.goods[Good::Arms as usize];
-                        let taken = if arms < TRIREME_ARMS { resource_of(Good::Arms).map_or(0, |r| self.take(r as usize, TRIREME_ARMS - arms)) } else { 0 };
-                        let building = self.buildings[id].as_mut().unwrap();
-                        building.goods[Good::Arms as usize] += taken;
-                        if building.goods[Good::Arms as usize] >= TRIREME_ARMS {
-                            building.goods[Good::Wood as usize] = 0;
-                            building.goods[Good::Arms as usize] = 0;
-                            building.stock = 1;
-                        }
+                    let goods = building.goods;
+                    let building = self.buildings[id].as_mut().unwrap();
+                    if goods[Good::Wood as usize] < TRIREME_WOOD {
+                        building.sown_at = self.ticks;
+                    } else if self.ticks - building.sown_at >= TRIREME_TICKS && goods[Good::Arms as usize] >= TRIREME_ARMS {
+                        building.goods[Good::Wood as usize] = 0;
+                        building.goods[Good::Arms as usize] = 0;
+                        building.stock = 1;
                     }
                 }
                 Function::Producer(_) | Function::Fishery => {
@@ -3131,6 +3143,12 @@ impl World {
                 }
                 Role::Return { home, good, carried } => {
                     self.come_home(home, good, carried);
+                    finished.push(index);
+                }
+                Role::Supply { to, good, load } => {
+                    if let Some(building) = self.buildings[to as usize].as_mut() {
+                        building.goods[good as usize] += load;
+                    }
                     finished.push(index);
                 }
                 Role::Deliver { to, load, from } => {
@@ -3554,6 +3572,7 @@ impl World {
                     format!("marchand {carried} {vendor} {steps_left} {} {heading}", good as usize)
                 }
                 Role::Deliver { to, load, from } => format!("livraison {to} {load} {from} 0 0"),
+                Role::Supply { to, good, load } => format!("chantier {to} {} {load} 0 0", good as usize),
                 Role::Fetch { source, vendor } => format!("achat {source} {vendor} 0 0 0"),
                 Role::Monster { monster, target, rest_until } => format!("bete {monster} {target} {rest_until} 0 0"),
                 Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
@@ -3784,6 +3803,7 @@ impl World {
                             home: b as u16,
                         },
                         "livraison" => Role::Deliver { to: a as u16, load: b as i32, from: c as u16 },
+                        "chantier" => Role::Supply { to: a as u16, good: *GOODS.get(b as usize).ok_or_else(bad)?, load: c as i32 },
                         "achat" => Role::Fetch { source: a as u16, vendor: b as u16 },
                         "bete" => Role::Monster { monster: a as u8, target: b as u16, rest_until: c as u64 },
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
@@ -3823,6 +3843,7 @@ impl World {
         figures.retain(|f| match f.role {
             Role::Immigrant { home, .. } => exists(home),
             Role::Deliver { to, from, .. } => exists(to) && exists(from),
+            Role::Supply { to, .. } => exists(to),
             Role::Fetch { source, vendor } => exists(source) && exists(vendor),
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
             Role::Monster { .. } => true,
