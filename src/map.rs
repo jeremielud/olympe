@@ -53,6 +53,8 @@ const CITY_SIZES: [usize; 2] = [476, 572];
 /// 1 une colonie à fonder, 2 une cité étrangère), nom (octet 3, groupe de textes 21),
 /// statut (entier en 212 : 0 alliée, 1 rivale, 2 vassale, 3 colonie, comme le groupe
 /// de textes 253) et force militaire (octet 220, de 1 à 6 boucliers).
+/// Prix des marchandises : un entier par ressource.
+const PRICES: usize = 36;
 const CITY_KIND: usize = 2;
 const CITY_NAME: usize = 3;
 const CITY_STATUS: usize = 212;
@@ -242,6 +244,24 @@ impl Map {
         let (x, y) = (value(DISASTER_X_OFFSET + 2 * i)?, value(DISASTER_Y_OFFSET + 2 * i)?);
         let in_grid = |v: i16| (0..GRID as i16).contains(&v);
         (in_grid(x) && in_grid(y)).then_some((x as usize, y as usize))
+    }
+
+    /// Prix des marchandises réglés dans l'éditeur (« World Properties ») : un bloc de
+    /// 36 entiers, un par ressource. Les cartes de Zeus les rangent dans l'ancienne
+    /// numérotation des ressources. Rend (ressource, prix) pour les prix non nuls.
+    pub fn prices(&self) -> Vec<(u8, i32)> {
+        let Some(block) = self.blocks.iter().find(|b| b.count == PRICES && b.element_size == 4) else { return Vec::new() };
+        let zeus = self.version < POSEIDON_MAP_VERSION;
+        block
+            .data
+            .chunks_exact(4)
+            .enumerate()
+            .filter_map(|(r, b)| {
+                let price = i32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                let resource = if zeus { crate::goals::modern_resource(r as u8) } else { r as u8 };
+                (price > 0 && resource != 0).then_some((resource, price))
+            })
+            .collect()
     }
 
     /// Cités du monde, vide pour une carte qui n'en décrit pas.

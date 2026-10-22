@@ -705,8 +705,10 @@ fn trade_partners_buy_surplus_and_sell_what_is_missing() {
     (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     // Laine au-delà de la réserve vendue (2 par mois), vin acheté (1 par mois).
     assert_eq!((world.stored(14), world.stored(21)), (10, 1));
-    assert_eq!((world.cities[0].sold, world.cities[0].bought), (70, 50));
-    assert_eq!(world.money - money, 70 - 50 - world.last_month.1 + world.last_month.0);
+    // Aux prix de la carte : la laine 60 drachmes, le vin 160.
+    assert_eq!((world.price(14), world.price(21)), (60, 160));
+    assert_eq!((world.cities[0].sold, world.cities[0].bought), (120, 160));
+    assert_eq!(world.money - money, 120 - 160 - world.last_month.1 + world.last_month.0);
 }
 
 #[test]

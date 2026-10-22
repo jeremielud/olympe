@@ -428,8 +428,8 @@ const TRADE_STEP: i32 = 12;
 /// Réserve que le commerce garde ou cherche à atteindre, par marchandise (Olympe).
 const TRADE_RESERVE: i32 = 8;
 
-/// Prix d'une unité de marchandise, en drachmes (valeurs d'Olympe, provisoires : le
-/// jeu a ses prix, que l'on n'a pas encore trouvés).
+/// Prix d'une marchandise quand la carte n'en donne pas (valeurs d'Olympe) ; les
+/// cartes portent ceux de l'éditeur (`Map::prices`).
 fn price(resource: usize) -> i32 {
     match resource {
         1..=8 => 8,
@@ -1117,6 +1117,8 @@ pub struct World {
     /// Écart de chaque prix à son prix de base, et changements du commerce survenus
     /// depuis la dernière lecture : (cité, changement, ressource).
     pub price_shift: [i32; RESOURCES],
+    /// Prix de base des marchandises, lus dans la carte (0 : pas de prix réglé).
+    pub base_prices: [i32; RESOURCES],
     pub trade_news: Vec<(usize, u8, u8)>,
     /// Écart du salaire au salaire normal (drachmes par an et par dix ouvriers), et
     /// armées rivales parties en campagne : (cité, retour).
@@ -1146,7 +1148,7 @@ pub struct World {
 
 impl World {
     pub fn new(map: Map, kinds: Vec<Kind>, house_levels: Vec<HouseModel>, walkers: WalkerImages, money: i32) -> World {
-        World {
+        let mut world = World {
             map,
             kinds,
             buildings: Vec::new(),
@@ -1184,6 +1186,7 @@ impl World {
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
+            base_prices: [0; RESOURCES],
             trade_news: Vec::new(),
             wage_shift: 0,
             armies_away: Vec::new(),
@@ -1196,7 +1199,14 @@ impl World {
             fires: Vec::new(),
             disasters: Vec::new(),
             appeal: vec![0; GRID * GRID],
+        };
+        // Prix réglés dans l'éditeur pour cette carte.
+        for (resource, price) in world.map.prices() {
+            if let Some(slot) = world.base_prices.get_mut(resource as usize) {
+                *slot = price;
+            }
         }
+        world
     }
 
     /// Cité vierge sur une autre carte, avec les mêmes types de bâtiments et les mêmes
@@ -2347,7 +2357,8 @@ impl World {
 
     /// Prix courant d'une marchandise : prix de base, déplacé par les événements.
     pub fn price(&self, resource: usize) -> i32 {
-        (price(resource) + self.price_shift.get(resource).copied().unwrap_or(0)).max(1)
+        let base = self.base_prices.get(resource).copied().filter(|&p| p > 0).unwrap_or_else(|| price(resource));
+        (base + self.price_shift.get(resource).copied().unwrap_or(0)).max(1)
     }
 
     /// Programme un changement du commerce.

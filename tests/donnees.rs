@@ -221,6 +221,13 @@ fn quest_and_monster_goals_name_their_events() {
     let perseus = Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap().settings.unwrap();
     let disasters: Vec<(u8, (i16, i16))> = all(&perseus).into_iter().filter_map(|e| match e { Event::Disaster { kind, points, .. } => Some((kind, points)), _ => None }).collect();
     assert_eq!(disasters, [(3, (1, 2)), (25, (3, 5))]);
+    // Prix de l'éditeur : ancienne numérotation chez Zeus, nouvelle chez Poséidon.
+    let troy_prices = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().parent().prices();
+    let atlantis_prices = Campaign::parse(&fs::read(data.join("adventures/#la naissance de l'atlantide.pak")).unwrap()).unwrap().parent().prices();
+    for prices in [&troy_prices, &atlantis_prices] {
+        assert!(prices.contains(&(7, 30)) && prices.contains(&(14, 60)) && prices.contains(&(21, 160)) && prices.contains(&(19, 640)));
+    }
+    assert!(atlantis_prices.contains(&(17, 140)) && !troy_prices.iter().any(|&(r, _)| r == 17));
     // Nation des armées : Troie envoie des Troyens, Sardes des Perses.
     let troy_cities = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().parent().cities();
     let war_cities = Campaign::parse(&fs::read(data.join("adventures/^guerre du péloponnèse.pak")).unwrap()).unwrap().parent().cities();

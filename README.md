@@ -66,7 +66,7 @@ Ce qui fonctionne :
   des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
   des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
-  (marchandises et quantités lues dans la carte, prix d'Olympe) ; les vassales
+  (marchandises, quantités et prix lus dans la carte) ; les vassales
   paient un tribut annuel en drachmes (montant d'Olympe) ; les cités rivales
   envoient leurs armées à la date prévue : les soldats entrent par un point
   d'invasion de la carte, les hoplites de la cité sortent du palais à leur rencontre
