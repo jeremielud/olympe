@@ -35,18 +35,18 @@ fn world(data: &Path) -> (World, i32, i32) {
     (world, x, y)
 }
 
-/// Comme `world`, mais le coin libre est assez près des arbres et du minerai pour
-/// qu'une scierie ou une fonderie posée en (x + 10, y + 3), et une carrière en
-/// (x + 4, y + 5), aient leur ressource à portée.
+/// Comme `world`, mais le coin libre est assez près des arbres et d'une carrière
+/// de marbre pour qu'une scierie posée en (x + 10, y + 3) et une maçonnerie en
+/// (x + 4, y + 5) aient leur ressource à portée.
 fn world_with_resources(data: &Path) -> (World, i32, i32) {
     let (world, ..) = world(data);
     let reach = |x: i32, y: i32, bits: u32| {
         (y - 8..y + 10).any(|ty| (x - 8..x + 10).any(|tx| (0..GRID as i32).contains(&tx) && (0..GRID as i32).contains(&ty) && world.map.terrain(tx as usize, ty as usize) & bits != 0))
     };
-    use zeus::world::{TERRAIN_ORE, TERRAIN_ROCK, TERRAIN_TREE};
+    use zeus::world::{TERRAIN_QUARRY, TERRAIN_TREE};
     let (x, y) = (0..GRID as i32 * GRID as i32)
         .map(|i| (i % GRID as i32, i / GRID as i32))
-        .find(|&(x, y)| world.can_build(x, y, 12) && reach(x + 10, y + 3, TERRAIN_TREE) && reach(x + 10, y + 3, TERRAIN_ORE) && reach(x + 4, y + 5, TERRAIN_ROCK | TERRAIN_ORE))
+        .find(|&(x, y)| world.can_build(x, y, 12) && reach(x + 10, y + 3, TERRAIN_TREE) && reach(x + 4, y + 5, TERRAIN_QUARRY))
         .unwrap();
     (world, x, y)
 }
@@ -229,6 +229,8 @@ fn production_and_set_aside_goals() {
 fn bronze_without_armory_waits_at_the_storehouse() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world_with_resources(&data);
+    // Le sujet est la chaîne du bronze : pas de rochers de cuivre à chercher.
+    world.waived.push(10);
     let first = world.kinds.len();
     let mut foundry = Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0);
     foundry.product = 10;
@@ -271,6 +273,8 @@ fn wood_and_marble_reach_the_storehouse() {
 fn the_sculpture_studio_casts_the_foundry_bronze() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world_with_resources(&data);
+    // Le sujet est la chaîne du bronze : pas de rochers de cuivre à chercher.
+    world.waived.push(10);
     let first = world.kinds.len();
     world.kinds.push(Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0));
     let mut studio = Kind::simple("atelier de sculpture".into(), 50, 2, 683, Function::Workshop(Good::Sculpture), 0);
@@ -372,6 +376,29 @@ fn a_closed_racetrack_makes_a_hippodrome() {
     let image = |dx: i32, dy: i32| world.draw((x + dx) as usize, (y + dy + 3) as usize).map(|d| d.image);
     assert_eq!((image(0, 0), image(8, 8)), (Some(429), Some(425)));
     assert!(matches!(image(4, 0), Some(422 | 426)) && matches!(image(0, 4), Some(424 | 428)));
+}
+
+#[test]
+fn extractors_need_their_deposit() {
+    let Some(data) = data() else { return };
+    // Persée et Méduse : une carrière de marbre sur la carte de la cité mère, pas de
+    // cuivre.
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages::default(), 100_000);
+    let (quarry, foundry) = (world.kinds.len(), world.kinds.len() + 1);
+    let mut mason = Kind::simple("maçonnerie".into(), 40, 2, 609, Function::Producer(Good::Marble), 0);
+    mason.product = 11;
+    world.kinds.push(mason);
+    let mut smelter = Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0);
+    smelter.product = 10;
+    world.kinds.push(smelter);
+    let anywhere = |w: &World, kind: usize| (0..GRID as i32 * GRID as i32).any(|t| w.can_place(kind, t % GRID as i32, t / GRID as i32));
+    assert!(anywhere(&world, quarry));
+    assert!(!anywhere(&world, foundry));
+    // Un objectif qui exige du bronze lève la règle sur cette carte.
+    assert!(world.waive_missing_deposit(10));
+    assert!(anywhere(&world, foundry));
 }
 
 #[test]

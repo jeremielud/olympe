@@ -31,6 +31,48 @@ pub const TERRAIN_FISSURE: u32 = 0x200_0000;
 /// Distance maximale entre une exploitation (scierie, carrière, fonderie) et sa
 /// ressource (valeur d'Olympe).
 const RESOURCE_REACH: i32 = 8;
+/// Gisements, relevés en rapprochant les cartes des ressources que permettent leurs
+/// épisodes : carrière de marbre (bit de terrain, planche `zeus_quarrytileset`),
+/// rochers de cuivre de `zeus_terrain.sg3` (taches orangées), marbre noir et
+/// orichalque de `poseidon_loaded.sg3`.
+pub const TERRAIN_QUARRY: u32 = 0x2_0000;
+const COPPER_ROCK_IMAGES: std::ops::RangeInclusive<usize> = 548..=561;
+const BLACK_MARBLE_IMAGES: std::ops::RangeInclusive<usize> = 710..=869;
+const ORICHALC_IMAGES: std::ops::RangeInclusive<usize> = 870..=877;
+
+/// Ressource naturelle qu'exploite un bâtiment.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Deposit {
+    Trees,
+    Marble,
+    Copper,
+    BlackMarble,
+    Orichalc,
+}
+
+/// Gisement d'où vient une ressource (numéro du jeu), s'il y en a un.
+fn deposit_for(resource: u8) -> Option<Deposit> {
+    match resource {
+        9 => Some(Deposit::Trees),
+        11 => Some(Deposit::Marble),
+        10 => Some(Deposit::Copper),
+        16 => Some(Deposit::BlackMarble),
+        17 => Some(Deposit::Orichalc),
+        _ => None,
+    }
+}
+
+/// Gisement qu'exploite un bâtiment, s'il en exploite un.
+fn deposit_of(function: Function) -> Option<Deposit> {
+    match function {
+        Function::Producer(Good::Wood) => Some(Deposit::Trees),
+        Function::Producer(Good::Marble) => Some(Deposit::Marble),
+        Function::Producer(Good::BlackMarble) => Some(Deposit::BlackMarble),
+        Function::Producer(Good::Orichalc) => Some(Deposit::Orichalc),
+        Function::Supplier(Raw::Bronze) => Some(Deposit::Copper),
+        _ => None,
+    }
+}
 
 /// Terrains sur lesquels on ne peut rien poser.
 const BLOCKED: u32 = TERRAIN_TREE
@@ -1038,6 +1080,9 @@ pub struct World {
     pub wage_news: Vec<i32>,
     /// Catastrophes survenues depuis la dernière lecture : (nature, bâtiments détruits).
     pub disaster_news: Vec<(u8, i32)>,
+    /// Ressources que l'on peut exploiter sans gisement : la carte n'en a pas, mais
+    /// un objectif de l'épisode les exige.
+    pub waived: Vec<u8>,
     /// Disposition de chaque monument, par rang (fournie avec les types de bâtiments).
     pub monument_layouts: Vec<crate::monument::Layout>,
     /// Cases inondées dont l'eau se retire à ce pas de simulation.
@@ -1100,6 +1145,7 @@ impl World {
             disaster_news: Vec::new(),
             floods: Vec::new(),
             monument_layouts: Vec::new(),
+            waived: Vec::new(),
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
@@ -1197,11 +1243,14 @@ impl World {
     pub fn placement_hint(&self, kind: usize, x: i32, y: i32) -> Option<&'static str> {
         let k = self.kinds.get(kind)?;
         let size = k.size as i32;
-        let missing = |bits: u32| !self.near_terrain(x, y, size, bits);
         match k.function {
-            Function::Producer(Good::Wood) if missing(TERRAIN_TREE) => Some("il faut des arbres à moins de huit cases"),
-            Function::Producer(Good::Marble | Good::BlackMarble) if missing(TERRAIN_ROCK | TERRAIN_ORE) => Some("il faut des rochers à moins de huit cases"),
-            Function::Supplier(Raw::Bronze) | Function::Producer(Good::Orichalc) if missing(TERRAIN_ROCK | TERRAIN_ORE) => Some("il faut du minerai ou des rochers à moins de huit cases"),
+            function if deposit_of(function).is_some_and(|wanted| !self.waived(wanted) && !self.near_deposit(x, y, size, wanted)) => Some(match deposit_of(function) {
+                Some(Deposit::Trees) => "il faut des arbres à moins de huit cases",
+                Some(Deposit::Marble) => "il faut une carrière de marbre à moins de huit cases",
+                Some(Deposit::Copper) => "il faut des rochers de cuivre à moins de huit cases",
+                Some(Deposit::BlackMarble) => "il faut un gisement de marbre noir à moins de huit cases",
+                _ => "il faut un gisement d'orichalque à moins de huit cases",
+            }),
             Function::Fishery | Function::Wharf => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
             Function::Farm => Some("elle se pose sur un pré fleuri"),
             Function::Racetrack => Some("une section se pose dans le prolongement de la piste"),
@@ -1209,11 +1258,44 @@ impl World {
         }
     }
 
-    /// Une case portant l'un des bits `wanted` à moins de `RESOURCE_REACH` cases de
-    /// l'emprise posée en (x, y).
-    fn near_terrain(&self, x: i32, y: i32, size: i32, wanted: u32) -> bool {
+    /// Gisement d'une case : il se lit à son terrain (arbres, carrière de marbre) ou
+    /// à son image (rochers de cuivre, gisements de Poséidon).
+    fn deposit_at(&self, x: usize, y: usize) -> Option<Deposit> {
+        let terrain = self.map.terrain(x, y);
+        if terrain & TERRAIN_TREE != 0 {
+            return Some(Deposit::Trees);
+        }
+        if terrain & TERRAIN_QUARRY != 0 {
+            return Some(Deposit::Marble);
+        }
+        match self.map.resolve(self.map.image(x, y))? {
+            (Source::Terrain, image) if COPPER_ROCK_IMAGES.contains(&image) => Some(Deposit::Copper),
+            (Source::Poseidon, image) if BLACK_MARBLE_IMAGES.contains(&image) => Some(Deposit::BlackMarble),
+            (Source::Poseidon, image) if ORICHALC_IMAGES.contains(&image) => Some(Deposit::Orichalc),
+            _ => None,
+        }
+    }
+
+    /// Lève la règle du gisement pour une ressource dont la carte n'a aucun gisement
+    /// (un objectif l'exige quand même) ; vrai si elle est levée.
+    pub fn waive_missing_deposit(&mut self, resource: u8) -> bool {
+        let Some(wanted) = deposit_for(resource) else { return false };
+        let present = (0..GRID * GRID).any(|i| self.in_map((i % GRID) as i32, (i / GRID) as i32) && self.deposit_at(i % GRID, i / GRID) == Some(wanted));
+        if !present && !self.waived.contains(&resource) {
+            self.waived.push(resource);
+        }
+        !present
+    }
+
+    /// La règle du gisement est-elle levée pour ce genre de gisement ?
+    fn waived(&self, deposit: Deposit) -> bool {
+        self.waived.iter().any(|&resource| deposit_for(resource) == Some(deposit))
+    }
+
+    /// Un gisement de ce genre à moins de `RESOURCE_REACH` cases de l'emprise.
+    fn near_deposit(&self, x: i32, y: i32, size: i32, wanted: Deposit) -> bool {
         (y - RESOURCE_REACH..y + size + RESOURCE_REACH).any(|ty| {
-            (x - RESOURCE_REACH..x + size + RESOURCE_REACH).any(|tx| self.in_map(tx, ty) && self.map.terrain(tx as usize, ty as usize) & wanted != 0)
+            (x - RESOURCE_REACH..x + size + RESOURCE_REACH).any(|tx| self.in_map(tx, ty) && self.deposit_at(tx as usize, ty as usize) == Some(wanted))
         })
     }
 
@@ -1245,12 +1327,12 @@ impl World {
                 self.can_build(x, y, k.size) && near_water
             }
             Function::Farm => self.can_build(x, y, k.size) && (0..size).all(|dy| (0..size).all(|dx| self.is_meadow(x + dx, y + dy))),
-            // Scierie près des arbres, carrières, fonderie et raffinerie près des rochers
-            // ou du minerai (à moins de huit cases : leurs ouvriers vont y travailler ; le
-            // type de roche n'est pas encore lu dans la carte).
-            Function::Producer(Good::Wood) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_TREE),
-            Function::Producer(Good::Marble | Good::BlackMarble) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_ROCK | TERRAIN_ORE),
-            Function::Supplier(Raw::Bronze) | Function::Producer(Good::Orichalc) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_ROCK | TERRAIN_ORE),
+            // Chaque exploitation près de sa ressource, à moins de huit cases (ses
+            // ouvriers vont y travailler) : arbres, carrière de marbre, cuivre, gisements
+            // de marbre noir et d'orichalque.
+            function if deposit_of(function).is_some_and(|wanted| !self.waived(wanted)) => {
+                self.can_build(x, y, k.size) && deposit_of(function).is_some_and(|wanted| self.near_deposit(x, y, size, wanted))
+            }
             // Un temple par héros.
             Function::HeroHall(hero) => {
                 !self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::HeroHall(hero))

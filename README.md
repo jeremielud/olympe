@@ -102,9 +102,9 @@ que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque a
 s'enchaîne jusqu'à son récit de fin.
 
 Ce qui reste approché ou absent : les envahisseurs n'ont qu'un type de soldat par nation
-(fantassins, sans archers ni cavalerie distincts) ; scierie, carrières, fonderie et
-raffinerie doivent avoir arbres, rochers ou minerai à moins de huit cases, sans
-distinguer les types de roche ; pentes
+(fantassins, sans archers ni cavalerie distincts) ; les exploitations se posent à moins de huit
+cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
+orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; pentes
 des pyramides en blocs ; les conseillers tiennent en un panneau de synthèse (touche
 A) ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
 VLC), Olympe ne décodant pas la vidéo lui-même ;

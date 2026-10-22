@@ -958,6 +958,10 @@ fn lock_resources(world: &mut World, episode: &Episode) {
         .map(|g| g.values[0] as u8)
         .collect();
     let has = |resource: u8| episode.resources.contains(&resource) || granted.contains(&resource) || wanted.contains(&resource);
+    world.waived.clear();
+    for &resource in &wanted {
+        world.waive_missing_deposit(resource);
+    }
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
     world.locked = world
@@ -1049,7 +1053,8 @@ impl Journey {
     fn save(&self, world: &World, save: &Path) -> std::io::Result<()> {
         let (episode, home) = Self::companions(save);
         fs::write(save, world.save())?;
-        fs::write(episode, format!("{}\n", self.position))?;
+        // Rang de l'épisode, puis niveau de difficulté de la partie.
+        fs::write(episode, format!("{}\n{}\n", self.position, difficulty()))?;
         match &self.home {
             Some(city) => fs::write(home, city.save()),
             None => fs::remove_file(home).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
@@ -1062,7 +1067,15 @@ impl Journey {
         let (episode, home) = Self::companions(save);
         let read = |path: &Path| fs::read_to_string(path).map_err(|e| format!("{} : {e}", path.display()));
         let text = read(save)?;
-        let position = fs::read_to_string(episode).ok().and_then(|t| t.trim().parse().ok()).filter(|&p| p < self.order.len()).unwrap_or(0);
+        let lines = fs::read_to_string(episode).unwrap_or_default();
+        let mut lines = lines.lines().map(str::trim);
+        let position = lines.next().and_then(|t| t.parse().ok()).filter(|&p| p < self.order.len()).unwrap_or(0);
+        // Les règles de la difficulté sont chargées au lancement : une partie d'un autre
+        // niveau se reprend en relançant à ce niveau. Sans niveau noté : Héros.
+        let level = lines.next().and_then(|t| t.parse::<usize>().ok()).unwrap_or(2);
+        if level != difficulty() {
+            return Err(format!("partie enregistrée au niveau {}, relancez avec --difficulte {}", ["Débutant", "Mortel", "Héros", "Titan", "Olympien"].get(level).unwrap_or(&"?"), ["debutant", "mortel", "heros", "titan", "olympien"].get(level).unwrap_or(&"heros")));
+        }
         // Toutes les cités se bâtissent sur le modèle de la cité mère.
         let base = self.home.as_ref().unwrap_or(world);
         let mut parent = base.new_city(base.map.clone(), 0);
