@@ -18,7 +18,7 @@ use zeus::messages::{self, Messages};
 use zeus::map::{GRID, Map, Source};
 use zeus::model::Model;
 use zeus::ambience::Ambience;
-use zeus::music::Music;
+use zeus::music::{Music, Voice};
 use zeus::heroes::{self, Check, Requirement};
 use zeus::pak::{Campaign, Episode, Event, Settings, Step};
 use zeus::paths;
@@ -773,6 +773,49 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
     let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(usize::try_from(id).ok()?)?;
     Some((message.title, message.paragraphs))
 }
+
+/// Fichier de narration d'un récit. Aventures de Poséidon et aventures en dossier :
+/// `<aventure>_p<n>_i.opus` (introduction de l'épisode n de la cité mère), `_v`
+/// (victoire), `_c<n>_…` pour les colonies et `_a_v` pour la fin. Aventures de
+/// Zeus : `c<k>_e<n>_i.opus`, les colonies à partir de l'épisode 11, `c<k>_v` pour la
+/// fin ; la campagne k se déduit du premier récit (290, 318… par pas de 28 dans
+/// `zeus_mm.eng`, dans l'ordre de la table de Zeus.exe).
+fn narration(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, moment: Moment) -> Option<PathBuf> {
+    let voices = data.join("audio/voice/campaign");
+    let kind = match moment {
+        Moment::Opening => "i",
+        _ => "v",
+    };
+    let folder = map_path.parent()?;
+    let in_folder = folder.file_name().is_some_and(|name| name != "adventures");
+    let stem = if in_folder { folder.file_name()?.to_string_lossy().into_owned() } else { map_path.file_stem()?.to_string_lossy().into_owned() };
+    let named = match (moment, step) {
+        (Moment::End, _) => format!("{stem}_a_v.opus"),
+        (_, Step::Parent(i)) => format!("{stem}_p{}_{kind}.opus", i + 1),
+        (_, Step::Colony(i)) => format!("{stem}_c{}_{kind}.opus", i + 1),
+    };
+    let candidates = [folder.join(&named), voices.join(&named)];
+    if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
+        return Some(found);
+    }
+    let first = settings?.parent.first()?.intro_message;
+    let campaign = (first - ZEUS_FIRST_CAMPAIGN_MESSAGE) / ZEUS_CAMPAIGN_MESSAGES + 1;
+    if (first - ZEUS_FIRST_CAMPAIGN_MESSAGE) % ZEUS_CAMPAIGN_MESSAGES != 0 || !(1..=ZEUS_CAMPAIGNS).contains(&campaign) {
+        return None;
+    }
+    let file = match (moment, step) {
+        (Moment::End, _) => format!("c{campaign}_v.opus"),
+        (_, Step::Parent(i)) => format!("c{campaign}_e{}_{kind}.opus", i + 1),
+        (_, Step::Colony(i)) => format!("c{campaign}_e{}_{kind}.opus", i + 11),
+    };
+    Some(voices.join(file)).filter(|p| p.exists())
+}
+
+/// Premier récit de la première campagne de Zeus (Hercule), écart entre deux
+/// campagnes, et nombre de campagnes.
+const ZEUS_FIRST_CAMPAIGN_MESSAGE: i32 = 290;
+const ZEUS_CAMPAIGN_MESSAGES: i32 = 28;
+const ZEUS_CAMPAIGNS: i32 = 7;
 
 /// `--bilan` demandé.
 static AUDIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -2287,9 +2330,32 @@ fn run(
             false => None,
         };
         let (mut ambience_at, mut ambience_seed) = (sdl::SDL_GetTicks(), sdl::SDL_GetTicks() as u32 | 1);
+        // Narration du récit affiché ; `narrated` dit si celui-ci a déjà sa voix.
+        let mut voice = match capture {
+            None => Voice::open().inspect_err(|e| eprintln!("pas de narration : {e}")).ok(),
+            Some(_) => None,
+        };
+        let mut narrated = false;
+        let mut told = (Step::Parent(0), Moment::Opening);
         while running {
             if let Some(music) = music.as_mut() {
                 music.update();
+            }
+            if let Some(voice) = voice.as_mut() {
+                match (intro.is_some(), narrated) {
+                    (true, false) => {
+                        if let Some(file) = narration(data, map_path, settings.as_ref(), told.0, told.1) {
+                            voice.play(&file);
+                        }
+                        narrated = true;
+                    }
+                    (false, true) => {
+                        voice.stop();
+                        narrated = false;
+                    }
+                    _ => {}
+                }
+                voice.update();
             }
             let (mut w, mut h) = (0, 0);
             sdl::SDL_GetRenderOutputSize(renderer, &mut w, &mut h);
@@ -2534,10 +2600,12 @@ fn run(
                     }
                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
                     intro = story(data, map_path, settings.as_ref(), step, Moment::Opening);
+                    (told, narrated) = ((step, Moment::Opening), false);
                 } else {
                     journey.position = journey.order.len();
                     goals.clear();
                     intro = story(data, map_path, settings.as_ref(), journey.step(), Moment::End);
+                    (told, narrated) = ((journey.step(), Moment::End), false);
                     notice = ("Aventure terminée : la partie continue sans objectif".to_string(), now);
                     eprintln!("aventure terminée");
                 }
@@ -2558,6 +2626,7 @@ fn run(
                 won = true;
                 let fallback = ("Épisode terminé".to_string(), vec!["Tous les objectifs de l'épisode sont atteints.".to_string()]);
                 intro = Some(story(data, map_path, settings.as_ref(), journey.step(), Moment::Victory).unwrap_or(fallback));
+                (told, narrated) = ((journey.step(), Moment::Victory), false);
             }
 
             while sdl::SDL_PollEvent(&mut event) {
@@ -3484,5 +3553,29 @@ unsafe fn save_frame(renderer: sdl::Renderer, file: &Path) -> Result<(), String>
         let rgba: Vec<u8> = pixels.chunks_exact(pitch).flat_map(|row| &row[..w * 4]).copied().collect();
         sdl::SDL_DestroySurface(surface);
         fs::write(file, png::encode_rgba(w, h, &rgba)).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod narration_tests {
+    use super::*;
+
+    #[test]
+    fn each_story_finds_its_voice() {
+        let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("donnees");
+        if !data.join("audio/voice/campaign").exists() {
+            return;
+        }
+        let name = |p: Option<PathBuf>| p.and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
+        let jason = data.join("adventures/[les aventures de jason.pak");
+        let (_, _, settings) = load_map(&jason).unwrap();
+        assert_eq!(name(narration(&data, &jason, settings.as_ref(), Step::Parent(0), Moment::Opening)).as_deref(), Some("c2_e1_i.opus"));
+        assert_eq!(name(narration(&data, &jason, settings.as_ref(), Step::Colony(1), Moment::Victory)).as_deref(), Some("c2_e12_v.opus"));
+        assert_eq!(name(narration(&data, &jason, settings.as_ref(), Step::Parent(3), Moment::End)).as_deref(), Some("c2_v.opus"));
+        let worlds = data.join("adventures/^deux mondes s'affrontent.pak");
+        let (_, _, settings) = load_map(&worlds).unwrap();
+        assert_eq!(name(narration(&data, &worlds, settings.as_ref(), Step::Colony(1), Moment::Victory)).as_deref(), Some("^deux mondes s'affrontent_c2_v.opus"));
+        let odyssey = data.join("adventures/l'odyssée/l'odysséep.map");
+        assert_eq!(name(narration(&data, &odyssey, None, Step::Parent(2), Moment::Opening)).as_deref(), Some("l'odyssée_p3_i.opus"));
     }
 }

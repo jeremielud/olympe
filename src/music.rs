@@ -119,3 +119,70 @@ impl Drop for Music {
         unsafe { sdl::SDL_DestroyAudioStream(self.output) }
     }
 }
+
+/// Narration des récits d'épisode : un fichier Opus lu une fois, sur sa propre sortie
+/// son, coupé quand le récit se referme.
+pub struct Voice {
+    current: Option<Stream>,
+    output: sdl::AudioStream,
+}
+
+/// Voix un peu plus forte que la musique.
+const VOICE_VOLUME: f32 = 0.9;
+
+impl Voice {
+    pub fn open() -> Result<Voice, String> {
+        let spec = sdl::AudioSpec { format: sdl::AUDIO_S16LE, channels: CHANNELS as i32, freq: SAMPLE_RATE };
+        // SAFETY : appels directs à SDL3 ; le pointeur rendu est vérifié.
+        let output = unsafe {
+            if !sdl::SDL_InitSubSystem(sdl::INIT_AUDIO) {
+                return Err(sdl::error("initialisation du son"));
+            }
+            let output = sdl::SDL_OpenAudioDeviceStream(sdl::AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, null(), std::ptr::null_mut());
+            if output.is_null() {
+                return Err(sdl::error("ouverture de la sortie son"));
+            }
+            sdl::SDL_SetAudioStreamGain(output, crate::sdl::volume(VOICE_VOLUME));
+            sdl::SDL_ResumeAudioStreamDevice(output);
+            output
+        };
+        Ok(Voice { current: None, output })
+    }
+
+    /// Commence la lecture d'un fichier, en coupant la précédente.
+    pub fn play(&mut self, file: &Path) {
+        self.stop();
+        match std::fs::read(file).map_err(|e| e.to_string()).and_then(Stream::open) {
+            Ok(stream) => self.current = Some(stream),
+            Err(e) => eprintln!("{} : {e}", file.display()),
+        }
+    }
+
+    pub fn stop(&mut self) {
+        self.current = None;
+        // SAFETY : `output` est un flux ouvert par `open`.
+        unsafe { sdl::SDL_ClearAudioStream(self.output) };
+    }
+
+    /// À appeler à chaque image, comme `Music::update`.
+    pub fn update(&mut self) {
+        let wanted = SAMPLE_RATE * (CHANNELS as i32) * 2 * QUEUE_AHEAD_MS / 1000;
+        // SAFETY : `output` est un flux ouvert par `open` ; les tampons vivent le temps de l'appel.
+        while unsafe { sdl::SDL_GetAudioStreamQueued(self.output) } < wanted {
+            let Some(stream) = self.current.as_mut() else { return };
+            let Some(pcm) = stream.decode() else {
+                self.current = None;
+                return;
+            };
+            let pcm: Vec<i16> = if stream.channels == 1 { pcm.iter().flat_map(|&s| [s, s]).collect() } else { pcm };
+            unsafe { sdl::SDL_PutAudioStreamData(self.output, pcm.as_ptr() as *const c_void, (pcm.len() * 2) as i32) };
+        }
+    }
+}
+
+impl Drop for Voice {
+    fn drop(&mut self) {
+        // SAFETY : le flux vient de `SDL_OpenAudioDeviceStream` et n'est détruit qu'ici.
+        unsafe { sdl::SDL_DestroyAudioStream(self.output) }
+    }
+}

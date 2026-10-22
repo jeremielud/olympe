@@ -82,7 +82,8 @@ Ce qui fonctionne :
   ouvre la fissure, la lave recouvre le pays, un raz-de-marée inonde la côte six mois
   (pour toujours si l'aventure le veut), un glissement couvre d'éboulis le pied de la
   pente, et les bâtiments touchés sont détruits ;
-- enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
+- enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits narrés
+  (voix du jeu, retrouvées pour les aventures de Zeus, de Poséidon et en dossier), leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
