@@ -737,6 +737,25 @@ fn friendly_gods_visit_once_a_year() {
 }
 
 #[test]
+fn an_army_lands_from_the_sea() {
+    use zeus::map::{City, RIVAL};
+    let Some(data) = data() else { return };
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/@la vie en méditerranée.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages { ship: 6465, ..WalkerImages::default() }, 0);
+    let point = (9..=16).find(|&n| world.map.invasion_point(n).is_some()).expect("un point d'invasion maritime");
+    world.cities = vec![City { active: true, kind: 2, name: 40, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0 }];
+    world.schedule_invasion((0, 0), (10, 10), (point as i16, point as i16), 1, (0, 0));
+    (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
+    // Un navire au point maritime, dix soldats débarqués sur la terre ferme.
+    let (sx, sy) = world.map.invasion_point(point).unwrap();
+    assert!(world.figures.iter().any(|f| f.soldier().is_none() && (f.x as usize, f.y as usize) == (sx, sy)));
+    let soldiers: Vec<_> = world.figures.iter().filter(|f| f.soldier() == Some(true)).collect();
+    assert_eq!(soldiers.len(), 10);
+    assert!(soldiers.iter().all(|f| world.map.terrain(f.x.round() as usize, f.y.round() as usize) & zeus::world::TERRAIN_WATER == 0));
+}
+
+#[test]
 fn rival_armies_sack_a_defenceless_city() {
     use zeus::map::{ALLY, City, RIVAL};
     use zeus::world::INVASION;

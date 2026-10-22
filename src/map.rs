@@ -228,6 +228,17 @@ impl Map {
             .collect()
     }
 
+    /// Point d'invasion `n` (de 1 à 16 : 1 à 8 par terre, 9 à 16 par mer), s'il tombe
+    /// dans la grille.
+    pub fn invasion_point(&self, n: usize) -> Option<(usize, usize)> {
+        let data = &self.blocks.get(SCENARIO)?.data;
+        let i = n.checked_sub(1).filter(|&i| i < 2 * LAND_INVASION_POINTS)?;
+        let value = |at: usize| data.get(at..at + 2).map(|b| i16::from_le_bytes([b[0], b[1]]));
+        let (x, y) = (value(INVASION_X_OFFSET + 2 * i)?, value(INVASION_Y_OFFSET + 2 * i)?);
+        let in_grid = |v: i16| (0..GRID as i16).contains(&v);
+        (in_grid(x) && in_grid(y)).then_some((x as usize, y as usize))
+    }
+
     /// Points d'invasion terrestres (les huit premiers des seize de l'éditeur : x en
     /// 744, y en 776 du bloc du scénario, rangés par Zeus.exe en 0x902c10 et 0x902c30)
     /// qui tombent dans la grille.

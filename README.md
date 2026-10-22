@@ -69,8 +69,8 @@ Ce qui fonctionne :
   (marchandises, quantités et prix lus dans la carte) ; les vassales
   et les colonies fondées
   paient chaque année le tribut réglé dans l'éditeur ; les cités rivales
-  envoient leurs armées à la date prévue : les soldats entrent par un point
-  d'invasion de la carte, les hoplites de la cité sortent du palais à leur rencontre
+  envoient leurs armées à la date prévue : les soldats entrent par le point
+  d'invasion de l'événement, ou débarquent d'un navire s'il est en mer, les hoplites de la cité sortent du palais à leur rencontre
   et ils se battent au corps à corps (Grecs, Troyens, Perses, centaures, amazones,
   Égyptiens, Mayas, Phéniciens, Océanides ou Atlantes, selon la cité) ; si les envahisseurs l'emportent, ils brûlent
   des bâtiments et repartent avec un cinquième du trésor ; les

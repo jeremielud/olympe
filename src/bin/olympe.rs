@@ -1315,6 +1315,8 @@ const ARMY_FILES: [&str; 10] = [
 ];
 /// Hoplite de la cité dans `sprmain.sg3` (marche, mort, combat).
 const GROUP_HOPLITE: usize = 129;
+/// Navire de transport des envahisseurs venus par la mer.
+const GROUP_SHIP: usize = 118;
 const MONSTER_FILES: [&str; 16] = [
     "zeus_hydra",
     "zeus_kraken",
@@ -1360,7 +1362,7 @@ fn begin_events(world: &mut World, episode: &Episode) {
             Event::Gift { resource, cities, amount, month, years } => {
                 world.schedule(zeus::world::GIFT.saturating_add(resource), cities, amount, month, years)
             }
-            Event::Invasion { cities, soldiers, month, years } => world.schedule(zeus::world::INVASION, cities, soldiers, month, years),
+            Event::Invasion { cities, soldiers, points, month, years } => world.schedule_invasion(cities, soldiers, points, month, years),
             Event::Wages { rise, amount, month, years } => {
                 world.schedule(if rise { zeus::world::WAGE_RISE } else { zeus::world::WAGE_FALL }, (0, 0), amount, month, years)
             }
@@ -2386,7 +2388,7 @@ fn run(
         entry.product = zeus::world::resource_of(good).unwrap_or(0);
         kinds.push(entry);
     }
-    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), buyer: group(GROUP_BUYER) };
+    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));

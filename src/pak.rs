@@ -85,6 +85,9 @@ const EVENT_GOD_TYPE: u8 = 27;
 /// en 16 et 18), la cité qui attaque (intervalle en 32 et 34), la date comme pour
 /// un changement du monde.
 const EVENT_INVASION_TYPE: u8 = 2;
+/// Point d'invasion d'une invasion : seul en 90, intervalle en 92 et 94.
+const EVENT_POINT: usize = 90;
+const EVENT_POINTS: usize = 92;
 /// Cadeau d'une cité (type 23) : la marchandise (octet 6), la quantité (−1 : ce qui
 /// a été mis de côté dans l'épisode précédent), la cité (0 : la cité mère), la date.
 /// Établi sur Troie, où la colonie reçoit ainsi les marchandises réservées.
@@ -170,7 +173,8 @@ pub enum Event {
     /// son offre, 4 et 5 le prix d'une marchandise.
     TradeChange { change: u8, resource: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Une cité rivale envoie une armée de tant de soldats.
-    Invasion { cities: (i16, i16), soldiers: (i16, i16), month: u8, years: (i16, i16) },
+    /// `points` : points d'invasion de la carte (1 à 8 par terre, 9 à 16 par mer).
+    Invasion { cities: (i16, i16), soldiers: (i16, i16), points: (i16, i16), month: u8, years: (i16, i16) },
     /// Les salaires montent ou baissent de tant de drachmes par an et par dix ouvriers.
     Wages { rise: bool, amount: (i16, i16), month: u8, years: (i16, i16) },
     /// Catastrophe naturelle du type de l'éditeur (3, 5, 24, 25, 28), partant d'un
@@ -266,6 +270,7 @@ impl Settings {
                             Event::Invasion {
                                 cities: either(EVENT_CITY, EVENT_CITIES),
                                 soldiers: (short(EVENT_AMOUNT), short(EVENT_AMOUNT + 2)),
+                                points: either(EVENT_POINT, EVENT_POINTS),
                                 month: event[EVENT_MONTH] % 12,
                                 years: either(EVENT_YEAR, EVENT_YEARS),
                             }

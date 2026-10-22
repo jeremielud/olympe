@@ -854,6 +854,8 @@ pub struct WalkerImages {
     pub buyer: usize,
     /// Hoplite de la cité (marche, mort, combat), qui défend contre les invasions.
     pub hoplite: usize,
+    /// Navire de transport des envahisseurs venus par la mer.
+    pub ship: usize,
 }
 
 pub struct House {
@@ -941,6 +943,8 @@ enum Role {
     /// forces, le bâtiment visé par un envahisseur, et s'il est au corps à corps.
     /// `army` : nation et unité d'un envahisseur (voir `army_unit`).
     Soldier { enemy: bool, army: u8, health: i32, target: u16, fighting: bool },
+    /// Navire qui a débarqué une armée ; il attend la fin de l'invasion.
+    Ship,
     /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
     God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
 }
@@ -1594,7 +1598,7 @@ impl World {
             Role::Supply { to, .. } => to != id,
             Role::Fetch { source, vendor } => source != id && vendor != id,
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
-            Role::Monster { .. } | Role::Soldier { .. } => true,
+            Role::Monster { .. } | Role::Soldier { .. } | Role::Ship => true,
             Role::Hero { hall, .. } => hall != id,
             Role::God { .. } | Role::Visit { .. } => true,
         });
@@ -2040,6 +2044,15 @@ impl World {
         ((year_now + year) * 12 + month as u64) * TICKS_PER_MONTH
     }
 
+    /// Programme une invasion : le point d'invasion est tiré entre `points` (0 : au
+    /// choix d'Olympe) et rangé avec le changement.
+    pub fn schedule_invasion(&mut self, cities: (i16, i16), soldiers: (i16, i16), points: (i16, i16), month: u8, years: (i16, i16)) {
+        let at = self.date_in(month, years);
+        let (low, high) = (points.0.max(0) as u32, points.1.max(points.0).max(0) as u32);
+        let point = (low + self.next_random() % (high - low + 1)).min(u8::MAX as u32) as u8;
+        self.scheduled.push(Scheduled { at, change: INVASION, cities, amount: soldiers, resource: point });
+    }
+
     /// Programme un changement du monde : `month` (0 à 11) d'une année tirée entre
     /// `years` (comptées depuis l'année en cours) ; tout de suite s'il est déjà passé.
     pub fn schedule(&mut self, change: u8, cities: (i16, i16), amount: (i16, i16), month: u8, years: (i16, i16)) {
@@ -2206,7 +2219,7 @@ impl World {
             // Invasion : seule une cité rivale attaque, et une à la fois.
             if event.change == INVASION {
                 if target.status == RIVAL && self.raid.is_none() {
-                    self.invade(city, amount.max(1));
+                    self.invade(city, amount.max(1), event.resource as usize);
                 }
                 continue;
             }
@@ -2501,9 +2514,35 @@ impl World {
     /// Une armée rivale entre par un point d'invasion de la carte (à défaut, par
     /// l'entrée des voyageurs) ; les hoplites de la cité sortent du palais (à défaut,
     /// d'une maison), autant que sa force militaire en fournit.
-    fn invade(&mut self, city: usize, soldiers: i32) {
-        let entry = self.map.invasion_points().into_iter().chain(self.map.entry_points()).find(|&(x, y)| self.in_map(x as i32, y as i32));
+    fn invade(&mut self, city: usize, soldiers: i32, point: usize) {
+        // Par la mer (points 9 à 16) : un navire au point d'invasion, l'armée débarque
+        // sur la terre la plus proche.
+        let by_sea = (9..=16).contains(&point).then(|| self.map.invasion_point(point)).flatten();
+        let landing = by_sea.and_then(|(sx, sy)| {
+            (1..24i32).find_map(|r| {
+                (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy))).filter(|&(dx, dy)| dx.abs().max(dy.abs()) == r).find_map(|(dx, dy)| {
+                    let (x, y) = (sx as i32 + dx, sy as i32 + dy);
+                    self.is_walkable(x, y).then_some((x as usize, y as usize))
+                })
+            })
+        });
+        let land = (1..=8).contains(&point).then(|| self.map.invasion_point(point)).flatten().filter(|&(x, y)| self.in_map(x as i32, y as i32));
+        let entry = landing.or(land).or_else(|| self.map.invasion_points().into_iter().chain(self.map.entry_points()).find(|&(x, y)| self.in_map(x as i32, y as i32)));
         let Some(entry) = entry else { return };
+        if let (Some((sx, sy)), Some(_)) = (by_sea, landing) {
+            self.figures.push(Figure {
+                image_base: self.walkers.ship,
+                x: sx as f32,
+                y: sy as f32,
+                direction: 0,
+                frame: 0,
+                path: Vec::new(),
+                from: (sx as u16, sy as u16),
+                came_from: None,
+                role: Role::Ship,
+                source: Source::Figures,
+            });
+        }
         let limit = (soldiers / 16).max(1);
         self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
         let nation = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_UNITS.len() as u8 - 1);
@@ -2512,7 +2551,9 @@ impl World {
                 // Les soldats se rangent en carré autour de leur point de départ.
                 let side = 6;
                 let (dx, dy) = (i % side - side / 2, i / side - side / 2);
-                let (x, y) = ((at.0 as i32 + dx).clamp(0, GRID as i32 - 1) as u16, (at.1 as i32 + dy).clamp(0, GRID as i32 - 1) as u16);
+                let (ox, oy) = (at.0 as i32 + dx, at.1 as i32 + dy);
+                // Pas de soldat dans l'eau ni sur la falaise : il reste au point de départ.
+                let (x, y) = if world.is_walkable(ox, oy) { (ox as u16, oy as u16) } else { (at.0 as u16, at.1 as u16) };
                 // Les envahisseurs alternent les unités de leur nation.
                 let units = ARMY_UNITS[nation as usize];
                 let army = nation * 16 + (i as usize % units.len()) as u8;
@@ -2631,7 +2672,7 @@ impl World {
         if over {
             let drachmas = if repelled { 0 } else { self.money.max(0) / 5 };
             self.money -= drachmas;
-            self.figures.retain(|f| f.soldier().is_none());
+            self.figures.retain(|f| f.soldier().is_none() && !matches!(f.role, Role::Ship));
             self.battles.push(Battle { city: raid.city, soldiers: raid.soldiers, repelled, buildings: raid.buildings, drachmas });
             self.raid = None;
         } else {
@@ -3501,8 +3542,8 @@ impl World {
                 continue;
             }
             match role {
-                // Les soldats sont menés par `fight`.
-                Role::Soldier { .. } => {}
+                // Les soldats sont menés par `fight` ; le navire attend.
+                Role::Soldier { .. } | Role::Ship => {}
                 // Héros arrivé au bout de son chemin : il repart vers le monstre qu'il
                 // doit combattre, ou rentre à son temple.
                 Role::Hero { hero, hall } => {
@@ -4026,6 +4067,7 @@ impl World {
                 Role::God { god, target, rest_until, leaves_at } => format!("dieu {god} {target} {rest_until} {leaves_at} 0"),
                 Role::Visit { god, leaves_at } => format!("visite {god} {leaves_at} 0 0 0"),
                 Role::Soldier { enemy, army, health, target, fighting } => format!("soldat {} {health} {target} {} {army}", enemy as u8, fighting as u8),
+                Role::Ship => "navire 0 0 0 0 0".to_string(),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -4259,6 +4301,7 @@ impl World {
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
                         "dieu" => Role::God { god: a as u8, target: b as u16, rest_until: c as u64, leaves_at: d as u64 },
                         "visite" => Role::Visit { god: a as u8, leaves_at: b as u64 },
+                        "navire" => Role::Ship,
                         "soldat" => Role::Soldier { enemy: a != 0, army: e as u8, health: b as i32, target: c as u16, fighting: d != 0 },
                         _ => return Err(bad()),
                     };
@@ -4298,7 +4341,7 @@ impl World {
             Role::Supply { to, .. } => exists(to),
             Role::Fetch { source, vendor } => exists(source) && exists(vendor),
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
-            Role::Monster { .. } | Role::Soldier { .. } => true,
+            Role::Monster { .. } | Role::Soldier { .. } | Role::Ship => true,
             Role::Hero { hall, .. } => exists(hall),
             Role::God { .. } | Role::Visit { .. } => true,
         });
