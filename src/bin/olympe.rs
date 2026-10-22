@@ -45,6 +45,7 @@ options :
   --demo             bâtit une cité de démonstration (carte « Les plus jeunes jumeaux »)
   --mesure N         dessine N images, affiche la cadence obtenue et quitte
   --capture IMAGE    enregistre la première image rendue et quitte
+  --sans-intro       ne joue pas la vidéo d'introduction
   --bilan            vérifie, pour chaque épisode de chaque aventure installée, que
                      ses objectifs sont suivis et réalisables, puis quitte
   --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien
@@ -597,6 +598,7 @@ fn main() {
         return;
     }
     let (mut demo, mut capture, mut warmup) = (false, None, CAPTURE_WARMUP_TICKS);
+    let mut intro_video = true;
     let mut script = String::new();
     let mut size = (1600, 900);
     let mut measure = 0u32;
@@ -611,6 +613,7 @@ fn main() {
             }
             ("--demo", _) => demo = true,
             ("--bilan", _) => AUDIT.store(true, std::sync::atomic::Ordering::Relaxed),
+            ("--sans-intro", _) => intro_video = false,
             ("--difficulte", Some(level)) => {
                 let wanted = ["debutant", "mortel", "heros", "titan", "olympien"].iter().position(|&n| n == level.to_lowercase().replace(['é', 'è'], "e"));
                 match wanted {
@@ -670,6 +673,10 @@ fn main() {
         None if AUDIT.load(std::sync::atomic::Ordering::Relaxed) => adventures(data).into_iter().next().map(|(_, pak)| pak.to_string_lossy().into_owned()),
         map => map,
     };
+    // Vidéo d'introduction du jeu, au lancement d'une vraie partie.
+    if intro_video && capture.is_none() && script.is_empty() && measure == 0 && !AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
+        play_intro(data);
+    }
     let chosen = match map {
         // Un nom qui n'est pas un fichier désigne une aventure installée.
         Some(map) => {
@@ -842,6 +849,25 @@ const TEXT_DIFFICULTY: usize = 153;
 
 fn difficulty() -> usize {
     DIFFICULTY.load(std::sync::atomic::Ordering::Relaxed).min(DIFFICULTY_MODELS.len() - 1)
+}
+
+/// Joue la vidéo d'introduction (`binks/zeus_intro_hiq.webm`, convertie à
+/// l'installation) avec le premier lecteur trouvé sur le système ; Olympe ne décode
+/// pas lui-même la vidéo. Échap ou Q l'interrompent. Sans lecteur, rien.
+fn play_intro(data: &Path) {
+    let Some(video) = ["binks/zeus_intro_hiq.webm", "binks/zeus_intro.webm"].iter().map(|f| data.join(f)).find(|p| p.exists()) else { return };
+    let players: [(&str, &[&str]); 3] = [
+        ("ffplay", &["-autoexit", "-fs", "-loglevel", "quiet", "-window_title", "Zeus"]),
+        ("mpv", &["--fs", "--really-quiet", "--no-terminal"]),
+        ("cvlc", &["--fullscreen", "--play-and-exit", "--quiet"]),
+    ];
+    for (player, options) in players {
+        if let Ok(status) = std::process::Command::new(player).args(options).arg(&video).stdin(std::process::Stdio::null()).status() {
+            if status.success() || status.code().is_some() {
+                return;
+            }
+        }
+    }
 }
 
 /// `--bilan` demandé.

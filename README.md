@@ -106,7 +106,8 @@ Ce qui reste approché ou absent : les envahisseurs n'ont qu'un type de soldat p
 raffinerie doivent avoir arbres, rochers ou minerai à moins de huit cases, sans
 distinguer les types de roche ; pentes
 des pyramides en blocs ; les conseillers tiennent en un panneau de synthèse (touche
-A) ; pas de vidéos ;
+A) ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
+VLC), Olympe ne décodant pas la vidéo lui-même ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
 repris du jeu.
