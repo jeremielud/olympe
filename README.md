@@ -88,12 +88,19 @@ Ce qui fonctionne :
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : terres englouties (aucune aventure n'en a), animations de combat, batailles et colonies (une colonie
-part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
-; scierie et atelier de maçonnerie se posent sans forêt ni carrière ; conseillers,
-voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs
-réglages d'équilibre (rendements, consommations) sont approchés et non repris du
-jeu.
+Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
+que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque aventure
+s'enchaîne jusqu'à son récit de fin.
+
+Ce qui reste approché ou absent : les batailles se règlent par comparaison des forces,
+sans combat animé ; une colonie part de sa carte vierge et le trésor suit le joueur ;
+scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
+forêt, carrière ni mine ; les chantiers se servent à l'entrepôt sans porteurs ; pentes
+des pyramides en blocs ; pas de conseillers, de paroles des passants ni de vidéos ;
+l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
+d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
+repris du jeu.
+
 
 ## Installation
 

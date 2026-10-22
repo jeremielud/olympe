@@ -332,7 +332,7 @@ const HELP: [&str; 16] = [
     "Clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
-    "1 à 9 : ouvrir une catégorie, puis choisir un bâtiment",
+    "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
     "Clic gauche : bâtir ; glisser pour tracer une route",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
