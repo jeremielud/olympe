@@ -91,6 +91,9 @@ Ce qui fonctionne :
   (voix du jeu, retrouvées pour les aventures de Zeus, de Poséidon et en dossier), leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
+- superviseurs (touche A, Tab pour changer de page) : population par niveau de
+  logement, emploi par catégorie, finances, services et réserves, mythologie, armée
+  et commerce, en panneaux de texte comme dans le jeu ;
 - un clic sur un passant (porteur d'eau, garde, philosophe, dieu…) le fait parler,
   avec les voix du jeu ;
 - cinq niveaux de difficulté (Débutant à Olympien, touche D sur l'écran des
@@ -107,9 +110,7 @@ faute d'images de flèches dans les catalogues ; les exploitations se posent à 
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
 sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
-figurés par des obélisques ; les conseillers (touche A, Tab pour changer de page : population, emploi,
-finances, services, mythologie, armée et commerce) donnent des chiffres, sans les
-portraits ni les conseils parlés du jeu ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
+figurés par des obélisques ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
 VLC), Olympe ne décodant pas la vidéo lui-même ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
