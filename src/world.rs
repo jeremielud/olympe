@@ -294,21 +294,43 @@ pub struct Anim {
 /// Marche de douze images, mort (8), combat de huit images : hoplites de la cité
 /// (`sprmain.sg3`), monstres et autres personnages.
 pub const COMMON_ANIM: Anim = Anim { walk: WALK_FRAMES, fight: 104, fight_frames: 8 };
-/// Armées ennemies, par nation (ordre de l'éditeur), relevées sur les groupes de
-/// leurs catalogues : grecs, troyens, perses, centaures, amazones, égyptiens, mayas,
-/// phéniciens, océanides, atlantes.
-pub const ARMY_ANIMS: [Anim; 10] = [
-    COMMON_ANIM,
-    Anim { walk: 12, fight: 104, fight_frames: 10 },
-    Anim { walk: 15, fight: 120, fight_frames: 15 },
-    Anim { walk: 18, fight: 144, fight_frames: 15 },
-    Anim { walk: 15, fight: 120, fight_frames: 15 },
-    Anim { walk: 12, fight: 104, fight_frames: 12 },
-    Anim { walk: 12, fight: 104, fight_frames: 12 },
-    Anim { walk: 12, fight: 104, fight_frames: 12 },
-    Anim { walk: 12, fight: 104, fight_frames: 12 },
-    Anim { walk: 12, fight: 96, fight_frames: 9 },
+/// Unité d'une armée ennemie dans son catalogue : premier rang des images de marche,
+/// nombre d'images de marche par direction, premier rang et nombre des images de
+/// combat. Relevées sur les groupes des catalogues (marche, combat, mort).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Unit {
+    pub walk: usize,
+    pub walk_frames: usize,
+    pub fight: usize,
+    pub fight_frames: usize,
+}
+
+const fn unit(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize) -> Unit {
+    Unit { walk, walk_frames, fight, fight_frames }
+}
+
+/// Unités de chaque nation (ordre de l'éditeur) : grecs, troyens, perses, centaures,
+/// amazones, égyptiens, mayas, phéniciens, océanides, atlantes.
+pub const ARMY_UNITS: [&[Unit]; 10] = [
+    &[unit(1, 12, 105, 8), unit(169, 12, 273, 12), unit(369, 12, 473, 12)],
+    &[unit(1, 12, 105, 10), unit(185, 12, 289, 10), unit(369, 12, 473, 12)],
+    &[unit(1, 15, 121, 15), unit(257, 15, 377, 18), unit(532, 15, 652, 15)],
+    &[unit(1, 18, 145, 15), unit(280, 17, 416, 15)],
+    &[unit(1, 15, 121, 15), unit(261, 15, 381, 18)],
+    &[unit(1, 12, 105, 12), unit(201, 12, 297, 9), unit(369, 12, 465, 12)],
+    &[unit(1, 12, 105, 12), unit(201, 12, 305, 12)],
+    &[unit(1, 12, 105, 12), unit(201, 12, 305, 12)],
+    &[unit(1, 12, 105, 12), unit(201, 12, 305, 8)],
+    &[unit(1, 12, 97, 9), unit(169, 12, 265, 12), unit(369, 15, 489, 12)],
 ];
+
+/// Unité d'un soldat ennemi : `troop` regroupe la nation (seize par nation) et le
+/// rang de l'unité.
+fn army_unit(troop: u8) -> Unit {
+    let units = ARMY_UNITS.get((troop / 16) as usize).copied().unwrap_or(ARMY_UNITS[0]);
+    units.get((troop % 16) as usize).copied().unwrap_or(units[0])
+}
+
 const SOLDIER_FIGHT_FRAME_TICKS: usize = 4;
 /// Un défenseur cherche à nouveau l'ennemi le plus proche tous les tant de pas.
 const CHASE_TICKS: u64 = 20;
@@ -894,6 +916,7 @@ enum Role {
     Visit { god: u8, leaves_at: u64 },
     /// Soldat d'une bataille : envahisseur (`enemy`) ou défenseur de la cité, ses
     /// forces, le bâtiment visé par un envahisseur, et s'il est au corps à corps.
+    /// `army` : nation et unité d'un envahisseur (voir `army_unit`).
     Soldier { enemy: bool, army: u8, health: i32, target: u16, fighting: bool },
     /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
     God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
@@ -947,7 +970,10 @@ impl Figure {
     /// Image à dessiner : une rangée de 8 directions par étape de marche.
     pub fn image(&self) -> usize {
         let anim = match self.role {
-            Role::Soldier { enemy: true, army, .. } => ARMY_ANIMS.get(army as usize).copied().unwrap_or(COMMON_ANIM),
+            Role::Soldier { enemy: true, army, .. } => {
+                let unit = army_unit(army);
+                Anim { walk: unit.walk_frames, fight: unit.fight - unit.walk, fight_frames: unit.fight_frames }
+            }
             _ => COMMON_ANIM,
         };
         if let Role::Soldier { fighting: true, .. } = self.role {
@@ -2422,14 +2448,17 @@ impl World {
         let Some(entry) = entry else { return };
         let limit = (soldiers / 16).max(1);
         self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
-        let army = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_ANIMS.len() as u8 - 1);
+        let nation = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_UNITS.len() as u8 - 1);
         let spawn = |world: &mut World, at: (usize, usize), enemy: bool, count: i32| {
             for i in 0..count.min(MAX_SOLDIERS) {
                 // Les soldats se rangent en carré autour de leur point de départ.
                 let side = 6;
                 let (dx, dy) = (i % side - side / 2, i / side - side / 2);
                 let (x, y) = ((at.0 as i32 + dx).clamp(0, GRID as i32 - 1) as u16, (at.1 as i32 + dy).clamp(0, GRID as i32 - 1) as u16);
-                let (source, image_base) = if enemy { (Source::Army(army), 1) } else { (Source::Figures, world.walkers.hoplite) };
+                // Les envahisseurs alternent les unités de leur nation.
+                let units = ARMY_UNITS[nation as usize];
+                let army = nation * 16 + (i as usize % units.len()) as u8;
+                let (source, image_base) = if enemy { (Source::Army(nation), army_unit(army).walk) } else { (Source::Figures, world.walkers.hoplite) };
                 world.figures.push(Figure {
                     image_base,
                     x: x as f32,
@@ -4186,7 +4215,7 @@ impl World {
                             Role::Monster { monster, .. } => Source::Monster(monster),
                             Role::Hero { hero, .. } => Source::Hero(hero),
                             Role::God { god, .. } | Role::Visit { god, .. } => Source::Deity(god),
-                            Role::Soldier { enemy: true, army, .. } => Source::Army(army),
+                            Role::Soldier { enemy: true, army, .. } => Source::Army(army / 16),
                             _ => Source::Figures,
                         },
                     });
