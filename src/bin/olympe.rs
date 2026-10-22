@@ -1115,13 +1115,14 @@ fn begin_events(world: &mut World, episode: &Episode) {
                 world.schedule(if rise { zeus::world::WAGE_RISE } else { zeus::world::WAGE_FALL }, (0, 0), amount, month, years)
             }
             Event::ArmyAway { cities, months, month, years } => world.schedule(zeus::world::ARMY_AWAY, cities, months, month, years),
-            // Glissements de terrain et terres englouties ne sont pas simulés.
+            // Les terres englouties ne sont pas simulées (aucune aventure n'en a).
             Event::Disaster { kind, points, permanent, month, years } => {
                 let change = match kind {
                     3 => zeus::world::EARTHQUAKE,
                     24 => zeus::world::LAVA,
                     25 if permanent => zeus::world::FLOOD,
                     25 => zeus::world::TIDAL_WAVE,
+                    5 => zeus::world::LANDSLIDE,
                     _ => continue,
                 };
                 world.schedule(change, points, (0, 0), month, years)
@@ -2469,6 +2470,7 @@ fn run(
                     zeus::world::EARTHQUAKE => "Tremblement de terre ! La terre s'ouvre",
                     zeus::world::LAVA => "Éruption ! La lave recouvre le pays",
                     zeus::world::TIDAL_WAVE => "Raz-de-marée ! Les eaux envahissent la côte",
+                    zeus::world::LANDSLIDE => "Glissement de terrain ! Des éboulis dévalent la pente",
                     _ => "Inondation ! La mer engloutit la côte pour toujours",
                 };
                 let toll = match destroyed {

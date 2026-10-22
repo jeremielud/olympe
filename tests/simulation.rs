@@ -761,6 +761,21 @@ fn disasters_strike_the_zones_painted_on_the_map() {
 }
 
 #[test]
+fn a_landslide_buries_the_foot_of_the_slope() {
+    use zeus::world::{LANDSLIDE, TERRAIN_ELEVATION};
+    let Some(data) = data() else { return };
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/^deux mondes s'affrontent.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages::default(), 0);
+    let (px, py) = world.map.disaster_point(1).unwrap();
+    assert_ne!(world.map.terrain(px, py) & TERRAIN_ELEVATION, 0);
+    let free = |w: &World| (-4..=4).flat_map(|dy| (-4..=4).map(move |dx| (px as i32 + dx, py as i32 + dy))).filter(|&(x, y)| w.can_build(x, y, 1)).count();
+    let before = free(&world);
+    world.strike(LANDSLIDE, 1);
+    assert!(free(&world) < before, "{} puis {}", before, free(&world));
+}
+
+#[test]
 fn wages_and_rival_armies_follow_events() {
     use zeus::map::{City, RIVAL};
     use zeus::world::{ARMY_AWAY, WAGE_FALL, WAGE_RISE};

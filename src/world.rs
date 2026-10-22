@@ -188,6 +188,12 @@ pub const LAVA: u8 = 91;
 pub const TIDAL_WAVE: u8 = 92;
 /// Raz-de-marée dont les eaux ne se retirent pas.
 pub const FLOOD: u8 = 93;
+/// Glissement de terrain : les éboulis couvrent le pied de la pente.
+pub const LANDSLIDE: u8 = 94;
+/// Portée d'un glissement autour de son point, et distance au relief des cases
+/// qu'il recouvre (valeurs d'Olympe).
+const LANDSLIDE_REACH: i32 = 4;
+const LANDSLIDE_SLOPE: i32 = 2;
 /// Morceaux de fissure posés sur le sol, selon les côtés par où la fissure se
 /// prolonge (bits dans l'ordre de `NEIGHBOURS` : nord-est, sud-est, sud-ouest,
 /// nord-ouest), relevés sur les images 1139 à 1178 du terrain ; plusieurs variantes
@@ -1861,7 +1867,7 @@ impl World {
                 self.gifts.push((city, resource as u8, given));
                 continue;
             }
-            if (EARTHQUAKE..=FLOOD).contains(&event.change) {
+            if (EARTHQUAKE..=LANDSLIDE).contains(&event.change) {
                 self.strike(event.change, city);
                 continue;
             }
@@ -2405,6 +2411,9 @@ impl World {
     /// détruits ; la lave et la fissure rendent les cases inutilisables, l'eau d'un
     /// raz-de-marée se retire au bout de six mois, sauf inondation.
     pub fn strike(&mut self, change: u8, point: usize) -> i32 {
+        if change == LANDSLIDE {
+            return self.landslide(point);
+        }
         let bit = match change {
             EARTHQUAKE => TERRAIN_FISSURE,
             LAVA => TERRAIN_LAVA_ZONE,
@@ -2466,6 +2475,38 @@ impl World {
         // Les flammes de la lave s'éteignent sous elle.
         self.fires.retain(|&(x, y, _)| !zone[y as usize * GRID + x as usize]);
         self.disaster_news.push((change, struck.len() as i32));
+        struck.len() as i32
+    }
+
+    /// Glissement de terrain au point `point` : les cases au pied du relief, à moins
+    /// de quatre cases du point, se couvrent d'éboulis (dessinés comme la lave
+    /// refroidie) ; les bâtiments touchés s'effondrent.
+    fn landslide(&mut self, point: usize) -> i32 {
+        let Some((px, py)) = self.map.disaster_point(point) else { return 0 };
+        let (px, py) = (px as i32, py as i32);
+        let elevated = |w: &World, x: i32, y: i32| Self::in_grid(x, y) && w.map.terrain(x as usize, y as usize) & TERRAIN_ELEVATION != 0;
+        let mut tiles = Vec::new();
+        for y in py - LANDSLIDE_REACH..=py + LANDSLIDE_REACH {
+            for x in px - LANDSLIDE_REACH..=px + LANDSLIDE_REACH {
+                if !self.in_map(x, y) || elevated(self, x, y) || self.map.terrain(x as usize, y as usize) & TERRAIN_WATER != 0 {
+                    continue;
+                }
+                let near = (-LANDSLIDE_SLOPE..=LANDSLIDE_SLOPE).any(|dy| (-LANDSLIDE_SLOPE..=LANDSLIDE_SLOPE).any(|dx| elevated(self, x + dx, y + dy)));
+                if near {
+                    tiles.push(y as usize * GRID + x as usize);
+                }
+            }
+        }
+        let mut struck: Vec<u16> = tiles.iter().filter_map(|&i| if let Cell::Building(id) = self.cells[i] { Some(id) } else { None }).collect();
+        struck.sort_unstable();
+        struck.dedup();
+        for &id in &struck {
+            self.remove_building(id, Cell::Rubble(0));
+        }
+        for &i in &tiles {
+            self.cells[i] = Cell::Lava(((i * 7) % LAVA_IMAGES) as u8);
+        }
+        self.disaster_news.push((LANDSLIDE, struck.len() as i32));
         struck.len() as i32
     }
 

@@ -80,13 +80,14 @@ Ce qui fonctionne :
   (sa défense est alors réduite de moitié) ; les catastrophes frappent les zones
   peintes dans l'éditeur à partir de leur point de départ : un tremblement de terre
   ouvre la fissure, la lave recouvre le pays, un raz-de-marée inonde la côte six mois
-  (pour toujours si l'aventure le veut), et les bâtiments touchés sont détruits ;
+  (pour toujours si l'aventure le veut), un glissement couvre d'éboulis le pied de la
+  pente, et les bâtiments touchés sont détruits ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits, leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
 - sauvegarde et rechargement d'une partie.
 
-Ce qui manque encore : glissements de terrain et terres englouties, animations de combat, batailles et colonies (une colonie
+Ce qui manque encore : terres englouties (aucune aventure n'en a), animations de combat, batailles et colonies (une colonie
 part de sa carte vierge, le trésor suit le joueur), les objectifs qui en dépendent
 ; scierie et atelier de maçonnerie se posent sans forêt ni carrière ; conseillers,
 voix, vidéos, et l'interface d'origine (celle d'Olympe est provisoire). Plusieurs
