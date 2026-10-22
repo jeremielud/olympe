@@ -39,6 +39,7 @@ pub const KEY_SPACE: u32 = 0x20;
 pub const SCANCODE_1: u32 = 30;
 pub const SCANCODE_9: u32 = 38;
 pub const KEY_B: u32 = 0x62;
+pub const KEY_D: u32 = 0x64;
 pub const KEY_C: u32 = 0x63;
 pub const KEY_F: u32 = 0x66;
 pub const KEY_H: u32 = 0x68;

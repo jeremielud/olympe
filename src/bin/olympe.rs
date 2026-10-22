@@ -47,6 +47,7 @@ options :
   --capture IMAGE    enregistre la première image rendue et quitte
   --bilan            vérifie, pour chaque épisode de chaque aventure installée, que
                      ses objectifs sont suivis et réalisables, puis quitte
+  --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
                      d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r,
@@ -610,6 +611,19 @@ fn main() {
             }
             ("--demo", _) => demo = true,
             ("--bilan", _) => AUDIT.store(true, std::sync::atomic::Ordering::Relaxed),
+            ("--difficulte", Some(level)) => {
+                let wanted = ["debutant", "mortel", "heros", "titan", "olympien"].iter().position(|&n| n == level.to_lowercase().replace(['é', 'è'], "e"));
+                match wanted {
+                    Some(level) => {
+                        DIFFICULTY.store(level, std::sync::atomic::Ordering::Relaxed);
+                        options.next();
+                    }
+                    None => {
+                        eprintln!("difficulté inconnue : {level} (debutant, mortel, heros, titan, olympien)");
+                        std::process::exit(2);
+                    }
+                }
+            }
             ("--donnees", Some(folder)) => {
                 data = PathBuf::from(folder);
                 options.next();
@@ -816,6 +830,19 @@ fn narration(data: &Path, map_path: &Path, settings: Option<&Settings>, step: St
 const ZEUS_FIRST_CAMPAIGN_MESSAGE: i32 = 290;
 const ZEUS_CAMPAIGN_MESSAGES: i32 = 28;
 const ZEUS_CAMPAIGNS: i32 = 7;
+
+/// Niveau de difficulté (groupe de textes 153 : Débutant, Mortel, Héros, Titan,
+/// Olympien), choisi sur l'écran des aventures ou par `--difficulte` ; Héros par
+/// défaut. Chacun a son fichier de règles, et le trésor initial est augmenté de
+/// moitié en Débutant, diminué d'un cinquième en Olympien (manuel de l'éditeur).
+static DIFFICULTY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(2);
+const DIFFICULTY_MODELS: [&str; 5] = ["veryeasy", "easy", "normal", "hard", "impossible"];
+const DIFFICULTY_FUNDS_PERCENT: [i32; 5] = [150, 100, 100, 100, 80];
+const TEXT_DIFFICULTY: usize = 153;
+
+fn difficulty() -> usize {
+    DIFFICULTY.load(std::sync::atomic::Ordering::Relaxed).min(DIFFICULTY_MODELS.len() - 1)
+}
 
 /// `--bilan` demandé.
 static AUDIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -1802,6 +1829,8 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
         return Err("aucune aventure dans le dossier de données".into());
     }
     let background = fs::read(data.join("data/zeus_fe_choosegame.jpg")).map_err(|e| e.to_string()).and_then(|file| jpeg::decode(&file));
+    let text = Text::parse(&fs::read(data.join("zeus_text.eng")).map_err(|e| e.to_string())?)?;
+    let level_name = |level: usize| text.get(TEXT_DIFFICULTY, level + 1);
     let mut chosen = None;
     // SAFETY : appels directs à SDL3 ; chaque pointeur rendu est vérifié avant usage.
     unsafe {
@@ -1888,6 +1917,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
                         sdl::KEY_UP => first = first.saturating_sub(1),
                         sdl::KEY_DOWN => first = (first + 1).min(list.len() - rows),
+                        sdl::KEY_D => DIFFICULTY.store((difficulty() + 1) % DIFFICULTY_MODELS.len(), std::sync::atomic::Ordering::Relaxed),
                         _ => {}
                     },
                     sdl::EVENT_MOUSE_MOTION => pointer = event.position(),
@@ -1901,6 +1931,11 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         if pointer.0 >= left && pointer.0 < left + width && pointer.1 >= top && index < (first + rows).min(list.len()) {
                             chosen = Some(list[index].1.clone());
                             running = false;
+                        }
+                        // Ligne de la difficulté, sous la liste : un clic passe au niveau suivant.
+                        let below = top + row * rows as f32 + 16.0;
+                        if pointer.0 >= left && pointer.0 < left + width && pointer.1 >= below && pointer.1 < below + row {
+                            DIFFICULTY.store((difficulty() + 1) % DIFFICULTY_MODELS.len(), std::sync::atomic::Ordering::Relaxed);
                         }
                     }
                     _ => {}
@@ -1931,6 +1966,10 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                 }
                 graphics.draw_text(FONT_TEXT, name, left + 32.0, y + 4.0);
             }
+            let below = top + row * rows as f32 + 16.0;
+            graphics.panel(left - 8.0, below - 4.0, width + 16.0, row + 8.0);
+            let label = format!("{} : {} (D)", text.get(TEXT_DIFFICULTY, 0), level_name(difficulty()));
+            graphics.draw_text(FONT_TEXT, &label, left + 32.0, below + 4.0);
             if let (Some(file), true, true) = (capture, script.is_empty(), running) {
                 save_frame(renderer, file)?;
                 running = false;
@@ -1955,7 +1994,7 @@ fn run(
     let (map, colony_maps, settings) = load_map(map_path)?;
     let read = |file: &str| fs::read(data.join(file)).map_err(|e| format!("{file} : {e}"));
     let text = Text::parse(&read("zeus_text.eng")?)?;
-    let model = Model::parse(&read("model/zeus_model_normal.txt")?)?;
+    let model = Model::parse(&read(&format!("model/zeus_model_{}.txt", DIFFICULTY_MODELS[difficulty()]))?)?;
     let general = Catalog::load(&data.join("data/zeus_general.sg3"))?;
     let figures = Catalog::load(&data.join("data/sprmain.sg3"))?;
     let road_cost = model.buildings.get(TYPE_ROAD).map_or(0, |b| b.cost);
@@ -2176,7 +2215,8 @@ fn run(
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
-    let mut world = World::new(map, kinds, model.houses.clone(), walkers, settings.as_ref().map_or(STARTING_MONEY, |s| s.funds));
+    let funds = settings.as_ref().map_or(STARTING_MONEY, |s| s.funds) * DIFFICULTY_FUNDS_PERCENT[difficulty()] / 100;
+    let mut world = World::new(map, kinds, model.houses.clone(), walkers, funds);
     world.cities = world.map.cities();
     world.monument_layouts = monument_layouts;
     if AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
