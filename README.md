@@ -37,6 +37,10 @@ Ce qui fonctionne :
   par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
   arrivent de l'entrepôt (quantités provisoires) ; les pentes sont dessinées en
   blocs, les statues en obélisques ;
+- marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
+  (raccourci), marchandises rangées à l'entrepôt ;
+- `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
+  objectifs suivis et réalisables avec ses bâtiments permis (152 sur 152) ;
 - hippodrome (Administration, aventures de l'Atlantide) : sections de piste posées
   bout à bout, droites ou virages selon leurs voisines ; une boucle fermée accueille
   les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade

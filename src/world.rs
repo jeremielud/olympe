@@ -418,7 +418,9 @@ pub const STOREHOUSE_BAYS: usize = 8;
 const BAY_LOADS: i32 = 4;
 const EMPTY_BAY_IMAGE: usize = 934;
 /// Une baie ne montre jamais qu'une sculpture.
-const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873];
+/// Le marbre noir et l'orichalque n'ont pas de baie dans `zeus_general.sg3` : ceux
+/// du marbre et du bronze en tiennent lieu.
+const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873, 849, 845];
 const WORKFORCE_PERCENT: i32 = 40;
 /// Impôt mensuel, en drachmes pour 100 habitants d'une maison visitée par un
 /// percepteur (multiplié par le coefficient du niveau de logement).
@@ -471,6 +473,9 @@ pub enum Good {
     Marble,
     /// Sculptures de bronze de l'atelier de sculpture.
     Sculpture,
+    /// Marbre noir et orichalque de Poséidon, rangés à l'entrepôt.
+    BlackMarble,
+    Orichalc,
 }
 
 /// Matière première d'un atelier.
@@ -490,8 +495,20 @@ fn raw_for(good: Good) -> Raw {
     }
 }
 
-pub const GOODS: [Good; 10] =
-    [Good::Food, Good::Fleece, Good::Oil, Good::Wine, Good::Arms, Good::Horses, Good::Bronze, Good::Wood, Good::Marble, Good::Sculpture];
+pub const GOODS: [Good; 12] = [
+    Good::Food,
+    Good::Fleece,
+    Good::Oil,
+    Good::Wine,
+    Good::Arms,
+    Good::Horses,
+    Good::Bronze,
+    Good::Wood,
+    Good::Marble,
+    Good::Sculpture,
+    Good::BlackMarble,
+    Good::Orichalc,
+];
 
 /// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
 /// objectifs des aventures) : 2 poisson, 7 blé, 14 laine, 20 huile d'olive…
@@ -502,7 +519,7 @@ pub const FOODS: usize = 8;
 /// Marchandise que les maisons consomment (les autres ne servent qu'à l'industrie
 /// ou aux objectifs).
 pub fn for_houses(good: Good) -> bool {
-    !matches!(good, Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture)
+    !matches!(good, Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture | Good::BlackMarble | Good::Orichalc)
 }
 
 /// Numéro de ressource d'une marchandise rangée à l'entrepôt.
@@ -517,6 +534,8 @@ pub fn resource_of(good: Good) -> Option<u8> {
         Good::Wood => Some(9),
         Good::Marble => Some(11),
         Good::Sculpture => Some(19),
+        Good::BlackMarble => Some(16),
+        Good::Orichalc => Some(17),
         Good::Food => None,
     }
 }
@@ -3323,7 +3342,7 @@ fn bays_used(goods: &[i32; GOODS.len()]) -> usize {
 fn units_per_load(good: Good) -> i32 {
     match good {
         Good::Food => PEOPLE_PER_LOAD,
-        Good::Fleece | Good::Oil | Good::Wine | Good::Arms | Good::Horses | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture => 1,
+        _ => 1,
     }
 }
 

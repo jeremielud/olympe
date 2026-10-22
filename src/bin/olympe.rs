@@ -45,6 +45,8 @@ options :
   --demo             bâtit une cité de démonstration (carte « Les plus jeunes jumeaux »)
   --mesure N         dessine N images, affiche la cadence obtenue et quitte
   --capture IMAGE    enregistre la première image rendue et quitte
+  --bilan            vérifie, pour chaque épisode de chaque aventure installée, que
+                     ses objectifs sont suivis et réalisables, puis quitte
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
                      d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r,
@@ -108,6 +110,8 @@ const HUNTING_LODGE_IMAGE: usize = 528;
 const TYPE_WHARF: usize = 136;
 /// Section d'hippodrome, et sa première image (droite) dans `poseidon_loaded.sg3`.
 const TYPE_RACETRACK: usize = 199;
+const TYPE_ORICHALC_REFINERY: usize = 211;
+const TYPE_BLACK_MARBLE_SHOP: usize = 213;
 const RACETRACK_IMAGE: usize = 426;
 const WHARF_IMAGE: usize = 721;
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
@@ -224,7 +228,7 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
     (73, 455, 456, Good::Horses, GROUP_HORSE_TRAINER),
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
-const GOOD_TEXTS: [usize; 10] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19];
+const GOOD_TEXTS: [usize; 12] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19, 16, 17];
 /// Sanctuaires : temple d'un seul tenant (puis, deux plus loin, moitiés arrière et
 /// avant des grands temples) dans `zeus_sanctuaryN.sg3`, grande statue (quatre
 /// orientations) dans `zeus_godNN.sg3`, et dans `zeus_general.sg3` : petites statues
@@ -294,7 +298,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Fleece) => "AGORA_FLEECE",
         Function::Vendor(Good::Oil) => "AGORA_OIL",
         Function::Vendor(Good::Wine) => "AGORA_WINE",
-        Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
+        Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture | Good::BlackMarble | Good::Orichalc) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex | Function::Racetrack => "STADIUM",
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
@@ -402,7 +406,7 @@ const CATEGORY_NAMES: [(Option<usize>, &str); 10] = [
 fn category_of(function: Function) -> usize {
     match function {
         Function::House => 0,
-        Function::Supplier(Raw::Bronze) | Function::Producer(Good::Wood | Good::Marble) => 2,
+        Function::Supplier(Raw::Bronze) | Function::Producer(Good::Wood | Good::Marble | Good::BlackMarble | Good::Orichalc) => 2,
         Function::Farm | Function::Producer(_) | Function::Fishery | Function::Supplier(Raw::Crops) => 1,
         Function::Workshop(_) => 2,
         Function::Granary | Function::Storehouse | Function::Agora { .. } | Function::Vendor(_) => 3,
@@ -605,6 +609,7 @@ fn main() {
                 return;
             }
             ("--demo", _) => demo = true,
+            ("--bilan", _) => AUDIT.store(true, std::sync::atomic::Ordering::Relaxed),
             ("--donnees", Some(folder)) => {
                 data = PathBuf::from(folder);
                 options.next();
@@ -646,6 +651,11 @@ fn main() {
         eprintln!("    olympe installer <source> [<source>…]");
         std::process::exit(1);
     }
+    // Bilan : la première aventure installée sert à charger les règles et les images.
+    let map = match map {
+        None if AUDIT.load(std::sync::atomic::Ordering::Relaxed) => adventures(data).into_iter().next().map(|(_, pak)| pak.to_string_lossy().into_owned()),
+        map => map,
+    };
     let chosen = match map {
         // Un nom qui n'est pas un fichier désigne une aventure installée.
         Some(map) => {
@@ -764,6 +774,68 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
     Some((message.title, message.paragraphs))
 }
 
+/// `--bilan` demandé.
+static AUDIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Bilan de jouabilité : pour chaque épisode de chaque aventure installée, sur sa
+/// carte et avec ses bâtiments permis, chaque objectif doit être suivi par Olympe et
+/// avoir de quoi être atteint (un bâtiment permis qui produit la marchandise, une
+/// cité qui la vend, le temple du héros de la quête…).
+fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
+    let (mut episodes, mut playable) = (0, 0);
+    for (name, pak) in adventures(data) {
+        let Ok((parent, colonies, Some(settings))) = load_map(&pak) else { continue };
+        let mut colony = 0;
+        for step in settings.order() {
+            let Some(episode) = settings.episode(step) else { continue };
+            let map = match step {
+                Step::Parent(_) => parent.clone(),
+                Step::Colony(_) => {
+                    colony += 1;
+                    colonies.get(colony - 1).cloned().unwrap_or_else(|| parent.clone())
+                }
+            };
+            let mut world = base.new_city(map, settings.funds);
+            if !parent.cities().is_empty() {
+                world.cities = parent.cities();
+            }
+            lock_resources(&mut world, episode);
+            begin_events(&mut world, episode);
+            let open = |f: &dyn Fn(&Function) -> bool| world.kinds.iter().enumerate().any(|(i, k)| f(&k.function) && !world.locked.get(i).copied().unwrap_or(false));
+            let makes = |resource: i32| world.kinds.iter().enumerate().any(|(i, k)| k.product as i32 == resource && !world.locked.get(i).copied().unwrap_or(false));
+            // Une cité inactive peut s'ouvrir au commerce par un événement.
+            let sold = |resource: i32| world.cities.iter().any(|c| c.sells.iter().any(|&(r, _)| r as i32 == resource));
+            let mut problems = Vec::new();
+            for goal in &episode.goals {
+                let [first, second, _] = goal.values;
+                let label = goal.describe(text, &[], matches!(step, Step::Colony(_)));
+                let problem = match (goal.status(&world), goal.kind) {
+                    (Status::Unsupported, _) => Some("non suivi"),
+                    (_, GoalKind::Production) if !makes(first) => Some("aucun bâtiment permis ne le produit"),
+                    (_, GoalKind::SetAside) if first > 0 && !makes(first) && !sold(first) => Some("ni produit ni vendu par une cité"),
+                    (_, GoalKind::Sanctuary) if first >= 0 && !open(&|f| matches!(f, Function::Sanctuary { god, .. } if *god as i32 == first)) => Some("sanctuaire non permis"),
+                    (_, GoalKind::Pyramid) if !open(&|f| matches!(f, Function::Monument { .. })) => Some("monument non permis"),
+                    (_, GoalKind::Hippodrome) if !open(&|f| *f == Function::Racetrack) => Some("hippodrome non permis"),
+                    (_, GoalKind::Support) if second > 0 && first == 57 && !open(&|f| *f == Function::Wharf) => Some("quai non permis"),
+                    (_, GoalKind::Quest | GoalKind::Slay) if !open(&|f| matches!(f, Function::HeroHall(_))) => Some("aucun temple de héros permis"),
+                    _ => None,
+                };
+                if let Some(problem) = problem {
+                    problems.push(format!("{label} : {problem}"));
+                }
+            }
+            episodes += 1;
+            if problems.is_empty() {
+                playable += 1;
+            } else {
+                println!("{name} {step:?} : {}", problems.join(" ; "));
+            }
+        }
+    }
+    println!("{playable} épisodes sur {episodes} ont tous leurs objectifs suivis et réalisables");
+    Ok(())
+}
+
 /// L'épisode dit ce que la cité peut produire : les exploitations et ateliers des
 /// autres ressources ne sont pas proposés. Tant que le moteur ne sait nourrir une cité
 /// que par ses exploitations et ses laiteries, ses pavillons de chasse et ses
@@ -772,7 +844,16 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
 fn lock_resources(world: &mut World, episode: &Episode) {
     // Un sanctuaire achevé apporte sa ressource (éditeur d'aventures, annexe 2).
     let granted: Vec<u8> = world.sanctuaries().iter().filter_map(|&god| SANCTUARY_RESOURCES.iter().find(|&&(g, _)| g == god).map(|&(_, r)| r)).collect();
-    let has = |resource: u8| episode.resources.contains(&resource) || granted.contains(&resource);
+    // Une marchandise qu'un objectif demande de produire ou de mettre de côté est
+    // toujours permise : certains épisodes en réclament sans les nommer dans leur
+    // liste, ni de cité qui les vende.
+    let wanted: Vec<u8> = episode
+        .goals
+        .iter()
+        .filter(|g| matches!(g.kind, GoalKind::Production | GoalKind::SetAside) && g.values[0] > 0)
+        .map(|g| g.values[0] as u8)
+        .collect();
+    let has = |resource: u8| episode.resources.contains(&resource) || granted.contains(&resource) || wanted.contains(&resource);
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
     world.locked = world
@@ -795,8 +876,8 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             }),
             _ if !farmable => false,
             Function::Farm => !kind.parts.get(1).is_some_and(|field| FARMS.iter().zip(FARM_RESOURCES).any(|(farm, resource)| farm.1 == field.image && has(resource))),
-            Function::Producer(Good::Fleece) => !has(RESOURCE_FLEECE),
-            Function::Fishery => !has(RESOURCE_FISH),
+            // Pêcherie et bergerie dépendent de la carte (eau, prés), pas de la liste :
+            // des épisodes demandent du poisson ou de la laine sans les y nommer.
             // Laiterie et pavillon de chasse se distinguent par leur image.
             Function::Producer(Good::Food) => {
                 let hunting = kind.parts.first().is_some_and(|part| part.image == HUNTING_LODGE_IMAGE);
@@ -808,6 +889,8 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::Supplier(Raw::Bronze) => !has(RESOURCE_BRONZE),
             Function::Producer(Good::Wood) => !has(RESOURCE_WOOD),
             Function::Producer(Good::Marble) => !has(RESOURCE_MARBLE),
+            Function::Producer(Good::BlackMarble) => !has(16),
+            Function::Producer(Good::Orichalc) => !has(17),
             Function::Workshop(Good::Sculpture) => !has(RESOURCE_BRONZE),
             _ => false,
         })
@@ -2014,6 +2097,18 @@ fn run(
     racetrack.employees = rules(TYPE_RACETRACK)?.employees;
     racetrack.appeal = appeal_of(TYPE_RACETRACK)?;
     kinds.push(racetrack);
+    // Atelier de marbre noir et raffinerie d'orichalque (Poséidon) : posés n'importe
+    // où, sans carrière ni mine (raccourci, comme l'atelier de maçonnerie) ; images
+    // attribuées à l'œil dans `poseidon_loaded.sg3`.
+    for (kind, image, good) in [(TYPE_BLACK_MARBLE_SHOP, 700, Good::BlackMarble), (TYPE_ORICHALC_REFINERY, 665, Good::Orichalc)] {
+        let mut entry = Kind::simple(text.get(TEXT_BUILDINGS, kind), rules(kind)?.cost, 2, image, Function::Producer(good), 0);
+        entry.parts[0].source = Source::Poseidon;
+        entry.employees = rules(kind)?.employees;
+        entry.appeal = appeal_of(kind)?;
+        (entry.fire_risk, entry.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
+        entry.product = zeus::world::resource_of(good).unwrap_or(0);
+        kinds.push(entry);
+    }
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -2021,6 +2116,9 @@ fn run(
     let mut world = World::new(map, kinds, model.houses.clone(), walkers, settings.as_ref().map_or(STARTING_MONEY, |s| s.funds));
     world.cities = world.map.cities();
     world.monument_layouts = monument_layouts;
+    if AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
+        return audit(data, &world, &text);
+    }
     let start_year = settings.as_ref().map_or(0, |s| s.start_year);
     let mut journey = Journey { order: settings.as_ref().map(Settings::order).unwrap_or_default(), position: 0, home: None, colony_maps };
     let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
