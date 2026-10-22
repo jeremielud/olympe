@@ -316,9 +316,38 @@ fn a_wharf_builds_a_trireme_from_wood() {
     world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Wood as usize] = 6;
     let goal = Goal { kind: GoalKind::Support, values: [57, 1, 0] };
     assert_eq!(goal.status(&world), Status::Pending(Some(0)));
+    // Sans armement, la trière attend à quai.
     (0..5 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!(world.triremes(), 0);
+    world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Arms as usize] = 1;
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!((world.triremes(), world.stored(9)), (1, 2));
     assert_eq!(goal.status(&world), Status::Met);
+}
+
+#[test]
+fn a_closed_racetrack_makes_a_hippodrome() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let track = world.kinds.len();
+    world.kinds.push(Kind::simple("hippodrome".into(), 60, 4, 426, Function::Racetrack, 0));
+    let goal = Goal { kind: GoalKind::Hippodrome, values: [8, 0, 0] };
+    // Une boucle de trois sections sur trois, vide au milieu : huit stades.
+    let ring = [(0, 0), (4, 0), (8, 0), (8, 4), (8, 8), (4, 8), (0, 8), (0, 4)];
+    for (i, &(dx, dy)) in ring.iter().enumerate() {
+        assert!(world.place_building(track, x + dx, y + dy), "section {i}");
+        if i < ring.len() - 1 {
+            assert_eq!(world.hippodrome().1, false);
+        }
+    }
+    // Une section détachée ne se pose pas.
+    assert!(!world.can_place(track, x + 13, y + 9));
+    assert_eq!(world.hippodrome(), (8, true));
+    assert_eq!(goal.status(&world), Status::Met);
+    // Les coins sont des virages, les côtés des droites.
+    let image = |dx: i32, dy: i32| world.draw((x + dx) as usize, (y + dy + 3) as usize).map(|d| d.image);
+    assert_eq!((image(0, 0), image(8, 8)), (Some(429), Some(425)));
+    assert!(matches!(image(4, 0), Some(422 | 426)) && matches!(image(0, 4), Some(424 | 428)));
 }
 
 #[test]

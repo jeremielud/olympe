@@ -219,6 +219,11 @@ impl Goal {
             // Le jeu tient pour atteint un objectif sans marchandise.
             Kind::SetAside if first == 0 => Status::Met,
             Kind::SetAside if world.can_store(first) => against(world.set_aside[first as usize], second),
+            // Hippodrome d'au moins `first` stades, piste fermée.
+            Kind::Hippodrome => match world.hippodrome() {
+                (sections, true) => against(sections, first),
+                (sections, false) => Status::Pending(Some(sections.min(first - 1))),
+            },
             // Monuments achevés : `first` d'entre eux, du type `second` (100 à 114),
             // ou de n'importe quel type (−1).
             Kind::Pyramid => {

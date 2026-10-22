@@ -79,12 +79,21 @@ impl Model {
             let (Some(open), Some(close)) = (line.find('{'), line.find('}')) else { continue };
             let mut head = line[..open].split(',');
             let (Some(number), Some(name)) = (head.next(), head.next()) else { continue };
-            if number.trim().parse::<u32>().is_err() || !(name.starts_with("BUILD_") || name.starts_with("UNUSED")) {
+            // Quelques noms sont entre guillemets, avec une virgule dedans.
+            let name = name.trim_start_matches('"');
+            let Ok(number) = number.trim().parse::<usize>() else { continue };
+            if !(name.starts_with("BUILD_") || name.starts_with("UNUSED")) {
                 continue;
             }
             let values: Vec<i32> = line[open + 1..close].split(',').filter_map(|v| v.trim().parse().ok()).collect();
             if values.len() < 8 {
                 continue;
+            }
+            // Les règles sont rangées par numéro de type ; les lignes sautées (noms
+            // illisibles) laissent un trou. Un numéro en arrière est une erreur du
+            // fichier (la fonderie, numérotée 10 au rang 50) : on garde son rang.
+            while buildings.len() < number {
+                buildings.push(BuildingModel::default());
             }
             buildings.push(BuildingModel {
                 name: name.trim().to_string(),

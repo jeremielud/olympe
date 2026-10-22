@@ -37,8 +37,12 @@ Ce qui fonctionne :
   par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
   arrivent de l'entrepôt (quantités provisoires) ; les pentes sont dessinées en
   blocs, les statues en obélisques ;
+- hippodrome (Administration, aventures de l'Atlantide) : sections de piste posées
+  bout à bout, droites ou virages selon leurs voisines ; une boucle fermée accueille
+  les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade
+  par section (hypothèse d'Olympe) ;
 - quai des trières (onglet Armée), au bord de l'eau : il prend quatre charges de
-  bois à l'entrepôt et lance une trière trois mois plus tard (barème d'Olympe ; le jeu
+  bois et une d'armement à l'entrepôt et lance une trière trois mois plus tard (barème d'Olympe ; le jeu
   n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
   d'entretien de trières sont suivis ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec

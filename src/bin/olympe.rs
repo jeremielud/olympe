@@ -106,6 +106,9 @@ const DAIRY_IMAGE: usize = 565;
 const HUNTING_LODGE_IMAGE: usize = 528;
 /// Quai des trières, et l'image de pêcherie qui le représente.
 const TYPE_WHARF: usize = 136;
+/// Section d'hippodrome, et sa première image (droite) dans `poseidon_loaded.sg3`.
+const TYPE_RACETRACK: usize = 199;
+const RACETRACK_IMAGE: usize = 426;
 const WHARF_IMAGE: usize = 721;
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
@@ -293,7 +296,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Wine) => "AGORA_WINE",
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
-        Function::Stadium | Function::Annex => "STADIUM",
+        Function::Stadium | Function::Annex | Function::Racetrack => "STADIUM",
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
         Function::None => "BEAUTIFICATION",
     }
@@ -412,6 +415,7 @@ fn category_of(function: Function) -> usize {
         Function::Annex => usize::MAX,
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
         Function::Wharf => 9,
+        Function::Racetrack => 5,
         Function::None => 8,
     }
 }
@@ -777,6 +781,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
         .map(|kind| match kind.function {
             // Seuls les dieux favorables que l'épisode désigne reçoivent un sanctuaire.
             Function::Sanctuary { god, .. } => !episode.sanctuaries.contains(&god),
+            Function::Racetrack => !episode.goals.iter().any(|goal| goal.kind == GoalKind::Hippodrome),
             // Un monument, seulement si un objectif le demande (n'importe lequel pour
             // « n'importe quelle pyramide »).
             Function::Monument { model, .. } => !episode.goals.iter().any(|goal| {
@@ -2003,6 +2008,12 @@ fn run(
     wharf.appeal = appeal_of(TYPE_WHARF)?;
     (wharf.fire_risk, wharf.damage_risk) = (rules(TYPE_WHARF)?.fire_risk, rules(TYPE_WHARF)?.damage_risk);
     kinds.push(wharf);
+    // Section d'hippodrome, raccordée aux voisines.
+    let mut racetrack = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_RACETRACK), rules(TYPE_RACETRACK)?.cost, zeus::world::RACETRACK_SIZE, RACETRACK_IMAGE, Function::Racetrack, 0);
+    racetrack.parts[0].source = Source::Poseidon;
+    racetrack.employees = rules(TYPE_RACETRACK)?.employees;
+    racetrack.appeal = appeal_of(TYPE_RACETRACK)?;
+    kinds.push(racetrack);
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -3057,9 +3068,19 @@ fn run(
                         lines.push(requirement_line(&text, requirement, requirement.check(&world, hall)));
                     }
                 }
+                if world.kinds[building.kind].function == Function::Racetrack {
+                    let (sections, closed) = world.hippodrome();
+                    lines.push(format!("Hippodrome : {sections} stades, {}", if closed { "les courses ont lieu" } else { "piste pas encore fermée" }));
+                }
                 if world.kinds[building.kind].function == Function::Wharf {
                     lines.push(match building.stock {
-                        0 => format!("Trière en chantier : {} {} / 4", good_names[Good::Wood as usize], building.goods[Good::Wood as usize]),
+                        0 => format!(
+                            "Trière en chantier : {} {} / 4, {} {} / 1",
+                            good_names[Good::Wood as usize],
+                            building.goods[Good::Wood as usize],
+                            good_names[Good::Arms as usize],
+                            building.goods[Good::Arms as usize]
+                        ),
                         _ => "Une trière est à quai".to_string(),
                     });
                 }

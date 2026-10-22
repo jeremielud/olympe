@@ -370,8 +370,18 @@ const SANCTUARY_PLAIN_IMAGE: usize = 1453;
 const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH / 8;
 const PRODUCER_STORAGE: i32 = 8;
 /// Une trière demande quatre charges de bois et trois mois de chantier (barème
-/// d'Olympe).
+/// d'Olympe), puis une charge d'armement pour être opérationnelle (aide du jeu).
 const TRIREME_WOOD: i32 = 4;
+const TRIREME_ARMS: i32 = 1;
+/// Sections de l'hippodrome (`poseidon_loaded.sg3`) selon les côtés où la piste se
+/// prolonge (bits de `NEIGHBOURS`) : droites le long de x et de y (deux variantes,
+/// stalles de départ ou tribunes), virages ; relevées sur les images 422 à 429.
+pub const RACETRACK_SIZE: usize = 4;
+const RACETRACK_ALONG_X: [usize; 2] = [426, 422];
+const RACETRACK_ALONG_Y: [usize; 2] = [424, 428];
+const RACETRACK_CURVES: [(u8, usize); 4] = [(0b1100, 423), (0b1001, 425), (0b0011, 427), (0b0110, 429)];
+/// Recette mensuelle d'un hippodrome achevé, par section (barème d'Olympe).
+const RACETRACK_INCOME: i32 = 10;
 const TRIREME_TICKS: u64 = 3 * TICKS_PER_MONTH;
 /// Durée de fabrication d'un chargement de fromage : deux par mois (provisoire).
 const DAIRY_TICKS: u64 = TICKS_PER_MONTH / 2;
@@ -552,6 +562,8 @@ pub enum Function {
     Sanctuary { god: u8, needs: [u16; 3] },
     /// Temple d'un héros : le héros y vient quand ses exigences sont remplies.
     HeroHall(u8),
+    /// Section de l'hippodrome (4 × 4 cases), raccordée aux sections voisines.
+    Racetrack,
     /// Quai des trières : posé au bord de l'eau, il arme une trière avec le bois de
     /// l'entrepôt.
     Wharf,
@@ -1067,6 +1079,12 @@ impl World {
             // Une échoppe prend la place d'un emplacement d'agora, exactement.
             Function::Vendor(_) => self.plot_at(x, y).is_some(),
             Function::Stadium => self.can_build(x, y, k.size) && self.can_build(x, y + size, k.size),
+            // Une seule piste : la première section se pose n'importe où, les suivantes
+            // dans le prolongement d'une section déjà posée.
+            Function::Racetrack => {
+                let any = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Racetrack);
+                self.can_build(x, y, k.size) && (!any || self.racetrack_links(x, y) != 0)
+            }
             Function::Fishery | Function::Wharf => {
                 let near_water = (y - 1..=y + size).any(|ty| (x - 1..=x + size).any(|tx| Self::in_grid(tx, ty) && self.map.terrain(tx as usize, ty as usize) & TERRAIN_WATER != 0));
                 self.can_build(x, y, k.size) && near_water
@@ -1368,6 +1386,19 @@ impl World {
                         return Some(Draw { source: Source::General, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
                     }
                 }
+                if kind.function == Function::Racetrack {
+                    if (x, y) != (building.x, building.y + RACETRACK_SIZE - 1) {
+                        return None;
+                    }
+                    let links = self.racetrack_links(building.x as i32, building.y as i32);
+                    let variant = (building.x / RACETRACK_SIZE + building.y / RACETRACK_SIZE) % 2;
+                    let image = match RACETRACK_CURVES.iter().find(|&&(mask, _)| mask == links) {
+                        Some(&(_, image)) => image,
+                        None if links & 0b0101 != 0 && links & 0b1010 == 0 => RACETRACK_ALONG_Y[variant],
+                        None => RACETRACK_ALONG_X[variant],
+                    };
+                    return Some(Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
+                }
                 if let Function::Monument { model, needs } = kind.function {
                     let layout = self.monument_layouts.get(model as usize)?;
                     let tile = layout.tiles.iter().find(|t| (building.x + t.dx, building.y + t.dy) == (x, y))?;
@@ -1514,6 +1545,38 @@ impl World {
             }
             _ => true,
         }
+    }
+
+    /// Côtés d'une section posée en (x, y) qui touchent une autre section, alignée.
+    fn racetrack_links(&self, x: i32, y: i32) -> u8 {
+        let step = RACETRACK_SIZE as i32;
+        NEIGHBOURS.iter().enumerate().fold(0, |mask, (bit, &(dx, dy))| {
+            let (nx, ny) = (x + dx * step, y + dy * step);
+            let linked = self.building_at(nx, ny).is_some_and(|b| self.kinds[b.kind].function == Function::Racetrack && (b.x as i32, b.y as i32) == (nx, ny));
+            mask | (linked as u8) << bit
+        })
+    }
+
+    /// Hippodrome : nombre de sections (un stade chacune, d'après Olympe) et piste
+    /// fermée — chaque section reliée à deux autres, toutes d'un seul tenant.
+    pub fn hippodrome(&self) -> (i32, bool) {
+        let sections: Vec<(i32, i32)> = self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == Function::Racetrack).map(|b| (b.x as i32, b.y as i32)).collect();
+        if sections.len() < 4 || sections.iter().any(|&(x, y)| self.racetrack_links(x, y).count_ones() != 2) {
+            return (sections.len() as i32, false);
+        }
+        let step = RACETRACK_SIZE as i32;
+        let mut seen = vec![sections[0]];
+        let mut queue = vec![sections[0]];
+        while let Some((x, y)) = queue.pop() {
+            for &(dx, dy) in &NEIGHBOURS {
+                let next = (x + dx * step, y + dy * step);
+                if sections.contains(&next) && !seen.contains(&next) {
+                    seen.push(next);
+                    queue.push(next);
+                }
+            }
+        }
+        (sections.len() as i32, seen.len() == sections.len())
     }
 
     /// Trières à quai.
@@ -2471,6 +2534,10 @@ impl World {
         let employed: i32 = self.buildings.iter().flatten().filter(|b| b.staffed).map(|b| self.kinds[b.kind].employees).sum();
         let wages = employed * WAGES_PER_100_WORKERS * (NORMAL_WAGE + self.wage_shift).max(0) / (100 * NORMAL_WAGE);
         self.money += taxes - wages;
+        let (sections, closed) = self.hippodrome();
+        if closed {
+            self.money += sections * RACETRACK_INCOME;
+        }
         self.last_month = (taxes, wages);
         self.supply_sanctuaries();
         self.call_heroes();
@@ -2586,9 +2653,15 @@ impl World {
                             building.sown_at = self.ticks;
                         }
                     } else if self.ticks - building.sown_at >= TRIREME_TICKS {
+                        let arms = building.goods[Good::Arms as usize];
+                        let taken = if arms < TRIREME_ARMS { resource_of(Good::Arms).map_or(0, |r| self.take(r as usize, TRIREME_ARMS - arms)) } else { 0 };
                         let building = self.buildings[id].as_mut().unwrap();
-                        building.goods[Good::Wood as usize] = 0;
-                        building.stock = 1;
+                        building.goods[Good::Arms as usize] += taken;
+                        if building.goods[Good::Arms as usize] >= TRIREME_ARMS {
+                            building.goods[Good::Wood as usize] = 0;
+                            building.goods[Good::Arms as usize] = 0;
+                            building.stock = 1;
+                        }
                     }
                 }
                 Function::Producer(_) | Function::Fishery => {
