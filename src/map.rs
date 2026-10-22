@@ -40,6 +40,9 @@ const ENTRY_POINTS_OFFSET: usize = 908;
 const DISASTER_X_OFFSET: usize = 916;
 const DISASTER_Y_OFFSET: usize = 932;
 const DISASTER_POINTS: usize = 8;
+const INVASION_X_OFFSET: usize = 744;
+const INVASION_Y_OFFSET: usize = 776;
+const LAND_INVASION_POINTS: usize = 8;
 
 /// Cités du monde : un bloc de 22 enregistrements, de 476 octets dans les cartes de
 /// Zeus et de 572 dans celles de Poséidon (la forme qu'ils ont en mémoire). Les
@@ -114,6 +117,8 @@ pub enum Source {
     God(u8),
     /// Catalogue d'un monstre (numéro du groupe de textes 87).
     Monster(u8),
+    /// Catalogue d'une armée ennemie (`zeus_greek.sg3`…).
+    Army(u8),
     /// Catalogue d'un héros (numéro du groupe de textes 163).
     Hero(u8),
     /// Catalogue d'un dieu en personne (numéro du groupe de textes 157).
@@ -204,6 +209,20 @@ impl Map {
         let in_grid = |v: i16| (0..GRID as i16).contains(&v);
         [(value(0), value(1)), (value(2), value(3))]
             .into_iter()
+            .filter(|&(x, y)| in_grid(x) && in_grid(y))
+            .map(|(x, y)| (x as usize, y as usize))
+            .collect()
+    }
+
+    /// Points d'invasion terrestres (les huit premiers des seize de l'éditeur : x en
+    /// 744, y en 776 du bloc du scénario, rangés par Zeus.exe en 0x902c10 et 0x902c30)
+    /// qui tombent dans la grille.
+    pub fn invasion_points(&self) -> Vec<(usize, usize)> {
+        let Some(data) = self.blocks.get(SCENARIO).map(|b| &b.data) else { return Vec::new() };
+        let value = |at: usize| data.get(at..at + 2).map_or(-1, |b| i16::from_le_bytes([b[0], b[1]]));
+        let in_grid = |v: i16| (0..GRID as i16).contains(&v);
+        (0..LAND_INVASION_POINTS)
+            .map(|i| (value(INVASION_X_OFFSET + 2 * i), value(INVASION_Y_OFFSET + 2 * i)))
             .filter(|&(x, y)| in_grid(x) && in_grid(y))
             .map(|(x, y)| (x as usize, y as usize))
             .collect()

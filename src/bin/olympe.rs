@@ -1108,6 +1108,11 @@ const HERO_FILES: [&str; 8] =
     ["zeus_achilles", "zeus_heracles", "zeus_jason", "zeus_odysseus", "zeus_perseus", "zeus_theseus", "poseidon_atalanta", "poseidon_bellerophon"];
 
 /// Catalogue de chaque monstre, dans l'ordre du groupe de textes 87.
+/// Catalogues des armées ennemies : pour l'instant, les hoplites grecs des cités
+/// rivales.
+const ARMY_FILES: [&str; 1] = ["zeus_greek"];
+/// Hoplite de la cité dans `sprmain.sg3` (marche, mort, combat).
+const GROUP_HOPLITE: usize = 129;
 const MONSTER_FILES: [&str; 16] = [
     "zeus_hydra",
     "zeus_kraken",
@@ -1314,6 +1319,8 @@ struct Graphics {
     monsters: HashMap<u8, Catalog>,
     heroes: HashMap<u8, Catalog>,
     deities: HashMap<u8, Catalog>,
+    /// Armées ennemies (`ARMY_FILES`), chargées à leur première invasion.
+    armies: HashMap<u8, Catalog>,
     empty: Catalog,
     /// Teinte appliquée au texte (blanc = couleur propre de la police).
     ink: (u8, u8, u8),
@@ -1344,6 +1351,7 @@ impl Graphics {
             Source::Monster(monster) => self.monsters.get(&monster).unwrap_or(&self.empty),
             Source::Hero(hero) => self.heroes.get(&hero).unwrap_or(&self.empty),
             Source::Deity(god) => self.deities.get(&god).unwrap_or(&self.empty),
+            Source::Army(army) => self.armies.get(&army).unwrap_or(&self.empty),
         }
     }
 
@@ -1812,6 +1820,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             monsters: HashMap::new(),
             heroes: HashMap::new(),
             deities: HashMap::new(),
+            armies: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -2153,7 +2162,7 @@ fn run(
         entry.product = zeus::world::resource_of(good).unwrap_or(0);
         kinds.push(entry);
     }
-    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), buyer: group(GROUP_BUYER) };
+    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
@@ -2220,6 +2229,7 @@ fn run(
             monsters: HashMap::new(),
             heroes: HashMap::new(),
             deities: HashMap::new(),
+            armies: HashMap::new(),
             empty: Catalog::empty(),
             ink: (255, 255, 255),
             ground: None,
@@ -2270,6 +2280,8 @@ fn run(
         let (mut goals_panel, mut won) = (false, false);
         // Panneau des cités du monde, ouvert par C.
         let mut cities_panel = false;
+        // Invasion en cours à l'image précédente, pour l'annoncer à son début.
+        let mut raid_seen = world.raid.is_some();
         // Sanctuaires achevés, pour débloquer ce qu'ils apportent dès leur achèvement.
         let mut sanctuaries_built = world.sanctuaries().len();
         // Étape « fin » d'un essai scripté : l'épisode se termine comme si ses objectifs
@@ -2492,6 +2504,15 @@ fn run(
                 let gifts = std::mem::take(&mut world.gifts);
                 let lines: Vec<String> = gifts.iter().map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
                 notice = (format!("Cadeaux reçus : {}", lines.join(", ")), now);
+            }
+            // Début d'une invasion : l'armée ennemie vient d'entrer sur la carte.
+            if world.raid.is_some() != raid_seen {
+                raid_seen = world.raid.is_some();
+                if let Some(raid) = world.raid {
+                    let defenders = world.figures.iter().filter(|f| f.soldier() == Some(false)).count();
+                    let name = city_name(&text, &world, raid.city);
+                    notice = (format!("Invasion ! L'armée de {name} ({} soldats) marche sur la cité ; {defenders} hoplites la défendent", raid.soldiers), now);
+                }
             }
             if let Some(battle) = world.battles.pop() {
                 let name = city_name(&text, &world, battle.city);
@@ -2978,6 +2999,7 @@ fn run(
                     Source::Monster(monster) => (&mut graphics.monsters, &MONSTER_FILES[..], monster),
                     Source::Hero(hero) => (&mut graphics.heroes, &HERO_FILES[..], hero),
                     Source::Deity(god) => (&mut graphics.deities, &GOD_FILES[..], god),
+                    Source::Army(army) => (&mut graphics.armies, &ARMY_FILES[..], army),
                     _ => continue,
                 };
                 if !loaded.contains_key(&id) {

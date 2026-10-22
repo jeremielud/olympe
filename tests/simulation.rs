@@ -703,7 +703,10 @@ fn rival_armies_sack_a_defenceless_city() {
     world.schedule(INVASION, (0, 0), (32, 32), 1, (0, 0));
     world.schedule(INVASION, (1, 1), (32, 32), 1, (0, 0));
     let (money, standing) = (world.money, world.buildings.iter().flatten().count());
+    // L'armée entre par un point d'invasion de la carte et marche jusqu'à la cité.
     (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.raid.is_some() && world.figures.iter().filter(|f| f.soldier() == Some(true)).count() == 32);
+    (0..4 * TICKS_PER_MONTH).for_each(|_| world.tick());
     // Seule la rivale attaque ; sans armée, la cité est pillée.
     assert_eq!(world.battles.len(), 1);
     let battle = world.battles[0];
@@ -717,8 +720,8 @@ fn rival_armies_sack_a_defenceless_city() {
         }
     }
     assert!(world.army() >= 30);
-    world.schedule(INVASION, (0, 0), (5, 5), 4, (0, 0));
-    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    world.schedule(INVASION, (0, 0), (5, 5), 7, (0, 0));
+    (0..8 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.battles.last().is_some_and(|b| b.repelled));
 }
 

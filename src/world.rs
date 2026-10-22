@@ -228,6 +228,31 @@ const DISASTER_REACH: i32 = 3;
 /// événements ajoutent ou retranchent.
 const NORMAL_WAGE: i32 = 30;
 
+/// Batailles (valeurs d'Olympe) : forces d'un soldat, coup porté tous les tant de
+/// pas, distance du corps à corps (en cases), au plus tant de soldats de chaque camp,
+/// et ce qu'un envahisseur vaut d'hommes de la cité (un hoplite en vaut deux).
+const SOLDIER_HEALTH: i32 = 20;
+const STRIKE_TICKS: u64 = 8;
+const MELEE_REACH: f32 = 1.3;
+const MAX_SOLDIERS: i32 = 64;
+const INVADER_STRENGTH: i32 = 2;
+/// Images de combat après la marche (96) et la mort (8), huit par direction.
+const SOLDIER_FIGHT_IMAGES: usize = 104;
+const SOLDIER_FIGHT_FRAMES: usize = 8;
+const SOLDIER_FIGHT_FRAME_TICKS: usize = 4;
+/// Un défenseur cherche à nouveau l'ennemi le plus proche tous les tant de pas.
+const CHASE_TICKS: u64 = 20;
+
+/// Invasion en cours : la cité rivale, la taille de son armée, ce qu'elle a déjà
+/// détruit et ce qu'elle détruira au plus avant de repartir avec son butin.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Raid {
+    pub city: usize,
+    pub soldiers: i32,
+    pub buildings: i32,
+    pub limit: i32,
+}
+
 /// Issue d'une invasion armée.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Battle {
@@ -712,6 +737,8 @@ pub struct WalkerImages {
     pub carrier: usize,
     /// Acheteuse qui approvisionne une échoppe.
     pub buyer: usize,
+    /// Hoplite de la cité (marche, mort, combat), qui défend contre les invasions.
+    pub hoplite: usize,
 }
 
 pub struct House {
@@ -795,6 +822,9 @@ enum Role {
     Hero { hero: u8, hall: u16 },
     /// Dieu favorable en visite : il flâne près de son sanctuaire, puis repart.
     Visit { god: u8, leaves_at: u64 },
+    /// Soldat d'une bataille : envahisseur (`enemy`) ou défenseur de la cité, ses
+    /// forces, le bâtiment visé par un envahisseur, et s'il est au corps à corps.
+    Soldier { enemy: bool, health: i32, target: u16, fighting: bool },
     /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
     God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
 }
@@ -846,7 +876,18 @@ impl Figure {
 
     /// Image à dessiner : une rangée de 8 directions par étape de marche.
     pub fn image(&self) -> usize {
+        if let Role::Soldier { fighting: true, .. } = self.role {
+            return self.image_base + SOLDIER_FIGHT_IMAGES + self.direction + 8 * ((self.frame / SOLDIER_FIGHT_FRAME_TICKS) % SOLDIER_FIGHT_FRAMES);
+        }
         self.image_base + self.direction + 8 * (self.frame * WALK_FRAMES / WALK_TICKS)
+    }
+
+    /// Soldat d'une bataille : `Some(true)` pour un envahisseur.
+    pub fn soldier(&self) -> Option<bool> {
+        match self.role {
+            Role::Soldier { enemy, .. } => Some(enemy),
+            _ => None,
+        }
     }
 }
 
@@ -947,6 +988,8 @@ pub struct World {
     pub blessings: Vec<(u8, u8, i32)>,
     /// Invasions armées livrées depuis la dernière lecture.
     pub battles: Vec<Battle>,
+    /// Invasion en cours, soldats dans la cité.
+    pub raid: Option<Raid>,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
@@ -1014,6 +1057,7 @@ impl World {
             tributes: Vec::new(),
             blessings: Vec::new(),
             battles: Vec::new(),
+            raid: None,
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
@@ -1346,7 +1390,7 @@ impl World {
             Role::Supply { to, .. } => to != id,
             Role::Fetch { source, vendor } => source != id && vendor != id,
             Role::Rounds { home, .. } | Role::Return { home, .. } => home != id,
-            Role::Monster { .. } => true,
+            Role::Monster { .. } | Role::Soldier { .. } => true,
             Role::Hero { hall, .. } => hall != id,
             Role::God { .. } | Role::Visit { .. } => true,
         });
@@ -1931,28 +1975,10 @@ impl World {
             // Invasion : seule une cité rivale attaque. Olympe compare les forces : un
             // envahisseur vaut un hoplite (deux points) ; vaincue, la cité perd un
             // bâtiment par tranche de seize soldats et un cinquième de son trésor.
+            // Invasion : seule une cité rivale attaque, et une à la fois.
             if event.change == INVASION {
-                if target.status == RIVAL {
-                    let soldiers = amount.max(1);
-                    let repelled = self.army() >= 2 * soldiers;
-                    let (mut buildings, mut drachmas) = (0, 0);
-                    if !repelled {
-                        drachmas = self.money.max(0) / 5;
-                        self.money -= drachmas;
-                        for _ in 0..(soldiers / 16).max(1) {
-                            let standing: Vec<usize> = (0..self.buildings.len()).filter(|&i| self.buildings[i].is_some()).collect();
-                            if standing.is_empty() {
-                                break;
-                            }
-                            let id = standing[self.next_random() as usize % standing.len()];
-                            let b = self.buildings[id].as_ref().unwrap();
-                            let (kind, x, y) = (b.kind, b.x, b.y);
-                            self.remove_building(id as u16, Cell::Rubble(0));
-                            self.disasters.push(Disaster { fire: true, kind, x, y });
-                            buildings += 1;
-                        }
-                    }
-                    self.battles.push(Battle { city, soldiers, repelled, buildings, drachmas });
+                if target.status == RIVAL && self.raid.is_none() {
+                    self.invade(city, amount.max(1));
                 }
                 continue;
             }
@@ -2200,6 +2226,130 @@ impl World {
         (target, rest_until)
     }
 
+    /// Une armée rivale entre par un point d'invasion de la carte (à défaut, par
+    /// l'entrée des voyageurs) ; les hoplites de la cité sortent du palais (à défaut,
+    /// d'une maison), autant que sa force militaire en fournit.
+    fn invade(&mut self, city: usize, soldiers: i32) {
+        let entry = self.map.invasion_points().into_iter().chain(self.map.entry_points()).find(|&(x, y)| self.in_map(x as i32, y as i32));
+        let Some(entry) = entry else { return };
+        let limit = (soldiers / 16).max(1);
+        self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
+        let spawn = |world: &mut World, at: (usize, usize), enemy: bool, count: i32| {
+            for i in 0..count.min(MAX_SOLDIERS) {
+                // Les soldats se rangent en carré autour de leur point de départ.
+                let side = 6;
+                let (dx, dy) = (i % side - side / 2, i / side - side / 2);
+                let (x, y) = ((at.0 as i32 + dx).clamp(0, GRID as i32 - 1) as u16, (at.1 as i32 + dy).clamp(0, GRID as i32 - 1) as u16);
+                let (source, image_base) = if enemy { (Source::Army(0), 1) } else { (Source::Figures, world.walkers.hoplite) };
+                world.figures.push(Figure {
+                    image_base,
+                    x: x as f32,
+                    y: y as f32,
+                    direction: 0,
+                    frame: 0,
+                    path: Vec::new(),
+                    from: (x, y),
+                    came_from: None,
+                    role: Role::Soldier { enemy, health: SOLDIER_HEALTH, target: NO_TARGET, fighting: false },
+                    source,
+                });
+            }
+        };
+        spawn(self, entry, true, soldiers);
+        let home = self.buildings.iter().flatten().find(|b| self.kinds[b.kind].function == Function::Palace).or_else(|| self.buildings.iter().flatten().find(|b| b.house.is_some()));
+        if let Some(home) = home.map(|b| (b.x, b.y)) {
+            spawn(self, home, false, self.army() / INVADER_STRENGTH);
+        }
+    }
+
+    /// Un pas de bataille : corps à corps entre soldats proches, marche des
+    /// envahisseurs vers le bâtiment le plus proche, poursuite des défenseurs. Quand
+    /// le dernier envahisseur tombe, l'invasion est repoussée ; quand ils ont assez
+    /// détruit, ils repartent avec un cinquième du trésor.
+    fn fight(&mut self) {
+        let Some(mut raid) = self.raid else { return };
+        let soldiers: Vec<(usize, bool, f32, f32)> =
+            self.figures.iter().enumerate().filter_map(|(i, f)| f.soldier().map(|enemy| (i, enemy, f.x, f.y))).collect();
+        let strike = self.ticks % STRIKE_TICKS == 0;
+        let mut wounds = vec![0; self.figures.len()];
+        for &(i, enemy, x, y) in &soldiers {
+            let foe = soldiers
+                .iter()
+                .filter(|o| o.1 != enemy)
+                .map(|o| (o.0, (o.2 - x).hypot(o.3 - y), o.2, o.3))
+                .min_by(|a, b| a.1.total_cmp(&b.1));
+            let figure = &mut self.figures[i];
+            let Role::Soldier { enemy, health, target, .. } = figure.role else { continue };
+            match foe {
+                Some((other, distance, ox, oy)) if distance <= MELEE_REACH => {
+                    // Au corps à corps : on s'arrête, face à l'adversaire, et on frappe.
+                    figure.path.clear();
+                    figure.direction = direction((x.round() as u16, y.round() as u16), (ox.round() as u16, oy.round() as u16));
+                    figure.role = Role::Soldier { enemy, health, target, fighting: true };
+                    if strike {
+                        wounds[other] += 1;
+                    }
+                }
+                Some((_, _, ox, oy)) if !enemy && (figure.path.is_empty() || self.ticks % CHASE_TICKS == 0) => {
+                    figure.role = Role::Soldier { enemy, health, target, fighting: false };
+                    let at = figure.from;
+                    let path = straight_path(at, (ox.round() as u16, oy.round() as u16));
+                    if let Some(&next) = path.last() {
+                        figure.direction = direction(at, next);
+                    }
+                    figure.path = path;
+                }
+                _ => figure.role = Role::Soldier { enemy, health, target, fighting: false },
+            }
+        }
+        // Les blessés perdent leurs forces ; ceux qui n'en ont plus tombent.
+        for (figure, &wound) in self.figures.iter_mut().zip(&wounds) {
+            if let Role::Soldier { enemy, health, target, fighting } = figure.role {
+                figure.role = Role::Soldier { enemy, health: health - wound, target, fighting };
+            }
+        }
+        self.figures.retain(|f| !matches!(f.role, Role::Soldier { health, .. } if health <= 0));
+        // Envahisseurs libres : vers le bâtiment le plus proche, qu'ils détruisent.
+        for i in 0..self.figures.len() {
+            let Role::Soldier { enemy: true, health, target, fighting: false } = self.figures[i].role else { continue };
+            if !self.figures[i].path.is_empty() {
+                continue;
+            }
+            let at = self.figures[i].from;
+            if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
+                let (kind, x, y) = (building.kind, building.x, building.y);
+                self.remove_building(target, Cell::Fire(0));
+                self.disasters.push(Disaster { fire: true, kind, x, y });
+                raid.buildings += 1;
+                self.figures[i].role = Role::Soldier { enemy: true, health, target: NO_TARGET, fighting: false };
+                continue;
+            }
+            let nearest = (0..self.buildings.len())
+                .filter_map(|id| self.buildings[id].as_ref().map(|b| (id, b.x as i32 - at.0 as i32, b.y as i32 - at.1 as i32)))
+                .min_by_key(|&(_, dx, dy)| dx.abs().max(dy.abs()));
+            let Some((id, ..)) = nearest else { continue };
+            let goal = self.buildings[id].as_ref().map(|b| (b.x as u16, b.y as u16)).unwrap();
+            let path = straight_path(at, goal);
+            let figure = &mut self.figures[i];
+            if let Some(&next) = path.last() {
+                figure.direction = direction(at, next);
+            }
+            figure.path = path;
+            figure.role = Role::Soldier { enemy: true, health, target: id as u16, fighting: false };
+        }
+        let invaders = self.figures.iter().filter(|f| f.soldier() == Some(true)).count();
+        let (repelled, over) = (invaders == 0, invaders == 0 || raid.buildings >= raid.limit);
+        if over {
+            let drachmas = if repelled { 0 } else { self.money.max(0) / 5 };
+            self.money -= drachmas;
+            self.figures.retain(|f| f.soldier().is_none());
+            self.battles.push(Battle { city: raid.city, soldiers: raid.soldiers, repelled, buildings: raid.buildings, drachmas });
+            self.raid = None;
+        } else {
+            self.raid = Some(raid);
+        }
+    }
+
     /// Visite d'un dieu favorable : il paraît un mois près de son sanctuaire et laisse
     /// un bienfait (Olympe : vivres de Déméter, huile d'Athéna, vin de Dionysos, armes
     /// d'Héphaïstos, drachmes des autres).
@@ -2405,6 +2555,7 @@ impl World {
     pub fn tick(&mut self) {
         self.ticks += 1;
         self.move_figures();
+        self.fight();
         if self.ticks % IMMIGRATION_INTERVAL == 0 {
             self.send_immigrants();
         }
@@ -3059,6 +3210,8 @@ impl World {
                 continue;
             }
             match role {
+                // Les soldats sont menés par `fight`.
+                Role::Soldier { .. } => {}
                 // Héros arrivé au bout de son chemin : il repart vers le monstre qu'il
                 // doit combattre, ou rentre à son temple.
                 Role::Hero { hero, hall } => {
@@ -3495,6 +3648,9 @@ impl World {
         for &(at, god) in &self.invasions {
             let _ = writeln!(out, "invasion {at} {god}");
         }
+        if let Some(r) = self.raid {
+            let _ = writeln!(out, "raid {} {} {} {}", r.city, r.soldiers, r.buildings, r.limit);
+        }
         for r in &self.requests {
             let _ = writeln!(out, "demande {} {} {} {}", r.city, r.resource, r.amount, r.until);
         }
@@ -3578,6 +3734,7 @@ impl World {
                 Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
                 Role::God { god, target, rest_until, leaves_at } => format!("dieu {god} {target} {rest_until} {leaves_at} 0"),
                 Role::Visit { god, leaves_at } => format!("visite {god} {leaves_at} 0 0 0"),
+                Role::Soldier { enemy, health, target, fighting } => format!("soldat {} {health} {target} {} 0", enemy as u8, fighting as u8),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -3612,6 +3769,7 @@ impl World {
         let mut requests = Vec::new();
         let mut invasions = Vec::new();
         let (mut wage_shift, mut away, mut floods) = (0, Vec::new(), Vec::new());
+        let mut raid = None;
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -3650,6 +3808,7 @@ impl World {
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "salaires" => wage_shift = number_at(0)? as i32,
+                "raid" => raid = Some(Raid { city: number_at(0)? as usize, soldiers: number_at(1)? as i32, buildings: number_at(2)? as i32, limit: number_at(3)? as i32 }),
                 "absente" => away.push((number_at(0)? as usize, number_at(1)? as u64)),
                 "demande" => requests.push(Request {
                     city: number_at(0)? as usize,
@@ -3809,6 +3968,7 @@ impl World {
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
                         "dieu" => Role::God { god: a as u8, target: b as u16, rest_until: c as u64, leaves_at: d as u64 },
                         "visite" => Role::Visit { god: a as u8, leaves_at: b as u64 },
+                        "soldat" => Role::Soldier { enemy: a != 0, health: b as i32, target: c as u16, fighting: d != 0 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -3829,6 +3989,7 @@ impl World {
                             Role::Monster { monster, .. } => Source::Monster(monster),
                             Role::Hero { hero, .. } => Source::Hero(hero),
                             Role::God { god, .. } | Role::Visit { god, .. } => Source::Deity(god),
+                            Role::Soldier { enemy: true, .. } => Source::Army(0),
                             _ => Source::Figures,
                         },
                     });
@@ -3846,7 +4007,7 @@ impl World {
             Role::Supply { to, .. } => exists(to),
             Role::Fetch { source, vendor } => exists(source) && exists(vendor),
             Role::Rounds { home, .. } | Role::Return { home, .. } => exists(home),
-            Role::Monster { .. } => true,
+            Role::Monster { .. } | Role::Soldier { .. } => true,
             Role::Hero { hall, .. } => exists(hall),
             Role::God { .. } | Role::Visit { .. } => true,
         });
@@ -3867,6 +4028,7 @@ impl World {
         self.campaign_until = campaign;
         self.scheduled = scheduled;
         (self.wage_shift, self.armies_away, self.wage_news) = (wage_shift, away, Vec::new());
+        self.raid = raid;
         self.world_news.clear();
         (self.requests, self.request_news) = (requests, Vec::new());
         (self.invasions, self.god_news) = (invasions, Vec::new());
