@@ -32,6 +32,16 @@ pub struct Tile {
     pub order: u16,
 }
 
+/// Côté d'une pièce, en cases : temple (110), autel (2) et grandes statues des
+/// dispositions de sanctuaire (61 à 108) en couvrent plusieurs.
+pub fn piece_size(piece: u16) -> usize {
+    match piece {
+        110 => 4,
+        2 | 61..=108 => 2,
+        _ => 1,
+    }
+}
+
 /// Hauteur d'une pente raide, en niveaux.
 pub const STEEP_RISE: u8 = 2;
 
@@ -70,11 +80,19 @@ impl Layout {
             .into_iter()
             .map(|(x, y, piece, elevation, order)| Tile { dx: (x - min_x) as usize, dy: (y - min_y) as usize, piece, elevation, order })
             .collect();
+        // Les cases que rien ne désigne sont sous une grande pièce (temple de quatre
+        // cases de côté, autel ou statue de deux) : elles prennent sa hauteur.
         for dy in 0..depth {
             for dx in 0..width {
-                if !tiles.iter().any(|t| (t.dx, t.dy) == (dx, dy)) {
-                    tiles.push(Tile { dx, dy, piece: 0, elevation: 0, order: 0 });
+                if tiles.iter().any(|t| (t.dx, t.dy) == (dx, dy)) {
+                    continue;
                 }
+                let under = tiles.iter().find(|t| {
+                    let size = piece_size(t.piece);
+                    (t.dx..t.dx + size).contains(&dx) && (t.dy..t.dy + size).contains(&dy)
+                });
+                let (elevation, order) = under.map_or((0, 0), |t| (t.elevation, t.order));
+                tiles.push(Tile { dx, dy, piece: 0, elevation, order });
             }
         }
         Some(Layout { tiles, width, depth })

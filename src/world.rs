@@ -471,14 +471,24 @@ const QUEST_TICKS: u64 = TICKS_PER_MONTH * 6;
 pub const MAX_SANCTUARIES: usize = 4;
 /// Marchandises qu'on livre à un sanctuaire en chantier, dans l'ordre de ses besoins.
 pub const SANCTUARY_MATERIALS: [Good; 3] = [Good::Marble, Good::Wood, Good::Sculpture];
-/// Images des monuments dans `poseidon_loaded.sg3` : blocs de marbre blanc de un à
-/// quatre niveaux (quinze pixels chacun), sommet de pyramide, obélisque (pour les
-/// statues et édifices qu'Olympe ne dessine pas encore), dalle, sol du chantier et
-/// aire d'accès.
-const MONUMENT_BLOCK_IMAGE: usize = 654;
-const MONUMENT_BLOCK_LEVELS: u8 = 4;
-const MONUMENT_LEVEL_PIXELS: u16 = 15;
-const MONUMENT_TOPPER_IMAGE: usize = 620;
+/// Images des monuments dans `poseidon_loaded.sg3`, relevées en recomposant les
+/// dispositions du jeu : pentes de marbre selon leurs côtés extérieurs (bits de
+/// `NEIGHBOURS` : nord-est, sud-est, sud-ouest, nord-ouest), angles compris ;
+/// faces décorées (marches, triangle, cercle) au sud-ouest et au sud-est ; bloc
+/// plein pour les formes rares ; dalle, obélisque, sol du chantier et aire d'accès.
+const MONUMENT_SLOPES: [(u8, usize); 8] = [
+    (0b0100, 635),
+    (0b0010, 630),
+    (0b1000, 627),
+    (0b0001, 621),
+    (0b0110, 624),
+    (0b0011, 622),
+    (0b1100, 626),
+    (0b1001, 620),
+];
+const MONUMENT_DECORATIONS: [(u16, u8, usize); 6] = [(118, 0b0100, 636), (118, 0b0010, 629), (120, 0b0100, 634), (120, 0b0010, 631), (121, 0b0100, 633), (121, 0b0010, 632)];
+const MONUMENT_SOLID_IMAGE: usize = 657;
+const MONUMENT_LEVEL_PIXELS: u16 = 30;
 const MONUMENT_STATUE_IMAGE: usize = 628;
 const MONUMENT_TILE_IMAGE: usize = 658;
 const MONUMENT_FLOOR_IMAGE: usize = 663;
@@ -1673,7 +1683,7 @@ impl World {
                     let layout = self.monument_layouts.get(model as usize)?;
                     let tile = layout.tiles.iter().find(|t| (building.x + t.dx, building.y + t.dy) == (x, y))?;
                     let stage = self.monument_stage(building, needs, layout.stages());
-                    return Some(self.monument_draw(tile, tile.order <= stage));
+                    return Some(self.monument_draw(layout, tile, stage));
                 }
                 // Chaque élément est porté par sa case la plus à gauche à l'écran.
                 let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
@@ -1870,36 +1880,42 @@ impl World {
         (delivered * stages as i32 / needed) as u16
     }
 
-    /// Case d'un monument : la pierre empilée jusqu'à sa hauteur (blocs de un à
-    /// quatre niveaux de `poseidon_loaded.sg3`), et la pièce qui la couronne. Olympe
-    /// dessine les pentes comme des blocs ; une case pas encore élevée montre le
-    /// dallage du chantier.
-    fn monument_draw(&self, tile: &crate::monument::Tile, built: bool) -> Draw {
+    /// Case d'un monument, à sa hauteur (un niveau d'élévation vaut 30 pixels) :
+    /// une pente raide prend l'image tournée vers ses côtés extérieurs (ceux où la
+    /// voisine est plus basse ; faces au sud-ouest et au nord-ouest claires, au
+    /// sud-est et au nord-est grises), une pente sans côté extérieur est le sommet
+    /// plat de son étage, une plateforme une dalle. Les étages intérieurs, cachés
+    /// par ceux qui les entourent, n'ont pas besoin de socle. Une case pas encore
+    /// élevée montre le sol du chantier.
+    fn monument_draw(&self, layout: &crate::monument::Layout, tile: &crate::monument::Tile, stage: u16) -> Draw {
         use crate::monument::*;
-        let plain = |image: usize| Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift: 0, above: None };
+        let plain = |image: usize, lift: u16| Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift, above: None };
+        let level = |levels: u8| levels as u16 * MONUMENT_LEVEL_PIXELS;
         if tile.piece == ACCESS_PAD {
-            return plain(MONUMENT_PAD_IMAGE);
+            return plain(MONUMENT_PAD_IMAGE, 0);
         }
-        if !built || tile.piece == 0 {
-            return plain(MONUMENT_FLOOR_IMAGE);
+        if tile.order > stage {
+            return plain(MONUMENT_FLOOR_IMAGE, 0);
         }
-        let (stone, cap) = match tile.piece {
-            STEEP_FIRST..=STEEP_LAST | LIFT => (tile.top(), None),
-            TOPPER => (tile.elevation, Some(MONUMENT_TOPPER_IMAGE)),
-            TILE_PLAIN | TILE_ORICHALC | 55 => (tile.elevation, Some(MONUMENT_TILE_IMAGE)),
-            _ => (tile.elevation, Some(MONUMENT_STATUE_IMAGE)),
+        // Hauteur du sommet d'une case voisine, déjà élevée ; hors du monument, le sol.
+        let top_at = |dx: i32, dy: i32| -> i32 {
+            let (x, y) = (tile.dx as i32 + dx, tile.dy as i32 + dy);
+            layout.tiles.iter().find(|t| (t.dx as i32, t.dy as i32) == (x, y) && t.order <= stage).map_or(-1, |t| t.top() as i32)
         };
-        let block = |levels: u8| MONUMENT_BLOCK_IMAGE + levels.clamp(1, MONUMENT_BLOCK_LEVELS) as usize - 1;
-        let above = cap.map(|image| (Source::Poseidon, image, stone as u16 * MONUMENT_LEVEL_PIXELS));
-        match stone {
-            0 => plain(cap.unwrap_or(MONUMENT_FLOOR_IMAGE)),
-            s if s <= MONUMENT_BLOCK_LEVELS => Draw { above, ..plain(block(s)) },
-            s => Draw {
-                ground: Some((Source::Poseidon, block(MONUMENT_BLOCK_LEVELS))),
-                lift: MONUMENT_BLOCK_LEVELS as u16 * MONUMENT_LEVEL_PIXELS,
-                above,
-                ..plain(block(s - MONUMENT_BLOCK_LEVELS))
-            },
+        match tile.piece {
+            STEEP_FIRST..=STEEP_LAST | LIFT => {
+                let outward = NEIGHBOURS.iter().enumerate().filter(|&(_, &(dx, dy))| top_at(dx, dy) < tile.top() as i32).fold(0u8, |mask, (bit, _)| mask | 1 << bit);
+                if outward == 0 {
+                    return plain(MONUMENT_TILE_IMAGE, level(tile.top()));
+                }
+                let decorated = MONUMENT_DECORATIONS.iter().find(|&&(piece, side, _)| piece == tile.piece && outward == side).map(|&(_, _, image)| image);
+                let image = decorated.or_else(|| MONUMENT_SLOPES.iter().find(|&&(side, _)| side == outward).map(|&(_, image)| image)).unwrap_or(MONUMENT_SOLID_IMAGE);
+                plain(image, level(tile.elevation))
+            }
+            0 | TILE_PLAIN | TILE_ORICHALC | 55 if tile.elevation == 0 => plain(MONUMENT_FLOOR_IMAGE, 0),
+            0 | TILE_PLAIN | TILE_ORICHALC | 55 => plain(MONUMENT_TILE_IMAGE, level(tile.elevation)),
+            // Sommet de pyramide, statues et édifices posés sur la plateforme.
+            _ => Draw { above: Some((Source::Poseidon, MONUMENT_STATUE_IMAGE, level(tile.elevation))), ..plain(MONUMENT_TILE_IMAGE, level(tile.elevation)) },
         }
     }
 

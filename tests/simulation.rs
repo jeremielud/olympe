@@ -431,7 +431,7 @@ fn a_pyramid_rises_with_its_materials() {
     assert_eq!(goal.status(&world), Status::Met);
     assert_eq!(any.status(&world), Status::Pending(Some(1)));
     // Achevée, elle porte son sommet quatre niveaux plus haut.
-    assert!(world.draw(top.0, top.1).is_some_and(|d| d.above.is_some_and(|(_, _, lift)| lift == 60)));
+    assert!(world.draw(top.0, top.1).is_some_and(|d| d.above.is_some_and(|(_, _, lift)| lift == 120)));
 }
 
 #[test]

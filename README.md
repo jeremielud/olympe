@@ -35,8 +35,8 @@ Ce qui fonctionne :
 - monuments de Poséidon (pyramides, monuments, sanctuaires mineurs, autel et temple
   de l'Olympe…), proposés quand un objectif les demande : disposés et élevés étape
   par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
-  arrivent de l'entrepôt (quantités provisoires) ; les pentes sont dessinées en
-  blocs, les statues en obélisques ;
+  arrivent de l'entrepôt (quantités provisoires) ; pentes, angles, marches et
+  décors de marbre comme dans le jeu, statues figurées par des obélisques ;
 - marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
   (raccourci), marchandises rangées à l'entrepôt ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
@@ -104,8 +104,8 @@ s'enchaîne jusqu'à son récit de fin.
 Ce qui reste approché ou absent : chaque nation envoie toutes ses unités (fantassins,
 cavaliers, archers…) mais toutes combattent au corps à corps ; les exploitations se posent à moins de huit
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
-orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; pentes
-des pyramides en blocs ; les conseillers tiennent en un panneau de synthèse (touche
+orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; les
+statues et édifices posés sur les monuments sont figurés par des obélisques ; les conseillers tiennent en un panneau de synthèse (touche
 A) ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
 VLC), Olympe ne décodant pas la vidéo lui-même ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
