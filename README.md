@@ -71,7 +71,8 @@ Ce qui fonctionne :
   paient chaque année le tribut réglé dans l'éditeur ; les cités rivales
   envoient leurs armées à la date prévue : les soldats entrent par le point
   d'invasion de l'événement, ou débarquent d'un navire s'il est en mer, les hoplites de la cité sortent du palais à leur rencontre
-  et ils se battent au corps à corps (Grecs, Troyens, Perses, centaures, amazones,
+  et ils se battent avec les points de vie, attaques, armures et portées des règles
+  du jeu (`figure_model`), l'armée ennemie composée selon les fréquences de ses unités (Grecs, Troyens, Perses, centaures, amazones,
   Égyptiens, Mayas, Phéniciens, Océanides ou Atlantes, selon la cité) ; si les envahisseurs l'emportent, ils brûlent
   des bâtiments et repartent avec un cinquième du trésor ; les
   cadeaux des cités arrivent à leur date, et ceux de la cité mère apportent à la

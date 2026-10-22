@@ -221,6 +221,11 @@ fn quest_and_monster_goals_name_their_events() {
     let perseus = Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap().settings.unwrap();
     let disasters: Vec<(u8, (i16, i16))> = all(&perseus).into_iter().filter_map(|e| match e { Event::Disaster { kind, points, .. } => Some((kind, points)), _ => None }).collect();
     assert_eq!(disasters, [(3, (1, 2)), (25, (3, 5))]);
+    // Caractéristiques de combat : hoplites grecs, archères amazones, soldats de la cité.
+    let fighters = zeus::model::Fighters::parse(&fs::read(data.join("model/figure_model_normal.txt")).unwrap()).unwrap();
+    assert_eq!((fighters.enemies[0].health, fighters.enemies[0].attack, fighters.enemies[0].frequency), (150, 15, 60));
+    assert_eq!((fighters.enemies[25].missile_attack, fighters.enemies[25].frequency), (8, 75));
+    assert_eq!(fighters.citizens.map(|f| f.health), [80, 140, 240]);
     // Prix de l'éditeur : ancienne numérotation chez Zeus, nouvelle chez Poséidon.
     let troy_prices = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().parent().prices();
     let atlantis_prices = Campaign::parse(&fs::read(data.join("adventures/#la naissance de l'atlantide.pak")).unwrap()).unwrap().parent().prices();

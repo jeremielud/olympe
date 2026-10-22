@@ -274,14 +274,12 @@ const DISASTER_REACH: i32 = 3;
 /// événements ajoutent ou retranchent.
 const NORMAL_WAGE: i32 = 30;
 
-/// Batailles (valeurs d'Olympe) : forces d'un soldat, coup porté tous les tant de
-/// pas, distance du corps à corps (en cases), au plus tant de soldats de chaque camp,
-/// et ce qu'un envahisseur vaut d'hommes de la cité (un hoplite en vaut deux).
-const SOLDIER_HEALTH: i32 = 20;
+/// Batailles : les forces, attaques, armures et portées viennent des règles des
+/// personnages ; Olympe fixe le rythme des coups (un tous les tant de pas), la
+/// distance du corps à corps (en cases) et le nombre de soldats de chaque camp.
 const STRIKE_TICKS: u64 = 8;
 const MELEE_REACH: f32 = 1.3;
 const MAX_SOLDIERS: i32 = 64;
-const INVADER_STRENGTH: i32 = 2;
 /// Animation d'un personnage dans son catalogue : images de marche par direction,
 /// premier rang des images de combat, et leur nombre par direction.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -303,35 +301,39 @@ pub struct Unit {
     pub walk_frames: usize,
     pub fight: usize,
     pub fight_frames: usize,
-    /// Portée de ses coups, en cases : corps à corps, ou tir (archers, frondeurs,
-    /// lanceurs), reconnu à l'arme de ses images de combat.
-    pub reach: f32,
+    /// Catégorie de l'unité dans les règles des personnages (`figure_model`) :
+    /// infanterie, tireurs ou cavalerie, reconnue à ses images.
+    pub kind: usize,
 }
 
-const fn unit(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize) -> Unit {
-    Unit { walk, walk_frames, fight, fight_frames, reach: MELEE_REACH }
+const INFANTRY: usize = 0;
+const MISSILE: usize = 1;
+const CAVALRY: usize = 2;
+/// Unités par nation dans les règles des personnages (infanterie, tireurs,
+/// cavalerie, navire de guerre, transport, réserve).
+const FIGHTERS_PER_NATION: usize = 6;
+
+const fn unit(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize, kind: usize) -> Unit {
+    Unit { walk, walk_frames, fight, fight_frames, kind }
 }
 
-const fn archer(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize) -> Unit {
-    Unit { walk, walk_frames, fight, fight_frames, reach: MISSILE_REACH }
-}
-
-/// Portée d'un tireur, en cases (valeur d'Olympe).
-const MISSILE_REACH: f32 = 6.0;
+/// Combattant de secours quand les règles des personnages manquent.
+const FALLBACK_FIGHTER: crate::model::Fighter =
+    crate::model::Fighter { health: 150, attack: 15, armor: 6, missile_armor: 2, missile_attack: 0, missile_range: 0, rate: 0, speed: 6, frequency: 0 };
 
 /// Unités de chaque nation (ordre de l'éditeur) : grecs, troyens, perses, centaures,
 /// amazones, égyptiens, mayas, phéniciens, océanides, atlantes.
 pub const ARMY_UNITS: [&[Unit]; 10] = [
-    &[unit(1, 12, 105, 8), unit(169, 12, 273, 12), archer(369, 12, 473, 12)],
-    &[unit(1, 12, 105, 10), unit(185, 12, 289, 10), unit(369, 12, 473, 12)],
-    &[unit(1, 15, 121, 15), archer(257, 15, 377, 18), unit(532, 15, 652, 15)],
-    &[unit(1, 18, 145, 15), archer(280, 17, 416, 15)],
-    &[unit(1, 15, 121, 15), archer(261, 15, 381, 18)],
-    &[unit(1, 12, 105, 12), unit(201, 12, 297, 9), archer(369, 12, 465, 12)],
-    &[unit(1, 12, 105, 12), archer(201, 12, 305, 12)],
-    &[unit(1, 12, 105, 12), unit(201, 12, 305, 12)],
-    &[unit(1, 12, 105, 12), unit(201, 12, 305, 8)],
-    &[unit(1, 12, 97, 9), unit(169, 12, 265, 12), archer(369, 15, 489, 12)],
+    &[unit(1, 12, 105, 8, INFANTRY), unit(169, 12, 273, 12, CAVALRY), unit(369, 12, 473, 12, MISSILE)],
+    &[unit(1, 12, 105, 10, INFANTRY), unit(185, 12, 289, 10, MISSILE), unit(369, 12, 473, 12, CAVALRY)],
+    &[unit(1, 15, 121, 15, INFANTRY), unit(257, 15, 377, 18, MISSILE), unit(532, 15, 652, 15, CAVALRY)],
+    &[unit(1, 18, 145, 15, INFANTRY), unit(280, 17, 416, 15, MISSILE)],
+    &[unit(1, 15, 121, 15, INFANTRY), unit(261, 15, 381, 18, MISSILE)],
+    &[unit(1, 12, 105, 12, INFANTRY), unit(201, 12, 297, 9, CAVALRY), unit(369, 12, 465, 12, MISSILE)],
+    &[unit(1, 12, 105, 12, INFANTRY), unit(201, 12, 305, 12, MISSILE)],
+    &[unit(1, 12, 105, 12, CAVALRY), unit(201, 12, 305, 12, MISSILE)],
+    &[unit(1, 12, 105, 12, INFANTRY), unit(201, 12, 305, 8, MISSILE)],
+    &[unit(1, 12, 97, 9, CAVALRY), unit(169, 12, 265, 12, INFANTRY), unit(369, 15, 489, 12, MISSILE)],
 ];
 
 /// Unité d'un soldat ennemi : `troop` regroupe la nation (seize par nation) et le
@@ -1123,6 +1125,9 @@ pub struct World {
     pub battles: Vec<Battle>,
     /// Invasion en cours, soldats dans la cité.
     pub raid: Option<Raid>,
+    /// Caractéristiques de combat des personnages (`figure_model`), fournies avec les
+    /// règles ; vides, le combat prend des valeurs de secours.
+    pub fighters: crate::model::Fighters,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
@@ -1196,6 +1201,7 @@ impl World {
             blessings: Vec::new(),
             battles: Vec::new(),
             raid: None,
+            fighters: crate::model::Fighters::default(),
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
@@ -1229,6 +1235,7 @@ impl World {
         city.ticks = self.ticks;
         city.cities = self.cities.clone();
         city.monument_layouts = self.monument_layouts.clone();
+        city.fighters = self.fighters.clone();
         city
     }
 
@@ -2563,18 +2570,19 @@ impl World {
         let limit = (soldiers / SOLDIERS_PER_RUIN).max(MIN_RUINS);
         self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
         let nation = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_UNITS.len() as u8 - 1);
-        let spawn = |world: &mut World, at: (usize, usize), enemy: bool, count: i32| {
-            for i in 0..count.min(MAX_SOLDIERS) {
+        // Chaque soldat reçoit son unité (`army`) : pour l'ennemi, tirée selon la
+        // fréquence de chaque unité dans les règles ; pour la cité, son rang.
+        let spawn = |world: &mut World, at: (usize, usize), enemy: bool, ranks: &[u8]| {
+            for (i, &army) in ranks.iter().enumerate().take(MAX_SOLDIERS as usize) {
+                let i = i as i32;
                 // Les soldats se rangent en carré autour de leur point de départ.
                 let side = 6;
                 let (dx, dy) = (i % side - side / 2, i / side - side / 2);
                 let (ox, oy) = (at.0 as i32 + dx, at.1 as i32 + dy);
                 // Pas de soldat dans l'eau ni sur la falaise : il reste au point de départ.
                 let (x, y) = if world.is_walkable(ox, oy) { (ox as u16, oy as u16) } else { (at.0 as u16, at.1 as u16) };
-                // Les envahisseurs alternent les unités de leur nation.
-                let units = ARMY_UNITS[nation as usize];
-                let army = nation * 16 + (i as usize % units.len()) as u8;
                 let (source, image_base) = if enemy { (Source::Army(nation), army_unit(army).walk) } else { (Source::Figures, world.walkers.hoplite) };
+                let health = world.fighter(enemy, army).health;
                 world.figures.push(Figure {
                     image_base,
                     x: x as f32,
@@ -2584,16 +2592,59 @@ impl World {
                     path: Vec::new(),
                     from: (x, y),
                     came_from: None,
-                    role: Role::Soldier { enemy, army, health: SOLDIER_HEALTH, target: NO_TARGET, fighting: false },
+                    role: Role::Soldier { enemy, army, health, target: NO_TARGET, fighting: false },
                     source,
                 });
             }
         };
-        spawn(self, entry, true, soldiers);
+        let units = ARMY_UNITS[nation as usize];
+        let weights: Vec<i32> = units.iter().map(|u| self.fighters.enemies.get(nation as usize * FIGHTERS_PER_NATION + u.kind).map_or(0, |f| f.frequency)).collect();
+        let total: i32 = weights.iter().sum();
+        let count = soldiers.min(MAX_SOLDIERS);
+        let invaders: Vec<u8> = (0..count)
+            .map(|i| {
+                // Répartition selon les fréquences (à défaut, chacune à son tour).
+                let rank = if total > 0 {
+                    let mut point = (i * total + total / 2) / count.max(1);
+                    weights.iter().position(|&w| {
+                        point -= w;
+                        point < 0
+                    }).unwrap_or(0)
+                } else {
+                    i as usize % units.len()
+                };
+                nation * 16 + rank as u8
+            })
+            .collect();
+        spawn(self, entry, true, &invaders);
         let home = self.buildings.iter().flatten().find(|b| self.kinds[b.kind].function == Function::Palace).or_else(|| self.buildings.iter().flatten().find(|b| b.house.is_some()));
         if let Some(home) = home.map(|b| (b.x, b.y)) {
-            spawn(self, home, false, self.army() / INVADER_STRENGTH);
+            // Les soldats de la cité, par rang : piétaille et archers, hoplites, cavaliers.
+            let (rabble, hoplites, horsemen) = (self.soldiers(Soldier::Rabble), self.soldiers(Soldier::Hoplite), self.soldiers(Soldier::Horseman));
+            let counts = [rabble - hoplites, hoplites - horsemen, horsemen];
+            let total: i32 = counts.iter().sum();
+            let scale = |n: i32| if total > MAX_SOLDIERS { n * MAX_SOLDIERS / total } else { n };
+            let defenders: Vec<u8> = counts.iter().enumerate().flat_map(|(rank, &n)| std::iter::repeat(rank as u8).take(scale(n).max(0) as usize)).collect();
+            spawn(self, home, false, &defenders);
         }
+    }
+
+    /// Caractéristiques de combat d'un soldat : unité ennemie de sa nation, ou soldat
+    /// de la cité de son rang (piétaille et archers, hoplites, cavaliers).
+    fn fighter(&self, enemy: bool, army: u8) -> crate::model::Fighter {
+        let found = if enemy {
+            self.fighters.enemies.get((army / 16) as usize * FIGHTERS_PER_NATION + army_unit(army).kind).copied()
+        } else {
+            self.fighters.citizens.get(army as usize).copied()
+        };
+        found.filter(|f| f.health > 0).unwrap_or(FALLBACK_FIGHTER)
+    }
+
+    /// Portée d'un soldat, en cases : celle de ses projectiles (les règles la donnent
+    /// en demi-cases), ou le corps à corps.
+    fn reach(&self, enemy: bool, army: u8) -> f32 {
+        let fighter = self.fighter(enemy, army);
+        if fighter.missile_attack > 0 && fighter.missile_range > 0 { (fighter.missile_range as f32 / 2.0).max(MELEE_REACH) } else { MELEE_REACH }
     }
 
     /// Traits en vol : pour chaque tireur ennemi qui combat, sa position, celle du
@@ -2605,7 +2656,7 @@ impl World {
         self.figures
             .iter()
             .filter_map(|f| match f.role {
-                Role::Soldier { enemy: true, army, fighting: true, .. } if army_unit(army).reach > MELEE_REACH => Some((f.x, f.y)),
+                Role::Soldier { enemy: true, army, fighting: true, .. } if self.reach(true, army) > MELEE_REACH => Some((f.x, f.y)),
                 _ => None,
             })
             .filter_map(|from| {
@@ -2625,6 +2676,17 @@ impl World {
             self.figures.iter().enumerate().filter_map(|(i, f)| f.soldier().map(|enemy| (i, enemy, f.x, f.y))).collect();
         let strike = self.ticks % STRIKE_TICKS == 0;
         let mut wounds = vec![0; self.figures.len()];
+        // Coups (attaque, attaque à distance, cadence de tir), défense (armure, armure
+        // contre les projectiles) et portée de chaque soldat, d'après les règles.
+        let (mut blows, mut defense, mut reach_of) = (vec![None; self.figures.len()], vec![(0, 0); self.figures.len()], vec![MELEE_REACH; self.figures.len()]);
+        for &(i, ..) in &soldiers {
+            if let Role::Soldier { enemy, army, .. } = self.figures[i].role {
+                let f = self.fighter(enemy, army);
+                blows[i] = Some((f.attack, f.missile_attack, f.rate));
+                defense[i] = (f.armor, f.missile_armor);
+                reach_of[i] = self.reach(enemy, army);
+            }
+        }
         for &(i, enemy, x, y) in &soldiers {
             let foe = soldiers
                 .iter()
@@ -2642,11 +2704,7 @@ impl World {
             };
             let figure = &mut self.figures[i];
             let Role::Soldier { enemy, army, health, target, .. } = figure.role else { continue };
-            // Portée du soldat : corps à corps, ou tir pour les archers ennemis.
-            let reach = match figure.role {
-                Role::Soldier { enemy: true, army, .. } => army_unit(army).reach,
-                _ => MELEE_REACH,
-            };
+            let reach = reach_of[i];
             match foe {
                 Some((other, distance, ox, oy)) if distance <= reach => {
                     // Au corps à corps : on s'arrête, face à l'adversaire, et on frappe.
@@ -2654,7 +2712,16 @@ impl World {
                     figure.direction = direction((x.round() as u16, y.round() as u16), (ox.round() as u16, oy.round() as u16));
                     figure.role = Role::Soldier { enemy, army, health, target, fighting: true };
                     if strike {
-                        wounds[other] += 1;
+                        wounds[other] += blows[i].map_or(0, |(melee, missile, missile_rate)| {
+                            let target = defense[other];
+                            if distance <= MELEE_REACH {
+                                (melee - target.0).max(1)
+                            } else if (self.ticks / STRIKE_TICKS * 37 + i as u64 * 13) % 100 < missile_rate as u64 {
+                                (missile - target.1).max(1)
+                            } else {
+                                0
+                            }
+                        });
                     }
                 }
                 Some(_) if chase.is_some() => {

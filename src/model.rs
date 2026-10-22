@@ -120,3 +120,75 @@ impl Model {
         self.buildings.iter().find(|b| b.name == name)
     }
 }
+
+/// Caractéristiques de combat d'un personnage (`model/figure_model_*.txt`) : points
+/// de vie, attaque et armure au corps à corps, armure contre les projectiles, attaque,
+/// portée et cadence de tir, vitesse, et fréquence (part de l'unité dans son armée,
+/// en pour cent).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Fighter {
+    pub health: i32,
+    pub attack: i32,
+    pub armor: i32,
+    pub missile_armor: i32,
+    pub missile_attack: i32,
+    pub missile_range: i32,
+    pub rate: i32,
+    pub speed: i32,
+    pub frequency: i32,
+}
+
+/// Combattants du jeu : les soldats de la cité (piétaille et archers, hoplites,
+/// cavaliers ; personnages 11 à 13) et les unités ennemies, six par nation
+/// (infanterie, tireurs, cavalerie, navire de guerre, transport, réserve).
+#[derive(Clone, Debug, Default)]
+pub struct Fighters {
+    pub citizens: [Fighter; 3],
+    pub enemies: Vec<Fighter>,
+}
+
+/// Rangs des soldats de la cité parmi les personnages.
+const CITIZEN_FIGHTERS: [usize; 3] = [11, 12, 13];
+
+impl Fighters {
+    pub fn parse(file: &[u8]) -> Result<Fighters, String> {
+        let text: String = file.iter().map(|&b| b as char).collect();
+        let mut fighters = Fighters::default();
+        let mut enemies = false;
+        for line in text.lines() {
+            if line.starts_with("ALL ENEMIES") {
+                enemies = true;
+                continue;
+            }
+            let (Some(open), Some(close)) = (line.find('{'), line.find('}')) else { continue };
+            let Ok(number) = line.split(',').next().unwrap_or("").trim().parse::<usize>() else { continue };
+            let v: Vec<i32> = line[open + 1..close].split(',').filter_map(|v| v.trim().parse().ok()).collect();
+            if v.len() < 10 {
+                continue;
+            }
+            let fighter = Fighter {
+                health: v[1],
+                attack: v[2],
+                armor: v[3],
+                missile_armor: v[4],
+                missile_attack: v[5],
+                missile_range: v[6],
+                rate: v[7],
+                speed: v[8],
+                frequency: v[9],
+            };
+            if enemies {
+                while fighters.enemies.len() < number {
+                    fighters.enemies.push(Fighter::default());
+                }
+                fighters.enemies.push(fighter);
+            } else if let Some(rank) = CITIZEN_FIGHTERS.iter().position(|&n| n == number) {
+                fighters.citizens[rank] = fighter;
+            }
+        }
+        if fighters.enemies.is_empty() {
+            return Err("fichier des personnages sans unités ennemies".into());
+        }
+        Ok(fighters)
+    }
+}

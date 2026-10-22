@@ -2396,6 +2396,11 @@ fn run(
     let mut world = World::new(map, kinds, model.houses.clone(), walkers, funds);
     world.cities = world.map.cities();
     world.monument_layouts = monument_layouts;
+    // Caractéristiques de combat du niveau de difficulté (à défaut, valeurs de secours).
+    match read(&format!("model/figure_model_{}.txt", DIFFICULTY_MODELS[difficulty()])).and_then(|f| zeus::model::Fighters::parse(&f)) {
+        Ok(fighters) => world.fighters = fighters,
+        Err(e) => eprintln!("règles des personnages : {e}"),
+    }
     if AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
         return audit(data, &world, &text);
     }

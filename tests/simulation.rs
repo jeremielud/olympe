@@ -749,6 +749,7 @@ fn an_army_lands_from_the_sea() {
     let site = (0..GRID as i32 * GRID as i32).map(|t| (t % GRID as i32, t / GRID as i32)).find(|&(x, y)| world.can_place(HOUSE, x, y)).unwrap();
     world.money = 1000;
     assert!(world.place_building(HOUSE, site.0, site.1));
+    world.fighters = zeus::model::Fighters::parse(&fs::read(data.join("model/figure_model_normal.txt")).unwrap()).unwrap();
     world.schedule_invasion((0, 0), (10, 10), (point as i16, point as i16), 1, (0, 0));
     (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     // Un navire au point maritime, dix soldats débarqués sur la terre ferme.
@@ -756,6 +757,11 @@ fn an_army_lands_from_the_sea() {
     assert!(world.figures.iter().any(|f| f.soldier().is_none() && (f.x as usize, f.y as usize) == (sx, sy)));
     let soldiers: Vec<_> = world.figures.iter().filter(|f| f.soldier() == Some(true)).collect();
     assert_eq!(soldiers.len(), 10);
+    // Grecs : six hoplites, deux cavaliers, deux frondeurs (fréquences 60, 20, 20).
+    let mut kinds: Vec<usize> = soldiers.iter().map(|f| f.image()).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    assert!(kinds.len() >= 2, "{kinds:?}");
     assert!(soldiers.iter().all(|f| world.map.terrain(f.x.round() as usize, f.y.round() as usize) & zeus::world::TERRAIN_WATER == 0));
 }
 
