@@ -745,6 +745,10 @@ fn an_army_lands_from_the_sea() {
     let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages { ship: 6465, ..WalkerImages::default() }, 0);
     let point = (9..=16).find(|&n| world.map.invasion_point(n).is_some()).expect("un point d'invasion maritime");
     world.cities = vec![City { active: true, kind: 2, name: 40, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0 }];
+    // Une maison à piller, pour que l'armée reste.
+    let site = (0..GRID as i32 * GRID as i32).map(|t| (t % GRID as i32, t / GRID as i32)).find(|&(x, y)| world.can_place(HOUSE, x, y)).unwrap();
+    world.money = 1000;
+    assert!(world.place_building(HOUSE, site.0, site.1));
     world.schedule_invasion((0, 0), (10, 10), (point as i16, point as i16), 1, (0, 0));
     (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     // Un navire au point maritime, dix soldats débarqués sur la terre ferme.
