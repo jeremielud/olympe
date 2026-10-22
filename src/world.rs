@@ -2217,13 +2217,56 @@ impl World {
         }
         let target = standing[self.next_random() as usize % standing.len()];
         let building = self.buildings[target as usize].as_ref().unwrap();
-        let path = straight_path(at, (building.x as u16, building.y as u16));
+        let path = self.land_path(at, (building.x as u16, building.y as u16));
         let figure = &mut self.figures[index];
         if let Some(&next) = path.last() {
             figure.direction = direction(at, next);
         }
         figure.path = path;
         (target, rest_until)
+    }
+
+    /// Chemin à pied à travers la campagne, de `from` à `to` (exclu le départ, la
+    /// prochaine case en dernier) : on contourne l'eau, les rochers, les falaises,
+    /// les gouffres et les eaux d'un raz-de-marée, mais on traverse bâtiments, arbres
+    /// et routes. Sans passage, la ligne droite.
+    fn land_path(&self, from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
+        const UNSEEN: u32 = u32::MAX;
+        let blocked = |x: i32, y: i32| {
+            if !self.in_map(x, y) {
+                return true;
+            }
+            let terrain = self.map.terrain(x as usize, y as usize);
+            let cliff = terrain & TERRAIN_ELEVATION != 0 && terrain & TERRAIN_RAMP == 0;
+            terrain & (TERRAIN_WATER | TERRAIN_ROCK | TERRAIN_MARSH) != 0 || cliff || matches!(self.cell(x as usize, y as usize), Cell::Chasm(_) | Cell::Flood)
+        };
+        let index = |at: (u16, u16)| at.1 as usize * GRID + at.0 as usize;
+        let mut previous = vec![UNSEEN; GRID * GRID];
+        previous[index(from)] = index(from) as u32;
+        let mut queue = VecDeque::from([from]);
+        while let Some(at) = queue.pop_front() {
+            if at == to {
+                let mut path = Vec::new();
+                let mut step = index(to);
+                while step != index(from) {
+                    path.push(((step % GRID) as u16, (step / GRID) as u16));
+                    step = previous[step] as usize;
+                }
+                return path;
+            }
+            for (dx, dy) in DIRECTIONS {
+                let (nx, ny) = (at.0 as i32 + dx, at.1 as i32 + dy);
+                if !Self::in_grid(nx, ny) {
+                    continue;
+                }
+                let next = (nx as u16, ny as u16);
+                if previous[index(next)] == UNSEEN && (next == to || !blocked(nx, ny)) {
+                    previous[index(next)] = index(at) as u32;
+                    queue.push_back(next);
+                }
+            }
+        }
+        straight_path(from, to)
     }
 
     /// Une armée rivale entre par un point d'invasion de la carte (à défaut, par
@@ -2278,6 +2321,14 @@ impl World {
                 .filter(|o| o.1 != enemy)
                 .map(|o| (o.0, (o.2 - x).hypot(o.3 - y), o.2, o.3))
                 .min_by(|a, b| a.1.total_cmp(&b.1));
+            // Un défenseur sans adversaire à portée le poursuit, en recalculant son
+            // chemin de temps en temps.
+            let chase = match foe {
+                Some((_, distance, ox, oy)) if !enemy && distance > MELEE_REACH && (self.figures[i].path.is_empty() || self.ticks % CHASE_TICKS == 0) => {
+                    Some(self.land_path(self.figures[i].from, (ox.round() as u16, oy.round() as u16)))
+                }
+                _ => None,
+            };
             let figure = &mut self.figures[i];
             let Role::Soldier { enemy, health, target, .. } = figure.role else { continue };
             match foe {
@@ -2290,10 +2341,10 @@ impl World {
                         wounds[other] += 1;
                     }
                 }
-                Some((_, _, ox, oy)) if !enemy && (figure.path.is_empty() || self.ticks % CHASE_TICKS == 0) => {
+                Some(_) if chase.is_some() => {
                     figure.role = Role::Soldier { enemy, health, target, fighting: false };
                     let at = figure.from;
-                    let path = straight_path(at, (ox.round() as u16, oy.round() as u16));
+                    let path = chase.unwrap_or_default();
                     if let Some(&next) = path.last() {
                         figure.direction = direction(at, next);
                     }
@@ -2329,7 +2380,7 @@ impl World {
                 .min_by_key(|&(_, dx, dy)| dx.abs().max(dy.abs()));
             let Some((id, ..)) = nearest else { continue };
             let goal = self.buildings[id].as_ref().map(|b| (b.x as u16, b.y as u16)).unwrap();
-            let path = straight_path(at, goal);
+            let path = self.land_path(at, goal);
             let figure = &mut self.figures[i];
             if let Some(&next) = path.last() {
                 figure.direction = direction(at, next);
