@@ -2675,7 +2675,7 @@ fn run(
             let appeals: Vec<i32> = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| world.appeal(b.x as i32, b.y as i32)).collect();
             println!("maisons : {} | attrait {appeals:?} | stocks : {}", levels.join(", "), stocks.join(", "));
             println!("bâtiments debout : {} | sauvegarde : {} cases en ruine, {} en feu", world.buildings.iter().flatten().count(), saved.matches("\nruine ").count(), saved.matches("\nfeu ").count());
-            println!("drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles", world.money, world.last_month.0, world.last_month.1, world.workers_needed(), world.workers_available());
+            println!("drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles | humeur {}", world.money, world.last_month.0, world.last_month.1, world.workers_needed(), world.workers_available(), world.sentiment);
             println!(
                 "après {warmup} pas : population {}, {} maisons desservies [{}], {} personnages {nearest}, scène en {start:?}",
                 world.population(),
@@ -2945,6 +2945,7 @@ fn run(
             }
             if let Some(incident) = world.incidents.pop() {
                 notice = match incident {
+                    zeus::world::Incident::Pillage { .. } => ("Des voleurs ont pillé une maison luxueuse : postez des gardes".to_string(), now),
                     zeus::world::Incident::Theft { amount, .. } => (format!("Un voleur a dérobé {amount} dr. au trésor : postez des gardes"), now),
                     zeus::world::Incident::Plague { dead, .. } => (format!("Une épidémie a emporté {dead} habitants : bâtissez des infirmeries"), now),
                 };

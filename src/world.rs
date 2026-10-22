@@ -556,10 +556,14 @@ const APPEAL_LIMIT: i32 = 100;
 /// moteur descend ; ils ne sont pas vérifiés dans Zeus.
 const RISK_LIMIT: i32 = 200;
 const RISK_DAILY_CHANCE: u32 = 8;
-/// Criminalité et maladie (Olympe) : un cran de criminalité de plus par tranche de
-/// cinq points d'humeur sous l'humeur de départ ; un voleur emporte deux drachmes par
-/// habitant de sa maison ; une épidémie emporte la moitié des habitants.
-const DISCONTENT_PER_CRIME: i32 = 5;
+/// Criminalité (`Zeus.exe`) : humeur à laquelle elle ne bouge que de l'incrément du
+/// logement, baisse au passage d'un garde (réducteur de risque des règles), et seuil
+/// au-delà duquel la maison « va bientôt produire un criminel ». Un voleur qui ne trouve
+/// pas de maison luxueuse à piller emporte deux drachmes par habitant de sa maison, et
+/// une épidémie la moitié des habitants (Olympe).
+const CRIME_NEUTRAL_SENTIMENT: i32 = 40;
+const GUARD_CRIME_REDUCTION: i32 = 50;
+const CRIMINAL_CRIME: i32 = 80;
 const THEFT_PER_PERSON: i32 = 2;
 const PLAGUE_PERCENT: i32 = 50;
 /// Durée d'un incendie avant qu'il ne reste que des décombres.
@@ -594,8 +598,13 @@ const START_SENTIMENT: i32 = 60;
 const NO_IMMIGRATION_SENTIMENT: i32 = 30;
 const EMIGRATION_SENTIMENT: i32 = 15;
 /// Part des maisons visitées par un percepteur sous laquelle l'imposition compte
-/// comme nulle pour l'humeur (« couverture très faible »).
-const LOW_TAX_COVERAGE_PERCENT: i32 = 20;
+/// comme nulle pour l'humeur, et population à partir de laquelle les effets négatifs
+/// comptent (`Zeus.exe`, 0x567120 et 0x5671a0).
+const MIN_TAX_COVERAGE_PERCENT: i32 = 11;
+const GROWN_POPULATION: i32 = 350;
+/// Niveaux de salaire du jeu et leur effet sur l'humeur (`Zeus.exe`, 0x641f20).
+const WAGE_LEVELS: [i32; 6] = [0, 20, 26, 30, 34, 40];
+const WAGE_MOOD: [i32; 6] = [-10, -5, -2, 0, 2, 4];
 /// Salaire mensuel, en drachmes pour 100 employés.
 const WAGES_PER_100_WORKERS: i32 = 30;
 
@@ -900,6 +909,10 @@ pub struct House {
     /// garde ou d'un médecin.
     pub crime: i32,
     pub disease: i32,
+    /// La maison a mangé au dernier mois ; sinon, depuis combien de mises à jour de
+    /// l'humeur elle a faim (au plus 3).
+    pub ate: bool,
+    pub hungry: u8,
 }
 
 impl House {
@@ -1086,6 +1099,8 @@ pub struct Disaster {
 pub enum Incident {
     /// Un voleur a pris ces drachmes au trésor.
     Theft { amount: i32, x: usize, y: usize },
+    /// Des voleurs ont pillé les réserves d'une maison luxueuse.
+    Pillage { x: usize, y: usize },
     /// La maladie a emporté ces habitants.
     Plague { dead: i32, x: usize, y: usize },
 }
@@ -1169,6 +1184,11 @@ pub struct World {
     pub tax_level: usize,
     pub difficulty: usize,
     pub sentiment: i32,
+    /// La cité a dépassé 349 habitants : mécontentements et criminalité comptent
+    /// désormais (avant, le jeu les tient pour nuls).
+    pub grown: bool,
+    /// Mois consécutifs de trésor négatif.
+    pub months_in_debt: u32,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
@@ -1249,6 +1269,8 @@ impl World {
             tax_level: NORMAL_TAX_LEVEL,
             difficulty: 2,
             sentiment: START_SENTIMENT,
+            grown: false,
+            months_in_debt: 0,
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
@@ -1583,7 +1605,7 @@ impl World {
         let id = self.buildings.len() as u16;
         let first_level = if size == ELITE_SIZE { ELITE_FIRST_LEVEL } else { 0 };
         let house = (function == Function::House)
-            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()], crime: 0, disease: 0 });
+            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()], crime: 0, disease: 0, ate: false, hungry: 0 });
         self.buildings.push(Some(Building {
             kind,
             x: x as usize,
@@ -3057,7 +3079,12 @@ impl World {
             self.update_risks();
             self.supply_sites();
         }
+        // Humeur et criminalité : aussi en milieu de mois.
+        if self.ticks % TICKS_PER_MONTH == TICKS_PER_MONTH / 2 {
+            self.update_sentiment();
+        }
         if self.ticks % TICKS_PER_MONTH == 0 {
+            self.months_in_debt = if self.money < 0 { self.months_in_debt + 1 } else { 0 };
             self.update_houses();
             self.assign_workers();
             self.settle_month();
@@ -3240,28 +3267,14 @@ impl World {
         }
     }
 
-    /// Criminalité et maladie d'une maison habitée, au même rythme que l'incendie :
-    /// les incréments du niveau de logement, et pour la criminalité le mécontentement
-    /// de la cité. Passé le seuil, un voleur puise au trésor, ou la maladie emporte
-    /// une part des habitants.
+    /// Maladie d'une maison habitée, au même rythme que l'incendie, selon l'incrément
+    /// de son niveau de logement ; passé le seuil, elle emporte une part des habitants.
     fn update_house_risks(&mut self, id: usize) {
-        let discontent = (START_SENTIMENT - self.sentiment).max(0) / DISCONTENT_PER_CRIME;
         let Some(building) = self.buildings[id].as_mut() else { return };
         let (x, y) = (building.x, building.y);
         let Some(house) = building.house.as_mut() else { return };
         let Some(model) = self.house_levels.get(house.level) else { return };
-        if model.crime > 0 {
-            house.crime += (model.crime + model.crime_base + discontent).max(0);
-        }
         house.disease += model.disease.max(0);
-        if house.crime > RISK_LIMIT {
-            house.crime = 0;
-            let amount = (house.population * THEFT_PER_PERSON).min(self.money.max(0));
-            if amount > 0 {
-                self.money -= amount;
-                self.incidents.push(Incident::Theft { amount, x, y });
-            }
-        }
         if house.disease > RISK_LIMIT {
             house.disease = 0;
             let dead = house.population * PLAGUE_PERCENT / 100;
@@ -3308,27 +3321,116 @@ impl World {
         self.tax_level = level.min(levels - 1);
     }
 
-    /// Humeur de la cité, chaque mois : l'effet du niveau d'imposition à la difficulté
-    /// de la partie (le premier niveau si presque aucune maison ne paie), un mécontentement
-    /// en cas de chômage, et un retour lent vers l'humeur de départ.
+    /// Humeur de la cité, deux fois par mois, comme `Zeus.exe` (0x5671a0) : somme des
+    /// effets des impôts, des salaires, du chômage, des vivres et des dettes, amortie
+    /// quand elle éloigne l'humeur de la zone de 41 à 60. Tant que la cité n'a pas
+    /// dépassé 349 habitants, les effets négatifs (hors dettes) ne comptent pas.
     fn update_sentiment(&mut self) {
+        self.grown |= self.population() >= GROWN_POPULATION;
+        self.update_crime();
+        let grace = |effect: i32| if effect < 0 && !self.grown { 0 } else { effect };
         let houses: Vec<&House> = self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
-        let drift = (START_SENTIMENT - self.sentiment).signum();
-        // Cité vide : l'humeur revient d'elle-même, et les immigrants avec elle.
-        if houses.is_empty() {
-            self.sentiment += 2 * drift;
-            return;
-        }
+        // Impôts : sans percepteurs (moins de 11 % des maisons), comme s'il n'y en avait pas.
         let taxed = houses.iter().filter(|h| h.has(Service::Tax, self.ticks)).count() as i32;
-        let level = if taxed * 100 < LOW_TAX_COVERAGE_PERCENT * houses.len() as i32 { 0 } else { self.tax_level };
-        let effect = self.taxes.levels.get(level).map_or(0, |l| l.1[self.difficulty.min(4)]);
+        let level = if taxed * 100 < MIN_TAX_COVERAGE_PERCENT * houses.len() as i32 { 0 } else { self.tax_level };
+        let taxes = grace(self.taxes.levels.get(level).map_or(0, |l| l.1[self.difficulty.min(4)]));
+        // Salaires : effet du niveau le plus proche du salaire actuel.
+        let wage = NORMAL_WAGE + self.wage_shift;
+        let wages = grace(WAGE_LEVELS.iter().zip(WAGE_MOOD).min_by_key(|(level, _)| (*level - wage).abs()).map_or(0, |(_, mood)| mood));
+        // Chômage, en part des travailleurs.
         let (needed, available) = (self.workers_needed(), self.workers_available());
-        let jobless = if available > 0 && (available - needed) * 100 > available * 20 { -1 } else { 0 };
-        self.sentiment = (self.sentiment + effect + jobless + drift).clamp(0, 100);
-        // Cité exaspérée : une part des habitants s'en va.
+        let jobless = if available > 0 { (available - needed).max(0) * 100 / available } else { 0 };
+        let unemployment = grace(match jobless {
+            ..5 => 1,
+            5..11 => 0,
+            11..18 => -1,
+            18..26 => -2,
+            _ => -3,
+        });
+        // Vivres : +2 par maison qui a mangé, -1, -2 puis -3 par maison affamée depuis
+        // une, deux, trois mises à jour ; moyenne arrondie au plus proche.
+        let mut votes = Vec::new();
+        for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()).filter(|h| h.population > 0 && h.level < ELITE_FIRST_LEVEL) {
+            if house.ate {
+                house.hungry = 0;
+                votes.push(2);
+            } else {
+                house.hungry = (house.hungry + 1).min(3);
+                votes.push(-(house.hungry as i32));
+            }
+        }
+        let food = match votes.len() as i32 {
+            0 => 0,
+            n => {
+                let sum: i32 = votes.iter().sum();
+                let (mean, rest) = (sum / n, sum % n);
+                grace(if rest.abs() > n / 2 { mean + sum.signum() } else { mean })
+            }
+        };
+        // Dettes : -2, et -2, -5 puis -9 après une, deux, trois années de dettes.
+        let years = self.months_in_debt as i32 / 12;
+        let debt = [0, -2, -5, -9][years.min(3) as usize] + if self.money < 0 { -2 } else { 0 };
+        let change = taxes + wages + unemployment + food + debt;
+        let damping = match self.sentiment {
+            ..11 => 4,
+            11..21 => 3,
+            21..31 => 2,
+            31..41 => 1,
+            41..61 => 0,
+            61..71 => -1,
+            71..81 => -2,
+            81..91 => -3,
+            _ => -4,
+        };
+        let change = match self.sentiment {
+            ..41 if change < 0 => (change + damping).min(0),
+            61.. if change > 0 => (change + damping).max(0),
+            _ => change,
+        };
+        self.sentiment = (self.sentiment + change).clamp(0, 100);
+        // Cité exaspérée : une part des habitants s'en va (Olympe).
         if self.sentiment < EMIGRATION_SENTIMENT {
             for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()) {
                 house.population -= (house.population / 20).max((house.population > 0) as i32);
+            }
+        }
+    }
+
+    /// Criminalité des logements modestes (`Zeus.exe`, 0x566f20) : une fois la cité
+    /// grande, chaque maison habitée ajoute l'incrément de son niveau et la moitié de
+    /// l'écart entre 40 et l'humeur ; elle reste entre la base du niveau et 100.
+    /// Au-delà de 80, la maison produit un criminel, qui pille une maison luxueuse ou,
+    /// à défaut, le trésor (Olympe), et sa criminalité retombe à la base.
+    fn update_crime(&mut self) {
+        let mut criminals = Vec::new();
+        for building in self.buildings.iter_mut().flatten() {
+            let (x, y) = (building.x, building.y);
+            let Some(house) = building.house.as_mut().filter(|h| h.level < ELITE_FIRST_LEVEL) else { continue };
+            if house.population == 0 {
+                house.crime = 0;
+                continue;
+            }
+            let Some(model) = self.house_levels.get(house.level) else { continue };
+            if self.grown {
+                house.crime += model.crime + (CRIME_NEUTRAL_SENTIMENT - self.sentiment) / 2;
+            }
+            house.crime = house.crime.max(model.crime_base).min(100);
+            if house.crime > CRIMINAL_CRIME {
+                house.crime = model.crime_base;
+                criminals.push((x, y, house.population));
+            }
+        }
+        for (x, y, population) in criminals {
+            let victim = self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut().map(|h| (b.x, b.y, h))).find(|(.., h)| h.level > ELITE_DEVOLVED && h.goods.iter().any(|&g| g > 0));
+            if let Some((vx, vy, house)) = victim {
+                house.goods = [0; GOODS.len()];
+                self.incidents.push(Incident::Pillage { x: vx, y: vy });
+                continue;
+            }
+            let amount = (population * THEFT_PER_PERSON).min(self.money.max(0));
+            if amount > 0 {
+                self.money -= amount;
+                self.incidents.push(Incident::Theft { amount, x, y });
             }
         }
     }
@@ -3727,7 +3829,10 @@ impl World {
                     house.covered_until[*service as usize] = until;
                     // Le garde chasse les voleurs, le médecin soigne.
                     match service {
-                        Service::Security => house.crime = 0,
+                        Service::Security => {
+                            let base = self.house_levels.get(house.level).map_or(0, |l| l.crime_base);
+                            house.crime = (house.crime - GUARD_CRIME_REDUCTION).max(base).min(100);
+                        }
                         Service::Health => house.disease = 0,
                         _ => {}
                     }
@@ -3988,6 +4093,8 @@ impl World {
             // Ce que la maison avait en réserve avant de consommer.
             let had = house.goods.map(|amount| amount > 0);
             let fed = house.goods[Good::Food as usize] >= needed.max(1);
+            // Les niveaux qui ne demandent aucun vivre ne mangent pas (`Zeus.exe`, 0x48b8d0).
+            house.ate = fed && self.house_levels.get(house.level).is_some_and(|l| l.food_types > 0);
             house.goods[Good::Food as usize] = (house.goods[Good::Food as usize] - needed).max(0);
             if goods_month {
                 for good in [Good::Fleece, Good::Oil, Good::Wine, Good::Arms] {
@@ -4205,7 +4312,7 @@ impl World {
         let _ = writeln!(out, "emporte {}", list(&self.carried));
         let _ = writeln!(out, "prix {}", list(&self.price_shift));
         let _ = writeln!(out, "salaires {}", self.wage_shift);
-        let _ = writeln!(out, "humeur {} {}", self.tax_level, self.sentiment);
+        let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
         for &(city, until) in &self.armies_away {
             let _ = writeln!(out, "absente {city} {until}");
         }
@@ -4285,8 +4392,8 @@ impl World {
                 let goods: Vec<String> = h.goods.iter().map(i32::to_string).collect();
                 let _ = write!(out, " maison {} {} {} {} {}", h.level, h.population, h.arriving, goods.join(" "), covered.join(" "));
             }
-            if let Some(h) = b.house.as_ref().filter(|h| h.crime != 0 || h.disease != 0) {
-                let _ = write!(out, " risques {} {}", h.crime, h.disease);
+            if let Some(h) = b.house.as_ref().filter(|h| h.crime != 0 || h.disease != 0 || h.ate || h.hungry != 0) {
+                let _ = write!(out, " risques {} {} {} {}", h.crime, h.disease, h.ate as u8, h.hungry);
             }
             if b.foods.iter().any(|&f| f != 0) {
                 let _ = write!(out, " vivres {}", b.foods.iter().map(i32::to_string).collect::<Vec<_>>().join(" "));
@@ -4386,7 +4493,7 @@ impl World {
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "salaires" => wage_shift = number_at(0)? as i32,
-                "humeur" => mood = Some((number_at(0)? as usize, number_at(1)? as i32)),
+                "humeur" => mood = Some((number_at(0)? as usize, number_at(1)? as i32, number_at(2).unwrap_or(0) != 0, number_at(3).unwrap_or(0) as u32)),
                 "raid" => raid = Some(Raid { city: number_at(0)? as usize, soldiers: number_at(1)? as i32, buildings: number_at(2)? as i32, limit: number_at(3)? as i32 }),
                 "absente" => away.push((number_at(0)? as usize, number_at(1)? as u64)),
                 "demande" => requests.push(Request {
@@ -4472,6 +4579,8 @@ impl World {
                                 covered_until,
                                 crime: 0,
                                 disease: 0,
+                                ate: false,
+                                hungry: 0,
                             })
                         }
                         _ => None,
@@ -4479,6 +4588,7 @@ impl World {
                     let mut house = house;
                     if let (Some(house), Some(at)) = (house.as_mut(), rest.iter().position(|&w| w == "risques")) {
                         (house.crime, house.disease) = (number_at(at + 1)? as i32, number_at(at + 2)? as i32);
+                        (house.ate, house.hungry) = (number_at(at + 3).unwrap_or(0) != 0, number_at(at + 4).unwrap_or(0).min(3) as u8);
                     }
                     // Vivres du grenier par ressource : absents des sauvegardes plus
                     // anciennes, où tout le stock passe pour d'origine inconnue.
@@ -4616,9 +4726,10 @@ impl World {
         self.scheduled = scheduled;
         (self.wage_shift, self.armies_away, self.wage_news) = (wage_shift, away, Vec::new());
         self.raid = raid;
-        if let Some((level, sentiment)) = mood {
+        if let Some((level, sentiment, grown, months_in_debt)) = mood {
             self.set_tax_level(level);
             self.sentiment = sentiment.clamp(0, 100);
+            (self.grown, self.months_in_debt) = (grown, months_in_debt);
         }
         self.world_news.clear();
         (self.requests, self.request_news) = (requests, Vec::new());

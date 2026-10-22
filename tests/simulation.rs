@@ -931,7 +931,10 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
     assert!(world.place_building(world.kinds.len() - 1, x + 4, y + 5));
     (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.population() > 0);
-    // Taux scandaleux en très difficile : l'humeur s'effondre, les maisons se vident.
+    // Taux scandaleux en très difficile : l'humeur s'effondre, les maisons se vident
+    // (une cité qui a déjà dépassé 349 habitants ; avant, le jeu ne compte pas les
+    // mécontentements).
+    world.grown = true;
     world.difficulty = 4;
     world.set_tax_level(6);
     world.set_tax_level(9);
@@ -940,10 +943,12 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
     (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.sentiment < 15, "humeur {}", world.sentiment);
     assert!(world.population() < before);
-    // Plus d'impôts : l'humeur remonte, lentement en très difficile.
+    let low = world.sentiment;
+    // Plus d'impôts : l'humeur remonte, lentement en très difficile (les huttes ne
+    // mangent pas et les chômeurs sont nombreux).
     world.set_tax_level(0);
     (0..24 * TICKS_PER_MONTH).for_each(|_| world.tick());
-    assert!(world.sentiment >= 30, "humeur {}", world.sentiment);
+    assert!(world.sentiment > low, "humeur {} puis {}", low, world.sentiment);
     let saved = world.save();
     let (mut other, ..) = self::world(&data);
     other.taxes = world.taxes.clone();
@@ -966,6 +971,8 @@ fn guards_and_doctors_keep_thieves_and_plague_away() {
             assert!(world.place_building(world.kinds.len() - 2, x, y + 5));
             assert!(world.place_building(world.kinds.len() - 1, x + 4, y + 5));
         }
+        // La criminalité ne monte qu'une fois la cité grande.
+        world.grown = true;
         let mut incidents = Vec::new();
         for _ in 0..24 * TICKS_PER_MONTH {
             world.tick();
