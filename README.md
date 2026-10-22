@@ -102,6 +102,10 @@ Ce qui fonctionne :
 - cinq niveaux de difficulté (Débutant à Olympien, touche D sur l'écran des
   aventures ou `--difficulte`), avec leurs fichiers de règles et le trésor initial
   ajusté comme dans le jeu ;
+- taux d'imposition réglable (touches `+` et `-`), d'« aucun » à « scandaleux » avec
+  les taux du jeu, et humeur de la cité qui en dépend selon la table du jeu et la
+  difficulté (`tax_sentiment_model.txt`) : une cité mécontente n'attire plus
+  d'immigrants, puis ses habitants s'en vont ;
 - sauvegarde et rechargement d'une partie.
 
 Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
@@ -116,7 +120,7 @@ sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
 figurés par des obélisques ; 
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
-repris du jeu.
+repris du jeu, de même que les seuils d'humeur et l'effet du chômage sur elle.
 
 
 ## Installation

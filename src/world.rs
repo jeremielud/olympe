@@ -576,9 +576,20 @@ const EMPTY_BAY_IMAGE: usize = 934;
 /// du marbre et du bronze en tiennent lieu.
 const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873, 849, 845];
 const WORKFORCE_PERCENT: i32 = 40;
-/// Impôt mensuel, en drachmes pour 100 habitants d'une maison visitée par un
-/// percepteur (multiplié par le coefficient du niveau de logement).
+/// Impôt mensuel au taux normal, en drachmes pour 100 habitants d'une maison visitée
+/// par un percepteur (multiplié par le coefficient du niveau de logement) ; les
+/// autres taux du jeu le font varier en proportion.
 const TAX_PER_100_PEOPLE: i32 = 25;
+/// Niveau d'imposition normal (taux 9 du jeu), humeur de départ, et seuils d'humeur
+/// sous lesquels les immigrants ne viennent plus, puis les habitants s'en vont
+/// (Olympe).
+pub const NORMAL_TAX_LEVEL: usize = 3;
+const START_SENTIMENT: i32 = 60;
+const NO_IMMIGRATION_SENTIMENT: i32 = 30;
+const EMIGRATION_SENTIMENT: i32 = 15;
+/// Part des maisons visitées par un percepteur sous laquelle l'imposition compte
+/// comme nulle pour l'humeur (« couverture très faible »).
+const LOW_TAX_COVERAGE_PERCENT: i32 = 20;
 /// Salaire mensuel, en drachmes pour 100 employés.
 const WAGES_PER_100_WORKERS: i32 = 30;
 
@@ -1133,6 +1144,12 @@ pub struct World {
     /// Caractéristiques de combat des personnages (`figure_model`), fournies avec les
     /// règles ; vides, le combat prend des valeurs de secours.
     pub fighters: crate::model::Fighters,
+    /// Impôts du jeu, niveau d'imposition choisi (rang dans `taxes.levels`, normal par
+    /// défaut), niveau de difficulté (0 à 4) et humeur de la cité (0 à 100).
+    pub taxes: crate::model::Taxes,
+    pub tax_level: usize,
+    pub difficulty: usize,
+    pub sentiment: i32,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
@@ -1207,6 +1224,10 @@ impl World {
             battles: Vec::new(),
             raid: None,
             fighters: crate::model::Fighters::default(),
+            taxes: crate::model::Taxes::default(),
+            tax_level: NORMAL_TAX_LEVEL,
+            difficulty: 2,
+            sentiment: START_SENTIMENT,
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
@@ -1241,6 +1262,7 @@ impl World {
         city.cities = self.cities.clone();
         city.monument_layouts = self.monument_layouts.clone();
         city.fighters = self.fighters.clone();
+        (city.taxes, city.tax_level, city.difficulty) = (self.taxes.clone(), self.tax_level, self.difficulty);
         city
     }
 
@@ -3003,7 +3025,7 @@ impl World {
         self.ticks += 1;
         self.move_figures();
         self.fight();
-        if self.ticks % IMMIGRATION_INTERVAL == 0 {
+        if self.ticks % IMMIGRATION_INTERVAL == 0 && self.sentiment >= NO_IMMIGRATION_SENTIMENT {
             self.send_immigrants();
         }
         self.run_buildings();
@@ -3224,6 +3246,38 @@ impl World {
         }
     }
 
+    /// Niveau d'imposition, dans les bornes de la table du jeu.
+    pub fn set_tax_level(&mut self, level: usize) {
+        // Sans la table du jeu, les sept niveaux habituels.
+        let levels = if self.taxes.levels.is_empty() { 2 * NORMAL_TAX_LEVEL + 1 } else { self.taxes.levels.len() };
+        self.tax_level = level.min(levels - 1);
+    }
+
+    /// Humeur de la cité, chaque mois : l'effet du niveau d'imposition à la difficulté
+    /// de la partie (le premier niveau si presque aucune maison ne paie), un mécontentement
+    /// en cas de chômage, et un retour lent vers l'humeur de départ.
+    fn update_sentiment(&mut self) {
+        let houses: Vec<&House> = self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
+        let drift = (START_SENTIMENT - self.sentiment).signum();
+        // Cité vide : l'humeur revient d'elle-même, et les immigrants avec elle.
+        if houses.is_empty() {
+            self.sentiment += 2 * drift;
+            return;
+        }
+        let taxed = houses.iter().filter(|h| h.has(Service::Tax, self.ticks)).count() as i32;
+        let level = if taxed * 100 < LOW_TAX_COVERAGE_PERCENT * houses.len() as i32 { 0 } else { self.tax_level };
+        let effect = self.taxes.levels.get(level).map_or(0, |l| l.1[self.difficulty.min(4)]);
+        let (needed, available) = (self.workers_needed(), self.workers_available());
+        let jobless = if available > 0 && (available - needed) * 100 > available * 20 { -1 } else { 0 };
+        self.sentiment = (self.sentiment + effect + jobless + drift).clamp(0, 100);
+        // Cité exaspérée : une part des habitants s'en va.
+        if self.sentiment < EMIGRATION_SENTIMENT {
+            for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()) {
+                house.population -= (house.population / 20).max((house.population > 0) as i32);
+            }
+        }
+    }
+
     /// Impôts et salaires du mois écoulé.
     fn settle_month(&mut self) {
         let now = self.ticks;
@@ -3235,7 +3289,13 @@ impl World {
                 taxes += house.population * TAX_PER_100_PEOPLE * multiplier;
             }
         }
-        let taxes = taxes / 100;
+        // Taux choisi, rapporté au taux normal du jeu.
+        let rate = |level: usize| self.taxes.levels.get(level).map(|l| l.0);
+        let taxes = match (rate(self.tax_level), rate(NORMAL_TAX_LEVEL)) {
+            (Some(chosen), Some(normal)) if normal > 0 => taxes * chosen / normal / 100,
+            _ => taxes / 100,
+        };
+        self.update_sentiment();
         let employed: i32 = self.buildings.iter().flatten().filter(|b| b.staffed).map(|b| self.kinds[b.kind].employees).sum();
         let wages = employed * WAGES_PER_100_WORKERS * (NORMAL_WAGE + self.wage_shift).max(0) / (100 * NORMAL_WAGE);
         self.money += taxes - wages;
@@ -4082,6 +4142,7 @@ impl World {
         let _ = writeln!(out, "emporte {}", list(&self.carried));
         let _ = writeln!(out, "prix {}", list(&self.price_shift));
         let _ = writeln!(out, "salaires {}", self.wage_shift);
+        let _ = writeln!(out, "humeur {} {}", self.tax_level, self.sentiment);
         for &(city, until) in &self.armies_away {
             let _ = writeln!(out, "absente {city} {until}");
         }
@@ -4220,6 +4281,7 @@ impl World {
         let mut invasions = Vec::new();
         let (mut wage_shift, mut away, mut floods) = (0, Vec::new(), Vec::new());
         let mut raid = None;
+        let mut mood = None;
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -4258,6 +4320,7 @@ impl World {
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "salaires" => wage_shift = number_at(0)? as i32,
+                "humeur" => mood = Some((number_at(0)? as usize, number_at(1)? as i32)),
                 "raid" => raid = Some(Raid { city: number_at(0)? as usize, soldiers: number_at(1)? as i32, buildings: number_at(2)? as i32, limit: number_at(3)? as i32 }),
                 "absente" => away.push((number_at(0)? as usize, number_at(1)? as u64)),
                 "demande" => requests.push(Request {
@@ -4480,6 +4543,10 @@ impl World {
         self.scheduled = scheduled;
         (self.wage_shift, self.armies_away, self.wage_news) = (wage_shift, away, Vec::new());
         self.raid = raid;
+        if let Some((level, sentiment)) = mood {
+            self.set_tax_level(level);
+            self.sentiment = sentiment.clamp(0, 100);
+        }
         self.world_news.clear();
         (self.requests, self.request_news) = (requests, Vec::new());
         (self.invasions, self.god_news) = (invasions, Vec::new());

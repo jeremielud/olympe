@@ -192,3 +192,30 @@ impl Fighters {
         Ok(fighters)
     }
 }
+
+/// Impôts (`model/tax_sentiment_model.txt`) : pour chaque niveau d'imposition (aucun,
+/// très bas, bas, normal, haut, très haut, scandaleux), le taux du jeu et son effet
+/// mensuel sur l'humeur de la cité à chaque niveau de difficulté (très facile à très
+/// difficile).
+#[derive(Clone, Debug, Default)]
+pub struct Taxes {
+    pub levels: Vec<(i32, [i32; 5])>,
+}
+
+impl Taxes {
+    pub fn parse(file: &[u8]) -> Result<Taxes, String> {
+        let text: String = file.iter().map(|&b| b as char).collect();
+        let mut levels = Vec::new();
+        for line in text.lines() {
+            let (Some(open), Some(close)) = (line.find('{'), line.find('}')) else { continue };
+            let v: Vec<i32> = line[open + 1..close].split(',').filter_map(|v| v.trim().parse().ok()).collect();
+            if let [rate, a, b, c, d, e, ..] = v[..] {
+                levels.push((rate, [a, b, c, d, e]));
+            }
+        }
+        if levels.len() < 4 {
+            return Err("fichier des impôts incomplet".into());
+        }
+        Ok(Taxes { levels })
+    }
+}

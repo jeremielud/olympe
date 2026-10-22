@@ -330,7 +330,7 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 16] = [
+const HELP: [&str; 17] = [
     "Clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
@@ -345,6 +345,7 @@ const HELP: [&str; 16] = [
     "M : musique ; B : bruitages",
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
+    "+ et - : taux d'imposition",
     "Survoler un bâtiment : ses informations ; clic sur un passant : il parle",
     "H : refermer cette aide",
 ];
@@ -1233,6 +1234,26 @@ fn service_name(text: &Text, service: Service) -> String {
 
 /// Conseillers, comme les écrans du jeu : population, emploi, finances, services,
 /// mythologie, armée et commerce ; chaque page a son titre et ses lignes.
+/// Niveaux d'imposition du jeu, et leur taux.
+const TAX_NAMES: [&str; 7] = ["aucun", "très bas", "bas", "normal", "haut", "très haut", "scandaleux"];
+
+fn tax_name(world: &World) -> String {
+    let name = TAX_NAMES.get(world.tax_level).copied().unwrap_or("normal");
+    match world.taxes.levels.get(world.tax_level) {
+        Some((rate, _)) => format!("{name} ({rate} %)"),
+        None => name.to_string(),
+    }
+}
+
+fn mood_note(sentiment: i32) -> &'static str {
+    match sentiment {
+        ..15 => " : les habitants s'en vont",
+        15..30 => " : les immigrants ne viennent plus",
+        30..50 => " : mécontentement",
+        _ => "",
+    }
+}
+
 fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[String]) -> Vec<(String, Vec<String>)> {
     let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
     let mut pages = Vec::new();
@@ -1269,6 +1290,8 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         vec![
             format!("Trésor : {} dr.", world.money),
             format!("Dernier mois : impôts {} dr., salaires {} dr.", world.last_month.0, world.last_month.1),
+            format!("Imposition (+ et -) : {}", tax_name(world)),
+            format!("Humeur de la cité : {} sur 100{}", world.sentiment, mood_note(world.sentiment)),
             format!("Bénéfice de l'année en cours : {} dr.", world.year_profit),
             match world.best_year_profit {
                 Some(best) => format!("Meilleure année achevée : {best} dr."),
@@ -2484,6 +2507,12 @@ fn run(
         Ok(fighters) => world.fighters = fighters,
         Err(e) => eprintln!("règles des personnages : {e}"),
     }
+    // Impôts : taux du jeu et leur effet sur l'humeur à ce niveau de difficulté.
+    match read("model/tax_sentiment_model.txt").and_then(|f| zeus::model::Taxes::parse(&f)) {
+        Ok(taxes) => world.taxes = taxes,
+        Err(e) => eprintln!("impôts : {e}"),
+    }
+    world.difficulty = difficulty();
     if AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
         return audit(data, &world, &text);
     }
@@ -2741,6 +2770,8 @@ fn run(
                         "r" => Some(sdl::Event::key_down(0, sdl::KEY_R)),
                         "a" => Some(sdl::Event::key_down(0, sdl::KEY_A)),
                         "tab" => Some(sdl::Event::key_down(0, sdl::KEY_TAB)),
+                        "+" => Some(sdl::Event::key_down(0, sdl::KEY_PLUS)),
+                        "-" => Some(sdl::Event::key_down(0, sdl::KEY_MINUS)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
                         _ => None,
                     },
@@ -3050,6 +3081,12 @@ fn run(
                         sdl::KEY_C => cities_panel = !cities_panel,
                         sdl::KEY_A => advisor_panel = !advisor_panel,
                         sdl::KEY_TAB if advisor_panel => advisor_page += 1,
+                        sdl::KEY_PLUS | sdl::KEY_EQUALS | sdl::KEY_KP_PLUS | sdl::KEY_MINUS | sdl::KEY_KP_MINUS => {
+                            let up = matches!(event.key(), sdl::KEY_PLUS | sdl::KEY_EQUALS | sdl::KEY_KP_PLUS);
+                            let level = if up { world.tax_level + 1 } else { world.tax_level.saturating_sub(1) };
+                            world.set_tax_level(level);
+                            notice = (format!("Imposition : {}", tax_name(&world)), now);
+                        }
                         sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {

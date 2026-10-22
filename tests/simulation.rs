@@ -913,3 +913,41 @@ fn trade_changes_move_prices_and_city_demand() {
     other.load(&world.save()).unwrap();
     assert_eq!(other.price(21), wine + 10);
 }
+
+#[test]
+fn heavy_taxes_sour_the_city_and_stop_immigration() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    world.taxes = zeus::model::Taxes::parse(&fs::read(data.join("model/tax_sentiment_model.txt")).unwrap()).unwrap();
+    assert_eq!(world.taxes.levels.len(), 7);
+    assert_eq!(world.taxes.levels[3], (9, [2, 0, 0, 0, 0]));
+    world.kinds.push(Kind::simple("percepteur".into(), 20, 2, 1075, Function::Service(Service::Tax), 0));
+    let collector = world.kinds.len() - 1;
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 5));
+    assert!(world.place_building(collector, x, y + 5));
+    // Les percepteurs dépendent du palais.
+    world.kinds.push(Kind::simple("palais".into(), 20, 2, 1075, Function::Palace, 0));
+    assert!(world.place_building(world.kinds.len() - 1, x + 4, y + 5));
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.population() > 0);
+    // Taux scandaleux en très difficile : l'humeur s'effondre, les maisons se vident.
+    world.difficulty = 4;
+    world.set_tax_level(6);
+    world.set_tax_level(9);
+    assert_eq!(world.tax_level, 6);
+    let before = world.population();
+    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.sentiment < 15, "humeur {}", world.sentiment);
+    assert!(world.population() < before);
+    // Plus d'impôts : l'humeur remonte, lentement en très difficile.
+    world.set_tax_level(0);
+    (0..24 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.sentiment >= 30, "humeur {}", world.sentiment);
+    let saved = world.save();
+    let (mut other, ..) = self::world(&data);
+    other.taxes = world.taxes.clone();
+    other.kinds = world.kinds.clone();
+    other.load(&saved).unwrap();
+    assert_eq!((other.tax_level, other.sentiment), (0, world.sentiment));
+}
