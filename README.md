@@ -86,6 +86,8 @@ Ce qui fonctionne :
   (voix du jeu, retrouvées pour les aventures de Zeus, de Poséidon et en dossier), leurs
   objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
   à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
+- un clic sur un passant (porteur d'eau, garde, philosophe, dieu…) le fait parler,
+  avec les voix du jeu ;
 - sauvegarde et rechargement d'une partie.
 
 Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
@@ -96,7 +98,7 @@ Ce qui reste approché ou absent : les batailles se règlent par comparaison des
 sans combat animé ; une colonie part de sa carte vierge et le trésor suit le joueur ;
 scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
 forêt, carrière ni mine ; les chantiers se servent à l'entrepôt sans porteurs ; pentes
-des pyramides en blocs ; pas de conseillers, de paroles des passants ni de vidéos ;
+des pyramides en blocs ; pas de conseillers ni de vidéos ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
 repris du jeu.
