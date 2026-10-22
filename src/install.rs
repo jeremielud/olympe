@@ -119,7 +119,9 @@ pub fn install(sources: &[PathBuf], target: &Path, progress: &mut dyn FnMut(&str
             let cabinet = Cabinet::parse(&header)?;
             let mut by_volume: BTreeMap<u16, Vec<(&crate::cabinet::Member, String)>> = BTreeMap::new();
             for member in &cabinet.members {
-                if let Some(to) = destination(&member.path) {
+                // La vidéo d'introduction est mise de côté pour être convertie.
+                let intro = is_intro(&member.path).then(|| INTRO_BINK.to_string());
+                if let Some(to) = destination(&member.path).or(intro) {
                     by_volume.entry(member.volume).or_default().push((member, to));
                 }
             }
@@ -133,7 +135,8 @@ pub fn install(sources: &[PathBuf], target: &Path, progress: &mut dyn FnMut(&str
             }
         }
         // Fichiers présents tels quels : jeu installé, ou sons laissés sur le CD.
-        let loose: Vec<(String, String)> = files.iter().filter_map(|file| Some((file.clone(), destination(file)?))).collect();
+        let loose: Vec<(String, String)> =
+            files.iter().filter_map(|file| Some((file.clone(), destination(file).or_else(|| is_intro(file).then(|| INTRO_BINK.to_string()))?))).collect();
         if !loose.is_empty() {
             progress(&format!("  {} fichiers à copier", loose.len()));
         }
@@ -148,7 +151,50 @@ pub fn install(sources: &[PathBuf], target: &Path, progress: &mut dyn FnMut(&str
         return Err("installation incomplète : les fichiers de base de Zeus manquent (textes ou images)".into());
     }
     convert_audio(target, &mut report, progress);
+    convert_intro(target, progress);
     Ok(report)
+}
+
+/// Vidéo d'introduction du jeu (Bink), et ce qu'Olympe en fait : des images JPEG
+/// (15 par seconde) et une piste Opus, qu'il sait lire lui-même.
+const INTRO_BINK: &str = "binks/intro.bik";
+pub const INTRO_FRAMES: &str = "binks/intro";
+pub const INTRO_RATE: u64 = 15;
+
+/// La version haute qualité de l'introduction, ou à défaut l'autre.
+fn is_intro(path: &str) -> bool {
+    let name = path.replace('\\', "/").to_lowercase();
+    name.ends_with("binks/zeus_intro_hiq.bik") || (name.ends_with("binks/zeus_intro.bik"))
+}
+
+/// Convertit la vidéo d'introduction avec `ffmpeg` ; sans lui, elle reste de côté.
+fn convert_intro(target: &Path, progress: &mut dyn FnMut(&str)) {
+    let bink = target.join(INTRO_BINK);
+    if !bink.exists() {
+        return;
+    }
+    let frames = target.join(INTRO_FRAMES);
+    let _ = fs::create_dir_all(&frames);
+    progress("Conversion de la vidéo d'introduction");
+    let run = |args: &[&str], output: &Path| {
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-loglevel", "error", "-y", "-i"])
+            .arg(&bink)
+            .args(args)
+            .arg(output)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let rate = format!("fps={INTRO_RATE}");
+    let images = run(&["-vf", &rate, "-pix_fmt", "yuvj420p", "-q:v", "4"], &frames.join("%04d.jpg"));
+    let sound = run(&["-vn", "-c:a", "libopus", "-b:a", "96k"], &frames.join("son.opus"));
+    if images && sound {
+        let _ = fs::remove_file(&bink);
+    } else {
+        progress("  ffmpeg introuvable ou en échec : pas de vidéo d'introduction");
+    }
 }
 
 /// Applique un correctif Wise : chacun de ses différentiels désigne le fichier qu'il

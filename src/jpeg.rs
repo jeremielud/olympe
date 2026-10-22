@@ -29,6 +29,9 @@ struct Component {
     ac_table: usize,
     /// Dernière valeur continue décodée : chaque bloc code l'écart avec le précédent.
     previous_dc: i32,
+    /// Facteurs d'échantillonnage (blocs par unité de codage, en largeur et hauteur).
+    horizontal: usize,
+    vertical: usize,
 }
 
 /// Lecteur de bits des données compressées, qui retire les octets de bourrage.
@@ -132,9 +135,9 @@ pub fn decode(file: &[u8]) -> Result<Picture, String> {
                 width = u16::from_be_bytes([segment[3], segment[4]]) as usize;
                 for (i, component) in components.iter_mut().enumerate() {
                     let description = &segment[6 + 3 * i..9 + 3 * i];
-                    if description[1] != 0x11 {
-                        return Err("JPEG sous-échantillonné non géré".into());
-                    }
+                    // Facteurs d'échantillonnage horizontal et vertical (1 à 4).
+                    component.horizontal = ((description[1] >> 4) as usize).clamp(1, 4);
+                    component.vertical = ((description[1] & 15) as usize).clamp(1, 4);
                     component.quantization = (description[2] & 3) as usize;
                 }
             }
@@ -170,12 +173,17 @@ pub fn decode(file: &[u8]) -> Result<Picture, String> {
             _ => {}
         }
     }
-    if width == 0 || height == 0 {
+    if width == 0 || height == 0 || components.iter().any(|c| c.horizontal == 0) {
         return Err("dimensions JPEG absentes".into());
     }
 
     let mut bits = Bits { data: &file[pos..], pos: 0, buffer: 0, count: 0 };
-    let (columns, rows) = (width.div_ceil(8), height.div_ceil(8));
+    // Unité de codage : 8 × 8 pixels fois les plus grands facteurs d'échantillonnage ;
+    // chaque composante y a ses blocs, et une composante moins échantillonnée est
+    // étirée à la taille de l'unité (4:2:0 et autres).
+    let (most_h, most_v) = (components.iter().map(|c| c.horizontal).max().unwrap_or(1), components.iter().map(|c| c.vertical).max().unwrap_or(1));
+    let (unit_w, unit_h) = (8 * most_h, 8 * most_v);
+    let (columns, rows) = (width.div_ceil(unit_w), height.div_ceil(unit_h));
     let mut rgba = vec![255u8; width * height * 4];
     let cosines: [[f32; 8]; 8] = std::array::from_fn(|x| {
         std::array::from_fn(|u| {
@@ -183,54 +191,63 @@ pub fn decode(file: &[u8]) -> Result<Picture, String> {
             scale * ((2 * x + 1) as f32 * u as f32 * std::f32::consts::PI / 16.0).cos() / 2.0
         })
     });
-    let mut planes = [[0f32; 64]; 3];
-    for block in 0..columns * rows {
-        if restart_interval > 0 && block > 0 && block % restart_interval == 0 {
+    // Plan de chaque composante sur l'unité, à sa propre résolution.
+    let mut planes: [Vec<f32>; 3] = std::array::from_fn(|i| vec![0f32; 64 * components[i].horizontal * components[i].vertical]);
+    for unit in 0..columns * rows {
+        if restart_interval > 0 && unit > 0 && unit % restart_interval == 0 {
             bits.restart();
             components.iter_mut().for_each(|c| c.previous_dc = 0);
         }
         for (component, plane) in components.iter_mut().zip(planes.iter_mut()) {
-            let mut coefficients = [0f32; 64];
-            let table = &quantization[component.quantization];
-            let size = bits.symbol(&tables[component.dc_table])? as u32;
-            component.previous_dc += bits.signed(size);
-            coefficients[0] = (component.previous_dc * table[0] as i32) as f32;
-            let mut index = 1;
-            while index < 64 {
-                let symbol = bits.symbol(&tables[component.ac_table])?;
-                let (run, size) = ((symbol >> 4) as usize, (symbol & 15) as u32);
-                if size == 0 {
-                    // 0x00 : fin du bloc ; 0xF0 : seize zéros.
-                    if run != 15 {
-                        break;
+            let stride = 8 * component.horizontal;
+            for block in 0..component.horizontal * component.vertical {
+                let mut coefficients = [0f32; 64];
+                let table = &quantization[component.quantization];
+                let size = bits.symbol(&tables[component.dc_table])? as u32;
+                component.previous_dc += bits.signed(size);
+                coefficients[0] = (component.previous_dc * table[0] as i32) as f32;
+                let mut index = 1;
+                while index < 64 {
+                    let symbol = bits.symbol(&tables[component.ac_table])?;
+                    let (run, size) = ((symbol >> 4) as usize, (symbol & 15) as u32);
+                    if size == 0 {
+                        // 0x00 : fin du bloc ; 0xF0 : seize zéros.
+                        if run != 15 {
+                            break;
+                        }
+                        index += 16;
+                        continue;
                     }
-                    index += 16;
-                    continue;
+                    index += run;
+                    if index >= 64 {
+                        return Err("coefficients JPEG hors bloc".into());
+                    }
+                    coefficients[ZIGZAG[index]] = (bits.signed(size) * table[ZIGZAG[index]] as i32) as f32;
+                    index += 1;
                 }
-                index += run;
-                if index >= 64 {
-                    return Err("coefficients JPEG hors bloc".into());
+                // Transformée en cosinus inverse, lignes puis colonnes.
+                let mut half = [0f32; 64];
+                for v in 0..8 {
+                    for x in 0..8 {
+                        half[v * 8 + x] = (0..8).map(|u| coefficients[v * 8 + u] * cosines[x][u]).sum();
+                    }
                 }
-                coefficients[ZIGZAG[index]] = (bits.signed(size) * table[ZIGZAG[index]] as i32) as f32;
-                index += 1;
-            }
-            // Transformée en cosinus inverse, lignes puis colonnes.
-            let mut half = [0f32; 64];
-            for v in 0..8 {
-                for x in 0..8 {
-                    half[v * 8 + x] = (0..8).map(|u| coefficients[v * 8 + u] * cosines[x][u]).sum();
-                }
-            }
-            for y in 0..8 {
-                for x in 0..8 {
-                    plane[y * 8 + x] = (0..8).map(|v| half[v * 8 + x] * cosines[y][v]).sum::<f32>() + 128.0;
+                let (bx, by) = (block % component.horizontal * 8, block / component.horizontal * 8);
+                for y in 0..8 {
+                    for x in 0..8 {
+                        plane[(by + y) * stride + bx + x] = (0..8).map(|v| half[v * 8 + x] * cosines[y][v]).sum::<f32>() + 128.0;
+                    }
                 }
             }
         }
-        let (left, top) = (block % columns * 8, block / columns * 8);
-        for y in 0..8.min(height - top) {
-            for x in 0..8.min(width - left) {
-                let (luma, blue, red) = (planes[0][y * 8 + x], planes[1][y * 8 + x] - 128.0, planes[2][y * 8 + x] - 128.0);
+        let (left, top) = (unit % columns * unit_w, unit / columns * unit_h);
+        let sample = |i: usize, x: usize, y: usize| {
+            let c = &components[i];
+            planes[i][(y * c.vertical / most_v) * 8 * c.horizontal + x * c.horizontal / most_h]
+        };
+        for y in 0..unit_h.min(height - top) {
+            for x in 0..unit_w.min(width - left) {
+                let (luma, blue, red) = (sample(0, x, y), sample(1, x, y) - 128.0, sample(2, x, y) - 128.0);
                 let pixel = &mut rgba[((top + y) * width + left + x) * 4..][..3];
                 pixel[0] = (luma + 1.402 * red).round().clamp(0.0, 255.0) as u8;
                 pixel[1] = (luma - 0.344_136 * blue - 0.714_136 * red).round().clamp(0.0, 255.0) as u8;

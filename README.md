@@ -97,6 +97,8 @@ Ce qui fonctionne :
   et commerce, en panneaux de texte comme dans le jeu ;
 - un clic sur un passant (porteur d'eau, garde, philosophe, dieu…) le fait parler,
   avec les voix du jeu ;
+- la vidéo d'introduction, convertie par l'installateur (avec ffmpeg) en images et en
+  son qu'Olympe lit lui-même, au lancement (`--sans-intro` pour la passer) ;
 - cinq niveaux de difficulté (Débutant à Olympien, touche D sur l'écran des
   aventures ou `--difficulte`), avec leurs fichiers de règles et le trésor initial
   ajusté comme dans le jeu ;
@@ -111,8 +113,7 @@ faute d'images de flèches dans les catalogues ; les exploitations se posent à 
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
 sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
-figurés par des obélisques ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
-VLC), Olympe ne décodant pas la vidéo lui-même ;
+figurés par des obélisques ; 
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
 repris du jeu.

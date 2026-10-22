@@ -673,9 +673,15 @@ fn main() {
         None if AUDIT.load(std::sync::atomic::Ordering::Relaxed) => adventures(data).into_iter().next().map(|(_, pak)| pak.to_string_lossy().into_owned()),
         map => map,
     };
-    // Vidéo d'introduction du jeu, au lancement d'une vraie partie.
-    if intro_video && capture.is_none() && script.is_empty() && measure == 0 && !AUDIT.load(std::sync::atomic::Ordering::Relaxed) {
-        play_intro(data);
+    // Vidéo d'introduction du jeu, au lancement d'une vraie partie : lue par Olympe
+    // sur l'écran des aventures si elle a été convertie, sinon confiée à un lecteur.
+    let wants_intro = intro_video && capture.is_none() && script.is_empty() && measure == 0 && !AUDIT.load(std::sync::atomic::Ordering::Relaxed);
+    let converted = data.join(zeus::install::INTRO_FRAMES).join("0001.jpg").exists();
+    INTRO.store(wants_intro && converted && map.is_none(), std::sync::atomic::Ordering::Relaxed);
+    if wants_intro && (!converted || map.is_some()) {
+        if !converted {
+            play_intro(data);
+        }
     }
     let chosen = match map {
         // Un nom qui n'est pas un fichier désigne une aventure installée.
@@ -851,6 +857,68 @@ fn difficulty() -> usize {
     DIFFICULTY.load(std::sync::atomic::Ordering::Relaxed).min(DIFFICULTY_MODELS.len() - 1)
 }
 
+/// Joue l'introduction convertie à l'installation (images JPEG et son Opus) dans la
+/// fenêtre du jeu ; un clic ou une touche l'interrompt. Rend `None` si elle n'est
+/// pas là, sinon si le joueur a fermé la fenêtre.
+///
+/// SAFETY : `renderer` est un rendu SDL valide.
+unsafe fn play_intro_frames(renderer: sdl::Renderer, data: &Path) -> Option<bool> {
+    let folder = data.join(zeus::install::INTRO_FRAMES);
+    let mut frames: Vec<PathBuf> = fs::read_dir(&folder).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jpg")).collect();
+    frames.sort();
+    let first = frames.first().and_then(|f| fs::read(f).ok()).and_then(|f| jpeg::decode(&f).ok())?;
+    let (w, h) = (first.width as i32, first.height as i32);
+    // SAFETY : appels directs à SDL3 ; la texture est vérifiée puis détruite à la fin.
+    unsafe {
+        let texture = sdl::SDL_CreateTexture(renderer, sdl::PIXELFORMAT_ABGR8888, sdl::TEXTUREACCESS_STATIC, w, h);
+        if texture.is_null() {
+            return None;
+        }
+        let mut closed = false;
+        sdl::SDL_SetTextureScaleMode(texture, sdl::SCALEMODE_LINEAR);
+        let mut voice = Voice::open().ok();
+        if let Some(voice) = voice.as_mut() {
+            voice.play(&folder.join("son.opus"));
+        }
+        let start = sdl::SDL_GetTicks();
+        let (mut event, mut shown) = (sdl::Event::new(), usize::MAX);
+        'video: loop {
+            while sdl::SDL_PollEvent(&mut event) {
+                if matches!(event.kind(), sdl::EVENT_QUIT | sdl::EVENT_KEY_DOWN | sdl::EVENT_MOUSE_BUTTON_DOWN) {
+                    closed = event.kind() == sdl::EVENT_QUIT;
+                    break 'video;
+                }
+            }
+            let index = ((sdl::SDL_GetTicks() - start) * zeus::install::INTRO_RATE / 1000) as usize;
+            if index >= frames.len() {
+                break;
+            }
+            if index != shown {
+                if let Some(picture) = fs::read(&frames[index]).ok().and_then(|f| jpeg::decode(&f).ok()).filter(|p| (p.width as i32, p.height as i32) == (w, h)) {
+                    sdl::SDL_UpdateTexture(texture, null(), picture.rgba.as_ptr() as *const c_void, w * 4);
+                }
+                shown = index;
+            }
+            if let Some(voice) = voice.as_mut() {
+                voice.update();
+            }
+            // L'image garde ses proportions, centrée sur fond noir.
+            let (mut ww, mut wh) = (0, 0);
+            sdl::SDL_GetRenderOutputSize(renderer, &mut ww, &mut wh);
+            sdl::SDL_SetRenderScale(renderer, 1.0, 1.0);
+            let scale = (ww as f32 / w as f32).min(wh as f32 / h as f32);
+            let place = sdl::FRect { x: (ww as f32 - w as f32 * scale) / 2.0, y: (wh as f32 - h as f32 * scale) / 2.0, w: w as f32 * scale, h: h as f32 * scale };
+            sdl::SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            sdl::SDL_RenderClear(renderer);
+            sdl::SDL_RenderTexture(renderer, texture, null(), &place);
+            sdl::SDL_RenderPresent(renderer);
+            sdl::SDL_Delay(5);
+        }
+        sdl::SDL_DestroyTexture(texture);
+        Some(closed)
+    }
+}
+
 /// Joue la vidéo d'introduction (`binks/zeus_intro_hiq.webm`, convertie à
 /// l'installation) avec le premier lecteur trouvé sur le système ; Olympe ne décode
 /// pas lui-même la vidéo. Échap ou Q l'interrompent. Sans lecteur, rien.
@@ -869,6 +937,9 @@ fn play_intro(data: &Path) {
         }
     }
 }
+
+/// Introduction à jouer sur l'écran des aventures.
+static INTRO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// `--bilan` demandé.
 static AUDIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -2014,6 +2085,15 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             return Err(sdl::error("création de la fenêtre"));
         }
         sdl::SDL_SetRenderVSync(renderer, 1);
+        // Vidéo d'introduction, lue par Olympe s'il l'a convertie à l'installation.
+        if INTRO.load(std::sync::atomic::Ordering::Relaxed) && capture.is_none() && script.is_empty() {
+            INTRO.store(false, std::sync::atomic::Ordering::Relaxed);
+            // Fenêtre fermée pendant l'introduction : on s'arrête là.
+            if play_intro_frames(renderer, data) == Some(true) {
+                sdl::SDL_Quit();
+                return Ok(None);
+            }
+        }
         let load = |name: &str| Catalog::load(&data.join("data").join(name));
         let mut graphics = Graphics {
             renderer,
