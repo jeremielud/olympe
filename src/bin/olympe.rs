@@ -343,7 +343,7 @@ const HELP: [&str; 16] = [
     "M : musique ; B : bruitages",
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre)",
     "R : mettre de côté les marchandises demandées",
-    "Survoler un bâtiment : ses informations",
+    "Survoler un bâtiment : ses informations ; clic sur un passant : il parle",
     "H : refermer cette aide",
 ];
 
@@ -2809,7 +2809,25 @@ fn run(
                         let (wx, wy) = view.to_world(mx, my, w, h);
                         let (x, y) = tile_at(wx, wy);
                         match tool {
-                            Tool::None => {}
+                            // Sans outil, un passant cliqué dit quelques mots.
+                            Tool::None => {
+                                // Le passant le plus proche du clic.
+                                let near = world.figures.iter().filter(|f| (f.x - x as f32).abs() <= 1.0 && (f.y - y as f32).abs() <= 1.0);
+                                if let (Some(prefix), Some(voice)) = (near.filter_map(|f| f.voice()).next(), voice.as_mut()) {
+                                    // Répliques d'humeur égale (`_g_`), sinon n'importe lesquelles.
+                                    let files: Vec<PathBuf> = fs::read_dir(data.join("audio/voice/walker")).into_iter().flatten().flatten().map(|e| e.path()).collect();
+                                    let starting = |start: String| -> Vec<PathBuf> {
+                                        files.iter().filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&start))).cloned().collect()
+                                    };
+                                    let mut lines = starting(format!("{prefix}_g_"));
+                                    if lines.is_empty() {
+                                        lines = starting(format!("{prefix}_"));
+                                    }
+                                    if !lines.is_empty() {
+                                        voice.play(&lines[sdl::SDL_GetTicks() as usize % lines.len()]);
+                                    }
+                                }
+                            }
                             Tool::Road => drop(world.place_road(x, y, road_cost)),
                             Tool::Demolish => drop(world.demolish(x, y)),
                             Tool::Build(kind) => drop(world.place_building(kind, x, y)),

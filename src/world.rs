@@ -814,7 +814,33 @@ pub struct Figure {
     role: Role,
 }
 
+/// Paroles des passants (`audio/voice/walker`) : préfixe des fichiers de chaque dieu,
+/// dans l'ordre du jeu, Héra et Atlas compris.
+const GOD_VOICES: [&str; 14] = ["zeu", "pos", "dem", "apo", "atm", "are", "aph", "her", "atn", "hep", "dio", "had", "hra", "ats"];
+
 impl Figure {
+    /// Préfixe des paroles du personnage dans `audio/voice/walker`, quand il en a :
+    /// porteur d'eau, garde, guérisseur, percepteur, philosophe, athlète, acteur,
+    /// intendant, immigrant, charretier, dieux.
+    pub fn voice(&self) -> Option<&'static str> {
+        match self.role {
+            Role::Immigrant { .. } => Some("imm"),
+            Role::Rounds { rounds: Rounds::Service(service), .. } => Some(match service {
+                Service::Water => "wtb",
+                Service::Maintenance => "sup",
+                Service::Security => "wtc",
+                Service::Health => "hlr",
+                Service::Tax => "clk",
+                Service::Philosophy => "phl",
+                Service::Athletics => "ath",
+                Service::Drama => "act",
+            }),
+            Role::Deliver { .. } => Some("crt"),
+            Role::Visit { god, .. } | Role::God { god, .. } => GOD_VOICES.get(god as usize).copied(),
+            _ => None,
+        }
+    }
+
     /// Image à dessiner : une rangée de 8 directions par étape de marche.
     pub fn image(&self) -> usize {
         self.image_base + self.direction + 8 * (self.frame * WALK_FRAMES / WALK_TICKS)
