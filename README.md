@@ -102,8 +102,8 @@ Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` v�
 que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque aventure
 s'enchaîne jusqu'à son récit de fin.
 
-Ce qui reste approché ou absent : les tirs des archers ennemis portent sans projectile
-dessiné ; les exploitations se posent à moins de huit
+Ce qui reste approché ou absent : les tirs des archers sont figurés par des traits,
+faute d'images de flèches dans les catalogues ; les exploitations se posent à moins de huit
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
 sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
