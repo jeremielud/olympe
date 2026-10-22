@@ -297,31 +297,41 @@ pub const COMMON_ANIM: Anim = Anim { walk: WALK_FRAMES, fight: 104, fight_frames
 /// Unité d'une armée ennemie dans son catalogue : premier rang des images de marche,
 /// nombre d'images de marche par direction, premier rang et nombre des images de
 /// combat. Relevées sur les groupes des catalogues (marche, combat, mort).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Unit {
     pub walk: usize,
     pub walk_frames: usize,
     pub fight: usize,
     pub fight_frames: usize,
+    /// Portée de ses coups, en cases : corps à corps, ou tir (archers, frondeurs,
+    /// lanceurs), reconnu à l'arme de ses images de combat.
+    pub reach: f32,
 }
 
 const fn unit(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize) -> Unit {
-    Unit { walk, walk_frames, fight, fight_frames }
+    Unit { walk, walk_frames, fight, fight_frames, reach: MELEE_REACH }
 }
+
+const fn archer(walk: usize, walk_frames: usize, fight: usize, fight_frames: usize) -> Unit {
+    Unit { walk, walk_frames, fight, fight_frames, reach: MISSILE_REACH }
+}
+
+/// Portée d'un tireur, en cases (valeur d'Olympe).
+const MISSILE_REACH: f32 = 6.0;
 
 /// Unités de chaque nation (ordre de l'éditeur) : grecs, troyens, perses, centaures,
 /// amazones, égyptiens, mayas, phéniciens, océanides, atlantes.
 pub const ARMY_UNITS: [&[Unit]; 10] = [
-    &[unit(1, 12, 105, 8), unit(169, 12, 273, 12), unit(369, 12, 473, 12)],
+    &[unit(1, 12, 105, 8), unit(169, 12, 273, 12), archer(369, 12, 473, 12)],
     &[unit(1, 12, 105, 10), unit(185, 12, 289, 10), unit(369, 12, 473, 12)],
-    &[unit(1, 15, 121, 15), unit(257, 15, 377, 18), unit(532, 15, 652, 15)],
-    &[unit(1, 18, 145, 15), unit(280, 17, 416, 15)],
-    &[unit(1, 15, 121, 15), unit(261, 15, 381, 18)],
-    &[unit(1, 12, 105, 12), unit(201, 12, 297, 9), unit(369, 12, 465, 12)],
-    &[unit(1, 12, 105, 12), unit(201, 12, 305, 12)],
+    &[unit(1, 15, 121, 15), archer(257, 15, 377, 18), unit(532, 15, 652, 15)],
+    &[unit(1, 18, 145, 15), archer(280, 17, 416, 15)],
+    &[unit(1, 15, 121, 15), archer(261, 15, 381, 18)],
+    &[unit(1, 12, 105, 12), unit(201, 12, 297, 9), archer(369, 12, 465, 12)],
+    &[unit(1, 12, 105, 12), archer(201, 12, 305, 12)],
     &[unit(1, 12, 105, 12), unit(201, 12, 305, 12)],
     &[unit(1, 12, 105, 12), unit(201, 12, 305, 8)],
-    &[unit(1, 12, 97, 9), unit(169, 12, 265, 12), unit(369, 15, 489, 12)],
+    &[unit(1, 12, 97, 9), unit(169, 12, 265, 12), archer(369, 15, 489, 12)],
 ];
 
 /// Unité d'un soldat ennemi : `troop` regroupe la nation (seize par nation) et le
@@ -2522,8 +2532,13 @@ impl World {
             };
             let figure = &mut self.figures[i];
             let Role::Soldier { enemy, army, health, target, .. } = figure.role else { continue };
+            // Portée du soldat : corps à corps, ou tir pour les archers ennemis.
+            let reach = match figure.role {
+                Role::Soldier { enemy: true, army, .. } => army_unit(army).reach,
+                _ => MELEE_REACH,
+            };
             match foe {
-                Some((other, distance, ox, oy)) if distance <= MELEE_REACH => {
+                Some((other, distance, ox, oy)) if distance <= reach => {
                     // Au corps à corps : on s'arrête, face à l'adversaire, et on frappe.
                     figure.path.clear();
                     figure.direction = direction((x.round() as u16, y.round() as u16), (ox.round() as u16, oy.round() as u16));

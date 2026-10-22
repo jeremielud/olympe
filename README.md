@@ -101,8 +101,8 @@ Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` v�
 que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque aventure
 s'enchaîne jusqu'à son récit de fin.
 
-Ce qui reste approché ou absent : chaque nation envoie toutes ses unités (fantassins,
-cavaliers, archers…) mais toutes combattent au corps à corps ; les exploitations se posent à moins de huit
+Ce qui reste approché ou absent : les tirs des archers ennemis portent sans projectile
+dessiné ; les exploitations se posent à moins de huit
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; les
 statues et édifices posés sur les monuments sont figurés par des obélisques ; les conseillers tiennent en un panneau de synthèse (touche
