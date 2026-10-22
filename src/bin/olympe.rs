@@ -50,7 +50,7 @@ options :
   --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
-                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r,
+                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c,
                      t:n (pas), p:ms (pause), fin (termine l'épisode en cours)
 en jeu : H affiche l'aide";
 
@@ -342,7 +342,7 @@ const HELP: [&str; 16] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
-    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre)",
+    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers",
     "R : mettre de côté les marchandises demandées",
     "Survoler un bâtiment : ses informations ; clic sur un passant : il parle",
     "H : refermer cette aide",
@@ -372,7 +372,7 @@ const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
     (151.0, 435.0, 32.0, 37.0, Some(1279), None),
     (146.0, 483.0, 33.0, 28.0, None, None),
     (11.0, 565.0, 33.0, 33.0, Some(1291), Some(sdl::KEY_O)),
-    (45.0, 565.0, 69.0, 33.0, Some(1239), None),
+    (45.0, 565.0, 69.0, 33.0, Some(1263), Some(sdl::KEY_A)),
     (115.0, 565.0, 67.0, 33.0, Some(1271), Some(sdl::KEY_C)),
 ];
 /// Emplacements des onglets dans le panneau latéral, relevés sur son image.
@@ -1096,6 +1096,66 @@ fn sanctuary_part(dx: usize, dy: usize, piece: Piece) -> Part {
         Piece::Plain => plain,
     };
     Part { dx, dy, size: piece.size(), image, crop: false, bay: None, source }
+}
+
+/// Nom du bâtiment qui rend un service.
+fn service_name(text: &Text, service: Service) -> String {
+    let kind = match service {
+        Service::Water => 74,
+        Service::Maintenance => 121,
+        Service::Security => 124,
+        Service::Health => 76,
+        Service::Tax => 122,
+        Service::Philosophy => 81,
+        Service::Athletics => 79,
+        Service::Drama => 82,
+    };
+    text.get(TEXT_BUILDINGS, kind)
+}
+
+/// Conseillers : l'état de la cité en quelques lignes (population, emploi,
+/// finances, vivres, marchandises, services, armée, commerce).
+fn advice(text: &Text, world: &World, good_names: &[String]) -> Vec<String> {
+    let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
+    let elite = houses.iter().filter(|h| h.level >= zeus::world::ELITE_FIRST_LEVEL).count();
+    let (needed, available) = (world.workers_needed(), world.workers_available());
+    let mut lines = vec![
+        format!("Population : {} habitants dans {} maisons, dont {elite} logements luxueux", world.population(), houses.len()),
+        match available - needed {
+            spare if spare >= 0 => format!("Emploi : {needed} postes pour {available} travailleurs ; {spare} sans emploi"),
+            short => format!("Emploi : {needed} postes pour {available} travailleurs ; il manque {} ouvriers", -short),
+        },
+        format!(
+            "Finances : {} dr. ; dernier mois, impôts {} et salaires {} ; bénéfice de l'année {}",
+            world.money, world.last_month.0, world.last_month.1, world.year_profit
+        ),
+        format!("Vivres : {} chargements aux greniers", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()),
+    ];
+    let goods: Vec<String> = GOODS
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &good)| zeus::world::resource_of(good).map(|r| (i, world.stored(r as usize))))
+        .filter(|&(_, n)| n > 0)
+        .map(|(i, n)| format!("{} {n}", good_names[i].to_lowercase()))
+        .collect();
+    lines.push(if goods.is_empty() { "Entrepôts : vides".to_string() } else { format!("Entrepôts : {}", goods.join(", ")) });
+    let covered: Vec<String> = SERVICES
+        .iter()
+        .map(|&service| {
+            let served = houses.iter().filter(|h| h.has(service, world.ticks)).count();
+            format!("{} {}/{}", service_name(text, service).to_lowercase(), served, houses.len())
+        })
+        .collect();
+    for (i, part) in covered.chunks(4).enumerate() {
+        lines.push(format!("{} {}", if i == 0 { "Maisons desservies :" } else { "    " }, part.join(", ")));
+    }
+    let rivals = world.cities.iter().filter(|c| c.active && c.kind == zeus::map::FOREIGN && c.status == zeus::map::RIVAL).count();
+    lines.push(match world.raid {
+        Some(_) => format!("Armée : force {} ; la cité est envahie !", world.army()),
+        None => format!("Armée : force {} ; {rivals} cités rivales", world.army()),
+    });
+    lines.push(format!("Commerce : {} partenaires, {} demandes en attente", world.partners(), world.requests.len()));
+    lines
 }
 
 /// Nom d'une cité du monde.
@@ -2330,6 +2390,8 @@ fn run(
         let (mut goals_panel, mut won) = (false, false);
         // Panneau des cités du monde, ouvert par C.
         let mut cities_panel = false;
+        // Panneau des conseillers, ouvert par A.
+        let mut advisor_panel = false;
         // Invasion en cours à l'image précédente, pour l'annoncer à son début.
         let mut raid_seen = world.raid.is_some();
         // Sanctuaires achevés, pour débloquer ce qu'ils apportent dès leur achèvement.
@@ -2471,6 +2533,7 @@ fn run(
                         "h" => Some(sdl::Event::key_down(0, sdl::KEY_H)),
                         "o" => Some(sdl::Event::key_down(0, sdl::KEY_O)),
                         "r" => Some(sdl::Event::key_down(0, sdl::KEY_R)),
+                        "a" => Some(sdl::Event::key_down(0, sdl::KEY_A)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
                         _ => None,
                     },
@@ -2778,6 +2841,7 @@ fn run(
                         sdl::KEY_H => help = !help,
                         sdl::KEY_O => goals_panel = !goals_panel,
                         sdl::KEY_C => cities_panel = !cities_panel,
+                        sdl::KEY_A => advisor_panel = !advisor_panel,
                         sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
@@ -3214,6 +3278,7 @@ fn run(
                 let open = match key {
                     Some(sdl::KEY_O) => goals_panel,
                     Some(sdl::KEY_C) => cities_panel,
+                    Some(sdl::KEY_A) => advisor_panel,
                     Some(sdl::KEY_H) => help,
                     _ => false,
                 };
@@ -3373,16 +3438,7 @@ fn run(
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
                     }
                     for service in SERVICES {
-                        let label = match service {
-                            Service::Water => text.get(TEXT_BUILDINGS, 74),
-                            Service::Maintenance => text.get(TEXT_BUILDINGS, 121),
-                            Service::Security => text.get(TEXT_BUILDINGS, 124),
-                            Service::Health => text.get(TEXT_BUILDINGS, 76),
-                            Service::Tax => text.get(TEXT_BUILDINGS, 122),
-                            Service::Philosophy => text.get(TEXT_BUILDINGS, 81),
-                            Service::Athletics => text.get(TEXT_BUILDINGS, 79),
-                            Service::Drama => text.get(TEXT_BUILDINGS, 82),
-                        };
+                        let label = service_name(&text, service);
                         lines.push(format!("{label} : {}", text.get(18, if house.has(service, world.ticks) { 1 } else { 0 })));
                     }
                 }
@@ -3476,6 +3532,19 @@ fn run(
             }
 
             // Cités du monde : statut, force, et conquête d'un clic.
+            if advisor_panel {
+                let heading = "Conseillers".to_string();
+                let lines = advice(&text, &world, &good_names);
+                let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
+                let height = title_line + 32.0 + row * lines.len() as f32;
+                let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
+                graphics.panel(px, py, width, height);
+                let heading_width = graphics.text_width(FONT_TITLE, &heading);
+                graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
+                for (i, line) in lines.iter().enumerate() {
+                    graphics.draw_text(FONT_TEXT, line, px + 24.0, py + title_line + 24.0 + row * i as f32);
+                }
+            }
             if cities_panel {
                 let heading = "Cités du monde".to_string();
                 let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();

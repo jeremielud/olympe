@@ -103,7 +103,8 @@ s'enchaîne jusqu'à son récit de fin.
 Ce qui reste approché ou absent : les envahisseurs n'ont qu'un type de soldat par nation
 (fantassins, sans archers ni cavalerie distincts) ; scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
 forêt, carrière ni mine ; pentes
-des pyramides en blocs ; pas de conseillers ni de vidéos ;
+des pyramides en blocs ; les conseillers tiennent en un panneau de synthèse (touche
+A) ; pas de vidéos ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
 repris du jeu.
