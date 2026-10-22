@@ -105,8 +105,9 @@ Ce qui reste approché ou absent : les tirs des archers ennemis portent sans pro
 dessiné ; les exploitations se posent à moins de huit
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; les
-statues et édifices posés sur les monuments sont figurés par des obélisques ; les conseillers tiennent en un panneau de synthèse (touche
-A) ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
+statues et édifices posés sur les monuments sont figurés par des obélisques ; les conseillers (touche A, Tab pour changer de page : population, emploi,
+finances, services, mythologie, armée et commerce) donnent des chiffres, sans les
+portraits ni les conseils parlés du jeu ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
 VLC), Olympe ne décodant pas la vidéo lui-même ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
 d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non

@@ -51,7 +51,7 @@ options :
   --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
-                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c,
+                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,
                      t:n (pas), p:ms (pause), fin (termine l'épisode en cours)
 en jeu : H affiche l'aide";
 
@@ -343,7 +343,7 @@ const HELP: [&str; 16] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
-    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers",
+    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "Survoler un bâtiment : ses informations ; clic sur un passant : il parle",
     "H : refermer cette aide",
@@ -1160,24 +1160,62 @@ fn service_name(text: &Text, service: Service) -> String {
     text.get(TEXT_BUILDINGS, kind)
 }
 
-/// Conseillers : l'état de la cité en quelques lignes (population, emploi,
-/// finances, vivres, marchandises, services, armée, commerce).
-fn advice(text: &Text, world: &World, good_names: &[String]) -> Vec<String> {
+/// Conseillers, comme les écrans du jeu : population, emploi, finances, services,
+/// mythologie, armée et commerce ; chaque page a son titre et ses lignes.
+fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[String]) -> Vec<(String, Vec<String>)> {
     let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
-    let elite = houses.iter().filter(|h| h.level >= zeus::world::ELITE_FIRST_LEVEL).count();
+    let mut pages = Vec::new();
+    // Population : habitants par niveau de logement.
+    let mut population = vec![format!("{} habitants dans {} maisons", world.population(), houses.len())];
+    for (level, name) in level_names.iter().enumerate() {
+        let (count, people) = houses.iter().filter(|h| h.level == level).fold((0, 0), |(c, p), h| (c + 1, p + h.population));
+        if count > 0 {
+            population.push(format!("{name} : {count} ({people} habitants)"));
+        }
+    }
+    pages.push(("Population".to_string(), population));
+    // Emploi : postes par catégorie de bâtiments, et bâtiments à l'arrêt.
     let (needed, available) = (world.workers_needed(), world.workers_available());
-    let mut lines = vec![
-        format!("Population : {} habitants dans {} maisons, dont {elite} logements luxueux", world.population(), houses.len()),
-        match available - needed {
-            spare if spare >= 0 => format!("Emploi : {needed} postes pour {available} travailleurs ; {spare} sans emploi"),
-            short => format!("Emploi : {needed} postes pour {available} travailleurs ; il manque {} ouvriers", -short),
-        },
-        format!(
-            "Finances : {} dr. ; dernier mois, impôts {} et salaires {} ; bénéfice de l'année {}",
-            world.money, world.last_month.0, world.last_month.1, world.year_profit
-        ),
-        format!("Vivres : {} chargements aux greniers", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()),
-    ];
+    let mut employment = vec![match available - needed {
+        spare if spare >= 0 => format!("{needed} postes pour {available} travailleurs ; {spare} sans emploi"),
+        short => format!("{needed} postes pour {available} travailleurs ; il manque {} ouvriers", -short),
+    }];
+    let names: Vec<String> = CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
+    for (category, name) in names.iter().enumerate() {
+        let buildings: Vec<&zeus::world::Building> = world.buildings.iter().flatten().filter(|b| category_of(world.kinds[b.kind].function) == category && world.kinds[b.kind].employees > 0).collect();
+        if buildings.is_empty() {
+            continue;
+        }
+        let jobs: i32 = buildings.iter().map(|b| world.kinds[b.kind].employees).sum();
+        let idle = buildings.iter().filter(|b| !b.staffed).count();
+        employment.push(format!("{name} : {jobs} postes, {} bâtiments, {idle} à l'arrêt", buildings.len()));
+    }
+    pages.push(("Emploi".to_string(), employment));
+    // Finances.
+    let (sold, bought): (i32, i32) = world.cities.iter().fold((0, 0), |(s, b), c| (s + c.sold, b + c.bought));
+    pages.push((
+        "Finances".to_string(),
+        vec![
+            format!("Trésor : {} dr.", world.money),
+            format!("Dernier mois : impôts {} dr., salaires {} dr.", world.last_month.0, world.last_month.1),
+            format!("Bénéfice de l'année en cours : {} dr.", world.year_profit),
+            match world.best_year_profit {
+                Some(best) => format!("Meilleure année achevée : {best} dr."),
+                None => "Aucune année achevée".to_string(),
+            },
+            format!("Commerce depuis le début : ventes {sold} dr., achats {bought} dr."),
+        ],
+    ));
+    // Services : part des maisons desservies, et réserves.
+    let mut services: Vec<String> = SERVICES
+        .iter()
+        .map(|&service| {
+            let served = houses.iter().filter(|h| h.has(service, world.ticks)).count();
+            let percent = if houses.is_empty() { 0 } else { served * 100 / houses.len() };
+            format!("{} : {served} maisons sur {} ({percent} %)", service_name(text, service), houses.len())
+        })
+        .collect();
+    services.push(format!("Vivres aux greniers : {} chargements", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()));
     let goods: Vec<String> = GOODS
         .iter()
         .enumerate()
@@ -1185,24 +1223,44 @@ fn advice(text: &Text, world: &World, good_names: &[String]) -> Vec<String> {
         .filter(|&(_, n)| n > 0)
         .map(|(i, n)| format!("{} {n}", good_names[i].to_lowercase()))
         .collect();
-    lines.push(if goods.is_empty() { "Entrepôts : vides".to_string() } else { format!("Entrepôts : {}", goods.join(", ")) });
-    let covered: Vec<String> = SERVICES
-        .iter()
-        .map(|&service| {
-            let served = houses.iter().filter(|h| h.has(service, world.ticks)).count();
-            format!("{} {}/{}", service_name(text, service).to_lowercase(), served, houses.len())
-        })
-        .collect();
-    for (i, part) in covered.chunks(4).enumerate() {
-        lines.push(format!("{} {}", if i == 0 { "Maisons desservies :" } else { "    " }, part.join(", ")));
+    services.push(if goods.is_empty() { "Entrepôts : vides".to_string() } else { format!("Entrepôts : {}", goods.join(", ")) });
+    pages.push(("Services et réserves".to_string(), services));
+    // Mythologie : sanctuaires, héros, quêtes et monstres.
+    let mut myth: Vec<String> = world.sanctuaries().iter().map(|&god| format!("Sanctuaire de {}", text.get(sanctuary::TEXT_GODS, god as usize))).collect();
+    if myth.is_empty() {
+        myth.push("Aucun sanctuaire achevé".to_string());
     }
+    for (hero, &present) in world.heroes.iter().enumerate() {
+        if present {
+            myth.push(format!("{} est dans la cité", text.get(heroes::TEXT_HEROES, hero)));
+        }
+    }
+    for quest in &world.quests {
+        let hero = text.get(heroes::TEXT_HEROES, quest.hero as usize);
+        myth.push(match quest.state {
+            zeus::world::QuestState::Waiting => format!("Quête en attente de {hero}"),
+            zeus::world::QuestState::Away { .. } => format!("{hero} est parti en quête"),
+            zeus::world::QuestState::Done => format!("Quête de {hero} accomplie"),
+        });
+    }
+    let monsters = world.monsters.iter().filter(|m| !m.slain).count();
+    myth.push(format!("Monstres encore à vaincre : {monsters}"));
+    pages.push(("Mythologie".to_string(), myth));
+    // Armée et commerce.
     let rivals = world.cities.iter().filter(|c| c.active && c.kind == zeus::map::FOREIGN && c.status == zeus::map::RIVAL).count();
-    lines.push(match world.raid {
-        Some(_) => format!("Armée : force {} ; la cité est envahie !", world.army()),
-        None => format!("Armée : force {} ; {rivals} cités rivales", world.army()),
-    });
-    lines.push(format!("Commerce : {} partenaires, {} demandes en attente", world.partners(), world.requests.len()));
-    lines
+    pages.push((
+        "Armée et commerce".to_string(),
+        vec![
+            format!("Force de l'armée : {}", world.army()),
+            match world.raid {
+                Some(raid) => format!("Invasion en cours : {} soldats de {}", raid.soldiers, city_name(text, world, raid.city)),
+                None => format!("{rivals} cités rivales"),
+            },
+            format!("{} partenaires commerciaux, {} demandes en attente", world.partners(), world.requests.len()),
+            format!("Trières à quai : {}", world.triremes()),
+        ],
+    ));
+    pages
 }
 
 /// Nom d'une cité du monde.
@@ -2439,6 +2497,7 @@ fn run(
         let mut cities_panel = false;
         // Panneau des conseillers, ouvert par A.
         let mut advisor_panel = false;
+        let mut advisor_page = 0usize;
         // Invasion en cours à l'image précédente, pour l'annoncer à son début.
         let mut raid_seen = world.raid.is_some();
         // Sanctuaires achevés, pour débloquer ce qu'ils apportent dès leur achèvement.
@@ -2581,6 +2640,7 @@ fn run(
                         "o" => Some(sdl::Event::key_down(0, sdl::KEY_O)),
                         "r" => Some(sdl::Event::key_down(0, sdl::KEY_R)),
                         "a" => Some(sdl::Event::key_down(0, sdl::KEY_A)),
+                        "tab" => Some(sdl::Event::key_down(0, sdl::KEY_TAB)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
                         _ => None,
                     },
@@ -2889,6 +2949,7 @@ fn run(
                         sdl::KEY_O => goals_panel = !goals_panel,
                         sdl::KEY_C => cities_panel = !cities_panel,
                         sdl::KEY_A => advisor_panel = !advisor_panel,
+                        sdl::KEY_TAB if advisor_panel => advisor_page += 1,
                         sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
@@ -3588,8 +3649,10 @@ fn run(
 
             // Cités du monde : statut, force, et conquête d'un clic.
             if advisor_panel {
-                let heading = "Conseillers".to_string();
-                let lines = advice(&text, &world, &good_names);
+                let pages = advice(&text, &world, &good_names, &level_names);
+                advisor_page %= pages.len();
+                let (title, lines) = &pages[advisor_page];
+                let heading = format!("Conseiller : {title} ({}/{}, Tab)", advisor_page + 1, pages.len());
                 let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * lines.len() as f32;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);

@@ -38,6 +38,7 @@ pub const KEY_SPACE: u32 = 0x20;
 /// Touches « 1 » à « 9 » de la rangée du haut, par emplacement (AZERTY comme QWERTY).
 pub const SCANCODE_1: u32 = 30;
 pub const SCANCODE_9: u32 = 38;
+pub const KEY_TAB: u32 = 0x09;
 pub const KEY_A: u32 = 0x61;
 pub const KEY_B: u32 = 0x62;
 pub const KEY_D: u32 = 0x64;
