@@ -221,6 +221,10 @@ fn quest_and_monster_goals_name_their_events() {
     let perseus = Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap().settings.unwrap();
     let disasters: Vec<(u8, (i16, i16))> = all(&perseus).into_iter().filter_map(|e| match e { Event::Disaster { kind, points, .. } => Some((kind, points)), _ => None }).collect();
     assert_eq!(disasters, [(3, (1, 2)), (25, (3, 5))]);
+    // Nation des armées : Troie envoie des Troyens, Sardes des Perses.
+    let troy_cities = Campaign::parse(&fs::read(data.join("adventures/{la guerre de troie.pak")).unwrap()).unwrap().parent().cities();
+    let war_cities = Campaign::parse(&fs::read(data.join("adventures/^guerre du péloponnèse.pak")).unwrap()).unwrap().parent().cities();
+    assert_eq!((troy_cities[6].army, troy_cities[3].army, war_cities[7].army), (1, 0, 2));
     // La colonie de Ténédos reçoit de la cité mère ce qu'elle a mis de côté.
     assert!(matches!(troy.colonies[0].events[1], Event::Gift { resource: 14, cities: (0, 0), amount: (-1, -1), .. }));
     // Une cité demande entre 1000 et 2000 drachmes (19 dans la numérotation de Zeus).

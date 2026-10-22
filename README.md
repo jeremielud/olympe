@@ -69,7 +69,8 @@ Ce qui fonctionne :
   paient un tribut annuel en drachmes (montant d'Olympe) ; les cités rivales
   envoient leurs armées à la date prévue : les soldats entrent par un point
   d'invasion de la carte, les hoplites de la cité sortent du palais à leur rencontre
-  et ils se battent au corps à corps ; si les envahisseurs l'emportent, ils brûlent
+  et ils se battent au corps à corps (Grecs, Troyens, Perses, centaures, amazones,
+  Égyptiens, Mayas, Phéniciens, Océanides ou Atlantes, selon la cité) ; si les envahisseurs l'emportent, ils brûlent
   des bâtiments et repartent avec un cinquième du trésor ; les
   cadeaux des cités arrivent à leur date, et ceux de la cité mère apportent à la
   colonie ce qu'elle avait mis de côté ;
@@ -96,8 +97,8 @@ Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` v�
 que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque aventure
 s'enchaîne jusqu'à son récit de fin.
 
-Ce qui reste approché ou absent : un seul type d'armée ennemie (hoplites grecs) et
-soldats qui marchent tout droit sans tenir compte du relief ; une colonie part de sa carte vierge et le trésor suit le joueur ;
+Ce qui reste approché ou absent : les envahisseurs n'ont qu'un type de soldat par nation
+(fantassins, sans archers ni cavalerie distincts) ; une colonie part de sa carte vierge et le trésor suit le joueur ;
 scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
 forêt, carrière ni mine ; pentes
 des pyramides en blocs ; pas de conseillers ni de vidéos ;

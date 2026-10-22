@@ -1108,9 +1108,19 @@ const HERO_FILES: [&str; 8] =
     ["zeus_achilles", "zeus_heracles", "zeus_jason", "zeus_odysseus", "zeus_perseus", "zeus_theseus", "poseidon_atalanta", "poseidon_bellerophon"];
 
 /// Catalogue de chaque monstre, dans l'ordre du groupe de textes 87.
-/// Catalogues des armées ennemies : pour l'instant, les hoplites grecs des cités
-/// rivales.
-const ARMY_FILES: [&str; 1] = ["zeus_greek"];
+/// Catalogues des armées ennemies, par nation de la cité (ordre de l'éditeur).
+const ARMY_FILES: [&str; 10] = [
+    "zeus_greek",
+    "zeus_trojan",
+    "zeus_persian",
+    "zeus_centaur",
+    "zeus_amazon",
+    "poseidon_egyptian",
+    "poseidon_mayan",
+    "poseidon_phoenician",
+    "poseidon_oceanid",
+    "poseidon_atlantean",
+];
 /// Hoplite de la cité dans `sprmain.sg3` (marche, mort, combat).
 const GROUP_HOPLITE: usize = 129;
 const MONSTER_FILES: [&str; 16] = [

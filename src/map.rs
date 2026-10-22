@@ -57,6 +57,8 @@ const CITY_KIND: usize = 2;
 const CITY_NAME: usize = 3;
 const CITY_STATUS: usize = 212;
 const CITY_MILITARY: usize = 220;
+/// Nation de l'armée (octet 204 : Troie 1, Sardes 2, Cymé 4…).
+const CITY_ARMY: usize = 204;
 /// Attitude envers le joueur (entier en 340 : de 50 à 85 dans les aventures, 80
 /// pour les colonies à fonder) ; Olympe en fait la faveur de la cité.
 const CITY_FAVOR: usize = 340;
@@ -91,6 +93,10 @@ pub struct City {
     /// Drachmes gagnées et dépensées avec elle depuis le début de la partie.
     pub sold: i32,
     pub bought: i32,
+    /// Nation de son armée, dans l'ordre de l'éditeur : 0 grecque, 1 troyenne,
+    /// 2 perse, 3 centaures, 4 amazones, 5 égyptienne, 6 maya, 7 phénicienne,
+    /// 8 océanides, 9 atlante.
+    pub army: u8,
 }
 
 /// Catalogue d'où provient une image de terrain.
@@ -270,6 +276,7 @@ impl Map {
                 favor: (le32(r, CITY_FAVOR) as i32).clamp(0, 100),
                 sold: 0,
                 bought: 0,
+                army: r[CITY_ARMY],
             })
             .collect()
     }

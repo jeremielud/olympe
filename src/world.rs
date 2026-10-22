@@ -236,9 +236,33 @@ const STRIKE_TICKS: u64 = 8;
 const MELEE_REACH: f32 = 1.3;
 const MAX_SOLDIERS: i32 = 64;
 const INVADER_STRENGTH: i32 = 2;
-/// Images de combat après la marche (96) et la mort (8), huit par direction.
-const SOLDIER_FIGHT_IMAGES: usize = 104;
-const SOLDIER_FIGHT_FRAMES: usize = 8;
+/// Animation d'un personnage dans son catalogue : images de marche par direction,
+/// premier rang des images de combat, et leur nombre par direction.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Anim {
+    pub walk: usize,
+    pub fight: usize,
+    pub fight_frames: usize,
+}
+
+/// Marche de douze images, mort (8), combat de huit images : hoplites de la cité
+/// (`sprmain.sg3`), monstres et autres personnages.
+pub const COMMON_ANIM: Anim = Anim { walk: WALK_FRAMES, fight: 104, fight_frames: 8 };
+/// Armées ennemies, par nation (ordre de l'éditeur), relevées sur les groupes de
+/// leurs catalogues : grecs, troyens, perses, centaures, amazones, égyptiens, mayas,
+/// phéniciens, océanides, atlantes.
+pub const ARMY_ANIMS: [Anim; 10] = [
+    COMMON_ANIM,
+    Anim { walk: 12, fight: 104, fight_frames: 10 },
+    Anim { walk: 15, fight: 120, fight_frames: 15 },
+    Anim { walk: 18, fight: 144, fight_frames: 15 },
+    Anim { walk: 15, fight: 120, fight_frames: 15 },
+    Anim { walk: 12, fight: 104, fight_frames: 12 },
+    Anim { walk: 12, fight: 104, fight_frames: 12 },
+    Anim { walk: 12, fight: 104, fight_frames: 12 },
+    Anim { walk: 12, fight: 104, fight_frames: 12 },
+    Anim { walk: 12, fight: 96, fight_frames: 9 },
+];
 const SOLDIER_FIGHT_FRAME_TICKS: usize = 4;
 /// Un défenseur cherche à nouveau l'ennemi le plus proche tous les tant de pas.
 const CHASE_TICKS: u64 = 20;
@@ -824,7 +848,7 @@ enum Role {
     Visit { god: u8, leaves_at: u64 },
     /// Soldat d'une bataille : envahisseur (`enemy`) ou défenseur de la cité, ses
     /// forces, le bâtiment visé par un envahisseur, et s'il est au corps à corps.
-    Soldier { enemy: bool, health: i32, target: u16, fighting: bool },
+    Soldier { enemy: bool, army: u8, health: i32, target: u16, fighting: bool },
     /// Dieu hostile venu en personne : il ravage comme un monstre, puis repart.
     God { god: u8, target: u16, rest_until: u64, leaves_at: u64 },
 }
@@ -876,10 +900,14 @@ impl Figure {
 
     /// Image à dessiner : une rangée de 8 directions par étape de marche.
     pub fn image(&self) -> usize {
+        let anim = match self.role {
+            Role::Soldier { enemy: true, army, .. } => ARMY_ANIMS.get(army as usize).copied().unwrap_or(COMMON_ANIM),
+            _ => COMMON_ANIM,
+        };
         if let Role::Soldier { fighting: true, .. } = self.role {
-            return self.image_base + SOLDIER_FIGHT_IMAGES + self.direction + 8 * ((self.frame / SOLDIER_FIGHT_FRAME_TICKS) % SOLDIER_FIGHT_FRAMES);
+            return self.image_base + anim.fight + self.direction + 8 * ((self.frame / SOLDIER_FIGHT_FRAME_TICKS) % anim.fight_frames);
         }
-        self.image_base + self.direction + 8 * (self.frame * WALK_FRAMES / WALK_TICKS)
+        self.image_base + self.direction + 8 * (self.frame * anim.walk / WALK_TICKS)
     }
 
     /// Soldat d'une bataille : `Some(true)` pour un envahisseur.
@@ -2277,13 +2305,14 @@ impl World {
         let Some(entry) = entry else { return };
         let limit = (soldiers / 16).max(1);
         self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
+        let army = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_ANIMS.len() as u8 - 1);
         let spawn = |world: &mut World, at: (usize, usize), enemy: bool, count: i32| {
             for i in 0..count.min(MAX_SOLDIERS) {
                 // Les soldats se rangent en carré autour de leur point de départ.
                 let side = 6;
                 let (dx, dy) = (i % side - side / 2, i / side - side / 2);
                 let (x, y) = ((at.0 as i32 + dx).clamp(0, GRID as i32 - 1) as u16, (at.1 as i32 + dy).clamp(0, GRID as i32 - 1) as u16);
-                let (source, image_base) = if enemy { (Source::Army(0), 1) } else { (Source::Figures, world.walkers.hoplite) };
+                let (source, image_base) = if enemy { (Source::Army(army), 1) } else { (Source::Figures, world.walkers.hoplite) };
                 world.figures.push(Figure {
                     image_base,
                     x: x as f32,
@@ -2293,7 +2322,7 @@ impl World {
                     path: Vec::new(),
                     from: (x, y),
                     came_from: None,
-                    role: Role::Soldier { enemy, health: SOLDIER_HEALTH, target: NO_TARGET, fighting: false },
+                    role: Role::Soldier { enemy, army, health: SOLDIER_HEALTH, target: NO_TARGET, fighting: false },
                     source,
                 });
             }
@@ -2330,19 +2359,19 @@ impl World {
                 _ => None,
             };
             let figure = &mut self.figures[i];
-            let Role::Soldier { enemy, health, target, .. } = figure.role else { continue };
+            let Role::Soldier { enemy, army, health, target, .. } = figure.role else { continue };
             match foe {
                 Some((other, distance, ox, oy)) if distance <= MELEE_REACH => {
                     // Au corps à corps : on s'arrête, face à l'adversaire, et on frappe.
                     figure.path.clear();
                     figure.direction = direction((x.round() as u16, y.round() as u16), (ox.round() as u16, oy.round() as u16));
-                    figure.role = Role::Soldier { enemy, health, target, fighting: true };
+                    figure.role = Role::Soldier { enemy, army, health, target, fighting: true };
                     if strike {
                         wounds[other] += 1;
                     }
                 }
                 Some(_) if chase.is_some() => {
-                    figure.role = Role::Soldier { enemy, health, target, fighting: false };
+                    figure.role = Role::Soldier { enemy, army, health, target, fighting: false };
                     let at = figure.from;
                     let path = chase.unwrap_or_default();
                     if let Some(&next) = path.last() {
@@ -2350,19 +2379,19 @@ impl World {
                     }
                     figure.path = path;
                 }
-                _ => figure.role = Role::Soldier { enemy, health, target, fighting: false },
+                _ => figure.role = Role::Soldier { enemy, army, health, target, fighting: false },
             }
         }
         // Les blessés perdent leurs forces ; ceux qui n'en ont plus tombent.
         for (figure, &wound) in self.figures.iter_mut().zip(&wounds) {
-            if let Role::Soldier { enemy, health, target, fighting } = figure.role {
-                figure.role = Role::Soldier { enemy, health: health - wound, target, fighting };
+            if let Role::Soldier { enemy, army, health, target, fighting } = figure.role {
+                figure.role = Role::Soldier { enemy, army, health: health - wound, target, fighting };
             }
         }
         self.figures.retain(|f| !matches!(f.role, Role::Soldier { health, .. } if health <= 0));
         // Envahisseurs libres : vers le bâtiment le plus proche, qu'ils détruisent.
         for i in 0..self.figures.len() {
-            let Role::Soldier { enemy: true, health, target, fighting: false } = self.figures[i].role else { continue };
+            let Role::Soldier { enemy: true, army, health, target, fighting: false } = self.figures[i].role else { continue };
             if !self.figures[i].path.is_empty() {
                 continue;
             }
@@ -2372,7 +2401,7 @@ impl World {
                 self.remove_building(target, Cell::Fire(0));
                 self.disasters.push(Disaster { fire: true, kind, x, y });
                 raid.buildings += 1;
-                self.figures[i].role = Role::Soldier { enemy: true, health, target: NO_TARGET, fighting: false };
+                self.figures[i].role = Role::Soldier { enemy: true, army, health, target: NO_TARGET, fighting: false };
                 continue;
             }
             let nearest = (0..self.buildings.len())
@@ -2386,7 +2415,7 @@ impl World {
                 figure.direction = direction(at, next);
             }
             figure.path = path;
-            figure.role = Role::Soldier { enemy: true, health, target: id as u16, fighting: false };
+            figure.role = Role::Soldier { enemy: true, army, health, target: id as u16, fighting: false };
         }
         let invaders = self.figures.iter().filter(|f| f.soldier() == Some(true)).count();
         let (repelled, over) = (invaders == 0, invaders == 0 || raid.buildings >= raid.limit);
@@ -3785,7 +3814,7 @@ impl World {
                 Role::Hero { hero, hall } => format!("heros {hero} {hall} 0 0 0"),
                 Role::God { god, target, rest_until, leaves_at } => format!("dieu {god} {target} {rest_until} {leaves_at} 0"),
                 Role::Visit { god, leaves_at } => format!("visite {god} {leaves_at} 0 0 0"),
-                Role::Soldier { enemy, health, target, fighting } => format!("soldat {} {health} {target} {} 0", enemy as u8, fighting as u8),
+                Role::Soldier { enemy, army, health, target, fighting } => format!("soldat {} {health} {target} {} {army}", enemy as u8, fighting as u8),
             };
             let came = f.came_from.map_or("- -".to_string(), |(x, y)| format!("{x} {y}"));
             let path: Vec<String> = f.path.iter().map(|(x, y)| format!("{x} {y}")).collect();
@@ -4019,7 +4048,7 @@ impl World {
                         "heros" => Role::Hero { hero: a as u8, hall: b as u16 },
                         "dieu" => Role::God { god: a as u8, target: b as u16, rest_until: c as u64, leaves_at: d as u64 },
                         "visite" => Role::Visit { god: a as u8, leaves_at: b as u64 },
-                        "soldat" => Role::Soldier { enemy: a != 0, health: b as i32, target: c as u16, fighting: d != 0 },
+                        "soldat" => Role::Soldier { enemy: a != 0, army: e as u8, health: b as i32, target: c as u16, fighting: d != 0 },
                         _ => return Err(bad()),
                     };
                     let mut path = Vec::with_capacity(length);
@@ -4040,7 +4069,7 @@ impl World {
                             Role::Monster { monster, .. } => Source::Monster(monster),
                             Role::Hero { hero, .. } => Source::Hero(hero),
                             Role::God { god, .. } | Role::Visit { god, .. } => Source::Deity(god),
-                            Role::Soldier { enemy: true, .. } => Source::Army(0),
+                            Role::Soldier { enemy: true, army, .. } => Source::Army(army),
                             _ => Source::Figures,
                         },
                     });
