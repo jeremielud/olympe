@@ -342,8 +342,14 @@ fn army_unit(troop: u8) -> Unit {
 }
 
 const SOLDIER_FIGHT_FRAME_TICKS: usize = 4;
-/// Un défenseur cherche à nouveau l'ennemi le plus proche tous les tant de pas.
+/// Un défenseur cherche à nouveau l'ennemi le plus proche tous les tant de pas ; un
+/// envahisseur charge les défenseurs qu'il voit à moins de tant de cases.
 const CHASE_TICKS: u64 = 20;
+const ENEMY_SIGHT: f32 = 8.0;
+/// Un raid repart après avoir détruit un bâtiment par tranche de huit soldats, deux
+/// au moins (Olympe).
+const SOLDIERS_PER_RUIN: i32 = 8;
+const MIN_RUINS: i32 = 2;
 
 /// Invasion en cours : la cité rivale, la taille de son armée, ce qu'elle a déjà
 /// détruit et ce qu'elle détruira au plus avant de repartir avec son butin.
@@ -2473,6 +2479,11 @@ impl World {
     /// les gouffres et les eaux d'un raz-de-marée, mais on traverse bâtiments, arbres
     /// et routes. Sans passage, la ligne droite.
     fn land_path(&self, from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
+        self.land_route(from, to).unwrap_or_else(|| straight_path(from, to))
+    }
+
+    /// Chemin à pied par la campagne, s'il en existe un.
+    fn land_route(&self, from: (u16, u16), to: (u16, u16)) -> Option<Vec<(u16, u16)>> {
         const UNSEEN: u32 = u32::MAX;
         let blocked = |x: i32, y: i32| {
             if !self.in_map(x, y) {
@@ -2494,7 +2505,7 @@ impl World {
                     path.push(((step % GRID) as u16, (step / GRID) as u16));
                     step = previous[step] as usize;
                 }
-                return path;
+                return Some(path);
             }
             for (dx, dy) in DIRECTIONS {
                 let (nx, ny) = (at.0 as i32 + dx, at.1 as i32 + dy);
@@ -2508,7 +2519,7 @@ impl World {
                 }
             }
         }
-        straight_path(from, to)
+        None
     }
 
     /// Une armée rivale entre par un point d'invasion de la carte (à défaut, par
@@ -2526,8 +2537,14 @@ impl World {
                 })
             })
         });
-        let land = (1..=8).contains(&point).then(|| self.map.invasion_point(point)).flatten().filter(|&(x, y)| self.in_map(x as i32, y as i32));
-        let entry = landing.or(land).or_else(|| self.map.invasion_points().into_iter().chain(self.map.entry_points()).find(|&(x, y)| self.in_map(x as i32, y as i32)));
+        // Par la terre : le point de l'événement s'il mène à la cité par la terre, sinon
+        // le premier point qui y mène, sinon le premier point de la carte.
+        let heart = self.buildings.iter().flatten().next().map(|b| (b.x as u16, b.y as u16));
+        let leads = |w: &World, (x, y): (usize, usize)| w.in_map(x as i32, y as i32) && heart.is_none_or(|c| w.land_route((x as u16, y as u16), c).is_some());
+        let wanted = (1..=8).contains(&point).then(|| self.map.invasion_point(point)).flatten().filter(|&p| leads(self, p));
+        let candidates: Vec<(usize, usize)> = self.map.invasion_points().into_iter().chain(self.map.entry_points()).collect();
+        let land = wanted.or_else(|| candidates.iter().copied().find(|&p| leads(self, p)));
+        let entry = landing.or(land).or_else(|| candidates.iter().copied().find(|&(x, y)| self.in_map(x as i32, y as i32)));
         let Some(entry) = entry else { return };
         if let (Some((sx, sy)), Some(_)) = (by_sea, landing) {
             self.figures.push(Figure {
@@ -2543,7 +2560,7 @@ impl World {
                 source: Source::Figures,
             });
         }
-        let limit = (soldiers / 16).max(1);
+        let limit = (soldiers / SOLDIERS_PER_RUIN).max(MIN_RUINS);
         self.raid = Some(Raid { city, soldiers, buildings: 0, limit });
         let nation = self.cities.get(city).map_or(0, |c| c.army).min(ARMY_UNITS.len() as u8 - 1);
         let spawn = |world: &mut World, at: (usize, usize), enemy: bool, count: i32| {
@@ -2579,6 +2596,25 @@ impl World {
         }
     }
 
+    /// Traits en vol : pour chaque tireur ennemi qui combat, sa position, celle du
+    /// défenseur le plus proche (en cases) et l'avancement du trait (0 à 1) entre deux
+    /// coups.
+    pub fn missiles(&self) -> Vec<((f32, f32), (f32, f32), f32)> {
+        let defenders: Vec<(f32, f32)> = self.figures.iter().filter(|f| f.soldier() == Some(false)).map(|f| (f.x, f.y)).collect();
+        let progress = (self.ticks % STRIKE_TICKS) as f32 / STRIKE_TICKS as f32;
+        self.figures
+            .iter()
+            .filter_map(|f| match f.role {
+                Role::Soldier { enemy: true, army, fighting: true, .. } if army_unit(army).reach > MELEE_REACH => Some((f.x, f.y)),
+                _ => None,
+            })
+            .filter_map(|from| {
+                let to = defenders.iter().copied().min_by(|a, b| (a.0 - from.0).hypot(a.1 - from.1).total_cmp(&(b.0 - from.0).hypot(b.1 - from.1)))?;
+                Some((from, to, progress))
+            })
+            .collect()
+    }
+
     /// Un pas de bataille : corps à corps entre soldats proches, marche des
     /// envahisseurs vers le bâtiment le plus proche, poursuite des défenseurs. Quand
     /// le dernier envahisseur tombe, l'invasion est repoussée ; quand ils ont assez
@@ -2597,8 +2633,9 @@ impl World {
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             // Un défenseur sans adversaire à portée le poursuit, en recalculant son
             // chemin de temps en temps.
+            let sees = |distance: f32| !enemy || distance <= ENEMY_SIGHT;
             let chase = match foe {
-                Some((_, distance, ox, oy)) if !enemy && distance > MELEE_REACH && (self.figures[i].path.is_empty() || self.ticks % CHASE_TICKS == 0) => {
+                Some((_, distance, ox, oy)) if sees(distance) && distance > MELEE_REACH && (self.figures[i].path.is_empty() || self.ticks % CHASE_TICKS == 0) => {
                     Some(self.land_path(self.figures[i].from, (ox.round() as u16, oy.round() as u16)))
                 }
                 _ => None,
@@ -2621,6 +2658,8 @@ impl World {
                     }
                 }
                 Some(_) if chase.is_some() => {
+                    // Un envahisseur qui charge abandonne le bâtiment qu'il visait.
+                    let target = if enemy { NO_TARGET } else { target };
                     figure.role = Role::Soldier { enemy, army, health, target, fighting: false };
                     let at = figure.from;
                     let path = chase.unwrap_or_default();
@@ -2668,7 +2707,8 @@ impl World {
             figure.role = Role::Soldier { enemy: true, army, health, target: id as u16, fighting: false };
         }
         let invaders = self.figures.iter().filter(|f| f.soldier() == Some(true)).count();
-        let (repelled, over) = (invaders == 0, invaders == 0 || raid.buildings >= raid.limit);
+        let nothing_left = self.buildings.iter().all(|b| b.is_none());
+        let (repelled, over) = (invaders == 0, invaders == 0 || raid.buildings >= raid.limit || nothing_left);
         if over {
             let drachmas = if repelled { 0 } else { self.money.max(0) / 5 };
             self.money -= drachmas;

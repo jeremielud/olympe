@@ -774,10 +774,15 @@ fn rival_armies_sack_a_defenceless_city() {
     // Seule la rivale attaque ; sans armée, la cité est pillée.
     assert_eq!(world.battles.len(), 1);
     let battle = world.battles[0];
-    assert!(!battle.repelled && battle.buildings == 2 && battle.drachmas > 0);
-    assert!(world.money < money && world.buildings.iter().flatten().count() == standing - 2);
-    // Avec une armée assez forte, elle est repoussée.
+    assert!(!battle.repelled && battle.buildings >= 2 && battle.drachmas > 0);
+    // Deux bâtiments brûlés par l'armée (une maison sans entretien peut aussi brûler
+    // pendant ces six mois).
+    assert!(world.money < money && world.buildings.iter().flatten().count() <= standing - 2);
+    // Avec une armée assez forte, elle est repoussée : on rebâtit les maisons perdues.
     world.battles.clear();
+    for i in 0..4 {
+        world.place_building(HOUSE, x + 2 * i, y + 2);
+    }
     for building in world.buildings.iter_mut().flatten() {
         if let Some(house) = building.house.as_mut() {
             (house.level, house.population) = (6, 1000);

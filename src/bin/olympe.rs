@@ -3304,6 +3304,19 @@ fn run(
                 sdl::SDL_RenderTexture(renderer, sprite.texture, null(), &target);
             }
 
+            // Traits des archers ennemis : un court trait sombre qui file vers sa cible.
+            sdl::SDL_SetRenderDrawColor(renderer, 60, 40, 20, 255);
+            for ((fx, fy), (tx, ty), progress) in world.missiles() {
+                let at = |t: f32| {
+                    let (x, y) = (fx + (tx - fx) * t, fy + (ty - fy) * t);
+                    // Centre de la case, à hauteur d'homme ; le trait monte puis redescend.
+                    let arc = 30.0 * (t * (1.0 - t)) * 4.0;
+                    view.to_screen((x - y) * HALF_WIDTH + HALF_WIDTH, (x + y) * HALF_HEIGHT + HALF_HEIGHT - 20.0 - arc, w, h)
+                };
+                let (a, b) = (at(progress), at((progress + 0.12).min(1.0)));
+                sdl::SDL_RenderLine(renderer, a.0, a.1, b.0, b.1);
+            }
+
             // Aperçu de ce que l'outil poserait : translucide, rougi si c'est impossible.
             if let (Tool::Build(kind), true) = (tool, in_grid(under)) {
                 let allowed = world.can_place(kind, under.0, under.1) && world.money >= world.kinds[kind].cost;
