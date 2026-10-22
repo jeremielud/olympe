@@ -67,7 +67,7 @@ impl Piece {
         }
     }
 
-    fn from_type(kind: i32) -> Piece {
+    pub fn from_type(kind: i32) -> Piece {
         let god_of = |rank: usize| SCULPTURE_ORDER[rank];
         match kind {
             0 => Piece::TempleFront,

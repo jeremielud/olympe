@@ -1706,7 +1706,7 @@ impl World {
                     let layout = self.monument_layouts.get(model as usize)?;
                     let tile = layout.tiles.iter().find(|t| (building.x + t.dx, building.y + t.dy) == (x, y))?;
                     let stage = self.monument_stage(building, needs, layout.stages());
-                    return Some(self.monument_draw(layout, tile, stage));
+                    return Some(self.monument_draw(layout, &kind.parts, tile, stage));
                 }
                 // Chaque élément est porté par sa case la plus à gauche à l'écran.
                 let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
@@ -1910,7 +1910,7 @@ impl World {
     /// plat de son étage, une plateforme une dalle. Les étages intérieurs, cachés
     /// par ceux qui les entourent, n'ont pas besoin de socle. Une case pas encore
     /// élevée montre le sol du chantier.
-    fn monument_draw(&self, layout: &crate::monument::Layout, tile: &crate::monument::Tile, stage: u16) -> Draw {
+    fn monument_draw(&self, layout: &crate::monument::Layout, parts: &[Part], tile: &crate::monument::Tile, stage: u16) -> Draw {
         use crate::monument::*;
         let plain = |image: usize, lift: u16| Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift, above: None };
         let level = |levels: u8| levels as u16 * MONUMENT_LEVEL_PIXELS;
@@ -1932,13 +1932,31 @@ impl World {
                     return plain(MONUMENT_TILE_IMAGE, level(tile.top()));
                 }
                 let decorated = MONUMENT_DECORATIONS.iter().find(|&&(piece, side, _)| piece == tile.piece && outward == side).map(|&(_, _, image)| image);
-                let image = decorated.or_else(|| MONUMENT_SLOPES.iter().find(|&&(side, _)| side == outward).map(|&(_, image)| image)).unwrap_or(MONUMENT_SOLID_IMAGE);
+                // Forme rare (pente ouverte sur des côtés opposés, au bord d'une
+                // plateforme intérieure) : la face la plus visible, sud-ouest d'abord.
+                let image = decorated
+                    .or_else(|| MONUMENT_SLOPES.iter().find(|&&(side, _)| side == outward).map(|&(_, image)| image))
+                    .or_else(|| [0b0100u8, 0b0010, 0b1000, 0b0001].into_iter().find(|&side| outward & side != 0).and_then(|side| MONUMENT_SLOPES.iter().find(|&&(s, _)| s == side)).map(|&(_, image)| image))
+                    .unwrap_or(MONUMENT_SOLID_IMAGE);
                 plain(image, level(tile.elevation))
+            }
+            // Grande pièce (temple, autel, grande statue) : portée par sa case la plus à
+            // gauche à l'écran, comme un bâtiment.
+            0 if parts.iter().any(|p| p.size > 1 && (p.dx, p.dy + p.size - 1) == (tile.dx, tile.dy)) => {
+                let part = parts.iter().find(|p| p.size > 1 && (p.dx, p.dy + p.size - 1) == (tile.dx, tile.dy)).unwrap();
+                Draw { source: part.source, image: part.image, ..plain(0, level(tile.elevation)) }
             }
             0 | TILE_PLAIN | TILE_ORICHALC | 55 if tile.elevation == 0 => plain(MONUMENT_FLOOR_IMAGE, 0),
             0 | TILE_PLAIN | TILE_ORICHALC | 55 => plain(MONUMENT_TILE_IMAGE, level(tile.elevation)),
-            // Sommet de pyramide, statues et édifices posés sur la plateforme.
-            _ => Draw { above: Some((Source::Poseidon, MONUMENT_STATUE_IMAGE, level(tile.elevation))), ..plain(MONUMENT_TILE_IMAGE, level(tile.elevation)) },
+            // Petite statue d'une case : posée sur sa dalle. Les grandes pièces sont
+            // dessinées depuis leur case la plus à gauche ; leur case d'ancrage n'a que
+            // la dalle.
+            _ => match parts.iter().find(|p| (p.dx, p.dy) == (tile.dx, tile.dy) && p.source != Source::Poseidon) {
+                Some(part) if part.size == 1 => Draw { above: Some((part.source, part.image, level(tile.elevation))), ..plain(MONUMENT_TILE_IMAGE, level(tile.elevation)) },
+                Some(_) => plain(MONUMENT_TILE_IMAGE, level(tile.elevation)),
+                // Sommet de pyramide, observatoire, musée : obélisque.
+                None => Draw { above: Some((Source::Poseidon, MONUMENT_STATUE_IMAGE, level(tile.elevation))), ..plain(MONUMENT_TILE_IMAGE, level(tile.elevation)) },
+            },
         }
     }
 

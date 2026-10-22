@@ -2333,7 +2333,17 @@ fn run(
         let kind = monument::FIRST_TYPE + model;
         let layout = fs::read(data.join(format!("model/poseidon_pyramid_{:02}.txt", model + 1))).ok();
         let (Some(layout), Ok(rule)) = (layout.and_then(|t| monument::Layout::parse(&String::from_utf8_lossy(&t))), rules(kind)) else { break };
-        let parts = layout.tiles.iter().map(|t| Part { dx: t.dx, dy: t.dy, size: 1, image: MONUMENT_FLOOR_IMAGE, crop: false, bay: None, source: Source::Poseidon }).collect();
+        // Statues, autel et temple posés sur le monument : images des sanctuaires ; les
+        // statues au choix du joueur (141 à 148) sont celles de Zeus.
+        let parts = layout
+            .tiles
+            .iter()
+            .map(|t| match t.piece {
+                2 | 7..=54 | 61..=108 | 110 => sanctuary_part(t.dx, t.dy, Piece::from_type(t.piece as i32)),
+                141..=148 => sanctuary_part(t.dx, t.dy, Piece::Statue { god: 0, facing: (t.piece as usize - 141) % 4 }),
+                _ => Part { dx: t.dx, dy: t.dy, size: 1, image: MONUMENT_FLOOR_IMAGE, crop: false, bay: None, source: Source::Poseidon },
+            })
+            .collect();
         kinds.push(Kind {
             name: text.get(TEXT_BUILDINGS, kind),
             cost: rule.cost,

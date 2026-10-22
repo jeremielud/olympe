@@ -36,7 +36,7 @@ Ce qui fonctionne :
   de l'Olympe…), proposés quand un objectif les demande : disposés et élevés étape
   par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
   arrivent de l'entrepôt (quantités provisoires) ; pentes, angles, marches et
-  décors de marbre comme dans le jeu, statues figurées par des obélisques ;
+  décors de marbre comme dans le jeu, statues, autel et temple des sanctuaires ;
 - marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
   (raccourci), marchandises rangées à l'entrepôt ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
@@ -105,8 +105,9 @@ s'enchaîne jusqu'à son récit de fin.
 Ce qui reste approché ou absent : les tirs des archers ennemis portent sans projectile
 dessiné ; les exploitations se posent à moins de huit
 cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
-orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; les
-statues et édifices posés sur les monuments sont figurés par des obélisques ; les conseillers (touche A, Tab pour changer de page : population, emploi,
+orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
+sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
+figurés par des obélisques ; les conseillers (touche A, Tab pour changer de page : population, emploi,
 finances, services, mythologie, armée et commerce) donnent des chiffres, sans les
 portraits ni les conseils parlés du jeu ; la vidéo d'introduction est jouée par un lecteur du système (ffplay, mpv ou
 VLC), Olympe ne décodant pas la vidéo lui-même ;
