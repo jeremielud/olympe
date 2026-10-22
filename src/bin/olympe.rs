@@ -2525,6 +2525,7 @@ fn run(
                         (minimap_age, tool, hovered) = (MINIMAP_REFRESH, Tool::None, (-1, -1));
                     }
                     let step = journey.step();
+                    eprintln!("épisode suivant : {step:?}");
                     world.start_episode();
                     world.carried = carried;
                     if let Some(episode) = episode(step).filter(|_| !demo) {
@@ -2538,6 +2539,7 @@ fn run(
                     goals.clear();
                     intro = story(data, map_path, settings.as_ref(), journey.step(), Moment::End);
                     notice = ("Aventure terminée : la partie continue sans objectif".to_string(), now);
+                    eprintln!("aventure terminée");
                 }
                 goals_met = vec![false; goals.len()];
             }
@@ -2552,7 +2554,7 @@ fn run(
                 }
                 goals_met[i] = met;
             }
-            if !won && (std::mem::take(&mut force_end) || !goals.is_empty() && goals_met.iter().all(|&met| met)) {
+            if !won && journey.position < journey.order.len().max(1) && (std::mem::take(&mut force_end) || !goals.is_empty() && goals_met.iter().all(|&met| met)) {
                 won = true;
                 let fallback = ("Épisode terminé".to_string(), vec!["Tous les objectifs de l'épisode sont atteints.".to_string()]);
                 intro = Some(story(data, map_path, settings.as_ref(), journey.step(), Moment::Victory).unwrap_or(fallback));
