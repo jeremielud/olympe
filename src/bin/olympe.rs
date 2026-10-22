@@ -875,6 +875,12 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
             let makes = |resource: i32| world.kinds.iter().enumerate().any(|(i, k)| k.product as i32 == resource && !world.locked.get(i).copied().unwrap_or(false));
             // Une cité inactive peut s'ouvrir au commerce par un événement.
             let sold = |resource: i32| world.cities.iter().any(|c| c.sells.iter().any(|&(r, _)| r as i32 == resource));
+            // Un bâtiment permis qui produit la ressource trouve une place sur la carte.
+            let placeable = |resource: i32| {
+                world.kinds.iter().enumerate().filter(|(i, k)| k.product as i32 == resource && !world.locked.get(*i).copied().unwrap_or(false)).any(|(i, _)| {
+                    (0..GRID as i32 * GRID as i32).any(|t| world.can_place(i, t % GRID as i32, t / GRID as i32))
+                })
+            };
             let mut problems = Vec::new();
             for goal in &episode.goals {
                 let [first, second, _] = goal.values;
@@ -882,6 +888,8 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
                 let problem = match (goal.status(&world), goal.kind) {
                     (Status::Unsupported, _) => Some("non suivi"),
                     (_, GoalKind::Production) if !makes(first) => Some("aucun bâtiment permis ne le produit"),
+                    (_, GoalKind::Production) if !placeable(first) => Some("aucun emplacement pour le produire"),
+                    (_, GoalKind::SetAside) if first > 0 && !sold(first) && makes(first) && !placeable(first) => Some("aucun emplacement pour le produire"),
                     (_, GoalKind::SetAside) if first > 0 && !makes(first) && !sold(first) => Some("ni produit ni vendu par une cité"),
                     (_, GoalKind::Sanctuary) if first >= 0 && !open(&|f| matches!(f, Function::Sanctuary { god, .. } if *god as i32 == first)) => Some("sanctuaire non permis"),
                     (_, GoalKind::Pyramid) if !open(&|f| matches!(f, Function::Monument { .. })) => Some("monument non permis"),
@@ -2965,7 +2973,15 @@ fn run(
                             }
                             Tool::Road => drop(world.place_road(x, y, road_cost)),
                             Tool::Demolish => drop(world.demolish(x, y)),
-                            Tool::Build(kind) => drop(world.place_building(kind, x, y)),
+                            Tool::Build(kind) => {
+                                if !world.place_building(kind, x, y) {
+                                    if world.money < world.kinds[kind].cost {
+                                        notice = (format!("Pas assez de drachmes pour {}", world.kinds[kind].name), now);
+                                    } else if let Some(hint) = world.placement_hint(kind, x, y) {
+                                        notice = (format!("{} : {hint}", world.kinds[kind].name), now);
+                                    }
+                                }
+                            }
                         }
                         hovered = (-1, -1);
                     }

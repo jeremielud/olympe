@@ -28,6 +28,10 @@ pub const TERRAIN_LAVA_ZONE: u32 = 0x10;
 pub const TERRAIN_FLOOD_ZONE: u32 = 0x100;
 pub const TERRAIN_FISSURE: u32 = 0x200_0000;
 
+/// Distance maximale entre une exploitation (scierie, carrière, fonderie) et sa
+/// ressource (valeur d'Olympe).
+const RESOURCE_REACH: i32 = 8;
+
 /// Terrains sur lesquels on ne peut rien poser.
 const BLOCKED: u32 = TERRAIN_TREE
     | TERRAIN_ROCK
@@ -1188,6 +1192,31 @@ impl World {
         terrain & IMPASSABLE == 0 || (terrain & TERRAIN_RAMP != 0 && terrain & (IMPASSABLE & !TERRAIN_ELEVATION) == 0)
     }
 
+    /// Pourquoi un bâtiment ne se pose pas en (x, y), quand la raison tient à son
+    /// emplacement (ressource trop loin, eau ou pré manquants).
+    pub fn placement_hint(&self, kind: usize, x: i32, y: i32) -> Option<&'static str> {
+        let k = self.kinds.get(kind)?;
+        let size = k.size as i32;
+        let missing = |bits: u32| !self.near_terrain(x, y, size, bits);
+        match k.function {
+            Function::Producer(Good::Wood) if missing(TERRAIN_TREE) => Some("il faut des arbres à moins de huit cases"),
+            Function::Producer(Good::Marble | Good::BlackMarble) if missing(TERRAIN_ROCK | TERRAIN_ORE) => Some("il faut des rochers à moins de huit cases"),
+            Function::Supplier(Raw::Bronze) | Function::Producer(Good::Orichalc) if missing(TERRAIN_ROCK | TERRAIN_ORE) => Some("il faut du minerai ou des rochers à moins de huit cases"),
+            Function::Fishery | Function::Wharf => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
+            Function::Farm => Some("elle se pose sur un pré fleuri"),
+            Function::Racetrack => Some("une section se pose dans le prolongement de la piste"),
+            _ => None,
+        }
+    }
+
+    /// Une case portant l'un des bits `wanted` à moins de `RESOURCE_REACH` cases de
+    /// l'emprise posée en (x, y).
+    fn near_terrain(&self, x: i32, y: i32, size: i32, wanted: u32) -> bool {
+        (y - RESOURCE_REACH..y + size + RESOURCE_REACH).any(|ty| {
+            (x - RESOURCE_REACH..x + size + RESOURCE_REACH).any(|tx| self.in_map(tx, ty) && self.map.terrain(tx as usize, ty as usize) & wanted != 0)
+        })
+    }
+
     pub fn is_meadow(&self, x: i32, y: i32) -> bool {
         Self::in_grid(x, y) && self.map.terrain(x as usize, y as usize) & TERRAIN_MEADOW != 0
     }
@@ -1216,6 +1245,12 @@ impl World {
                 self.can_build(x, y, k.size) && near_water
             }
             Function::Farm => self.can_build(x, y, k.size) && (0..size).all(|dy| (0..size).all(|dx| self.is_meadow(x + dx, y + dy))),
+            // Scierie près des arbres, carrières, fonderie et raffinerie près des rochers
+            // ou du minerai (à moins de huit cases : leurs ouvriers vont y travailler ; le
+            // type de roche n'est pas encore lu dans la carte).
+            Function::Producer(Good::Wood) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_TREE),
+            Function::Producer(Good::Marble | Good::BlackMarble) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_ROCK | TERRAIN_ORE),
+            Function::Supplier(Raw::Bronze) | Function::Producer(Good::Orichalc) => self.can_build(x, y, k.size) && self.near_terrain(x, y, size, TERRAIN_ROCK | TERRAIN_ORE),
             // Un temple par héros.
             Function::HeroHall(hero) => {
                 !self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::HeroHall(hero))

@@ -35,6 +35,22 @@ fn world(data: &Path) -> (World, i32, i32) {
     (world, x, y)
 }
 
+/// Comme `world`, mais le coin libre est assez près des arbres et du minerai pour
+/// qu'une scierie ou une fonderie posée en (x + 10, y + 3), et une carrière en
+/// (x + 4, y + 5), aient leur ressource à portée.
+fn world_with_resources(data: &Path) -> (World, i32, i32) {
+    let (world, ..) = world(data);
+    let reach = |x: i32, y: i32, bits: u32| {
+        (y - 8..y + 10).any(|ty| (x - 8..x + 10).any(|tx| (0..GRID as i32).contains(&tx) && (0..GRID as i32).contains(&ty) && world.map.terrain(tx as usize, ty as usize) & bits != 0))
+    };
+    use zeus::world::{TERRAIN_ORE, TERRAIN_ROCK, TERRAIN_TREE};
+    let (x, y) = (0..GRID as i32 * GRID as i32)
+        .map(|i| (i % GRID as i32, i / GRID as i32))
+        .find(|&(x, y)| world.can_build(x, y, 12) && reach(x + 10, y + 3, TERRAIN_TREE) && reach(x + 10, y + 3, TERRAIN_ORE) && reach(x + 4, y + 5, TERRAIN_ROCK | TERRAIN_ORE))
+        .unwrap();
+    (world, x, y)
+}
+
 /// Une rue de dix cases bordée de quatre maisons.
 fn street(world: &mut World, x: i32, y: i32) {
     for i in 0..10 {
@@ -212,7 +228,7 @@ fn production_and_set_aside_goals() {
 #[test]
 fn bronze_without_armory_waits_at_the_storehouse() {
     let Some(data) = data() else { return };
-    let (mut world, x, y) = world(&data);
+    let (mut world, x, y) = world_with_resources(&data);
     let first = world.kinds.len();
     let mut foundry = Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0);
     foundry.product = 10;
@@ -233,7 +249,7 @@ fn bronze_without_armory_waits_at_the_storehouse() {
 #[test]
 fn wood_and_marble_reach_the_storehouse() {
     let Some(data) = data() else { return };
-    let (mut world, x, y) = world(&data);
+    let (mut world, x, y) = world_with_resources(&data);
     let first = world.kinds.len();
     for (name, good, product) in [("scierie", Good::Wood, 9), ("maçonnerie", Good::Marble, 11)] {
         let mut kind = Kind::simple(name.into(), 40, 2, 598, Function::Producer(good), 0);
@@ -254,7 +270,7 @@ fn wood_and_marble_reach_the_storehouse() {
 #[test]
 fn the_sculpture_studio_casts_the_foundry_bronze() {
     let Some(data) = data() else { return };
-    let (mut world, x, y) = world(&data);
+    let (mut world, x, y) = world_with_resources(&data);
     let first = world.kinds.len();
     world.kinds.push(Kind::simple("fonderie".into(), 40, 2, 618, Function::Supplier(zeus::world::Raw::Bronze), 0));
     let mut studio = Kind::simple("atelier de sculpture".into(), 50, 2, 683, Function::Workshop(Good::Sculpture), 0);

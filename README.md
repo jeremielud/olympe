@@ -40,7 +40,8 @@ Ce qui fonctionne :
 - marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
   (raccourci), marchandises rangées à l'entrepôt ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
-  objectifs suivis et réalisables avec ses bâtiments permis (152 sur 152) ;
+  objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
+  pour ce qu'il faut produire (152 sur 152) ;
 - hippodrome (Administration, aventures de l'Atlantide) : sections de piste posées
   bout à bout, droites ou virages selon leurs voisines ; une boucle fermée accueille
   les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade
@@ -101,8 +102,9 @@ que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque a
 s'enchaîne jusqu'à son récit de fin.
 
 Ce qui reste approché ou absent : les envahisseurs n'ont qu'un type de soldat par nation
-(fantassins, sans archers ni cavalerie distincts) ; scierie, atelier de maçonnerie, atelier de marbre noir et raffinerie se posent sans
-forêt, carrière ni mine ; pentes
+(fantassins, sans archers ni cavalerie distincts) ; scierie, carrières, fonderie et
+raffinerie doivent avoir arbres, rochers ou minerai à moins de huit cases, sans
+distinguer les types de roche ; pentes
 des pyramides en blocs ; les conseillers tiennent en un panneau de synthèse (touche
 A) ; pas de vidéos ;
 l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
