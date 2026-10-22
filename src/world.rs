@@ -860,8 +860,11 @@ pub struct WalkerImages {
     pub carrier: usize,
     /// Acheteuse qui approvisionne une échoppe.
     pub buyer: usize,
-    /// Hoplite de la cité (marche, mort, combat), qui défend contre les invasions.
+    /// Soldats de la cité (marche, mort, combat) qui défendent contre les invasions :
+    /// piétaille, hoplite, cavalier.
     pub hoplite: usize,
+    pub rabble: usize,
+    pub horseman: usize,
     /// Navire de transport des envahisseurs venus par la mer.
     pub ship: usize,
 }
@@ -1009,6 +1012,8 @@ impl Figure {
                 let unit = army_unit(army);
                 Anim { walk: unit.walk_frames, fight: unit.fight - unit.walk, fight_frames: unit.fight_frames }
             }
+            // Piétaille et cavaliers de la cité frappent en douze images, l'hoplite en huit.
+            Role::Soldier { enemy: false, army, .. } if army != 1 => Anim { fight_frames: 12, ..COMMON_ANIM },
             _ => COMMON_ANIM,
         };
         if let Role::Soldier { fighting: true, .. } = self.role {
@@ -2581,7 +2586,12 @@ impl World {
                 let (ox, oy) = (at.0 as i32 + dx, at.1 as i32 + dy);
                 // Pas de soldat dans l'eau ni sur la falaise : il reste au point de départ.
                 let (x, y) = if world.is_walkable(ox, oy) { (ox as u16, oy as u16) } else { (at.0 as u16, at.1 as u16) };
-                let (source, image_base) = if enemy { (Source::Army(nation), army_unit(army).walk) } else { (Source::Figures, world.walkers.hoplite) };
+                let citizen = [world.walkers.rabble, world.walkers.hoplite, world.walkers.horseman];
+                let (source, image_base) = if enemy {
+                    (Source::Army(nation), army_unit(army).walk)
+                } else {
+                    (Source::Figures, citizen.get(army as usize).copied().filter(|&b| b > 0).unwrap_or(world.walkers.hoplite))
+                };
                 let health = world.fighter(enemy, army).health;
                 world.figures.push(Figure {
                     image_base,

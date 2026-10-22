@@ -1315,6 +1315,9 @@ const ARMY_FILES: [&str; 10] = [
 ];
 /// Hoplite de la cité dans `sprmain.sg3` (marche, mort, combat).
 const GROUP_HOPLITE: usize = 129;
+/// Piétaille et cavalier de la cité (même disposition : marche, mort, combat).
+const GROUP_RABBLE: usize = 80;
+const GROUP_HORSEMAN: usize = 132;
 /// Navire de transport des envahisseurs venus par la mer.
 const GROUP_SHIP: usize = 118;
 const MONSTER_FILES: [&str; 16] = [
@@ -2388,7 +2391,7 @@ fn run(
         entry.product = zeus::world::resource_of(good).unwrap_or(0);
         kinds.push(entry);
     }
-    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
+    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
