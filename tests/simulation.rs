@@ -167,8 +167,10 @@ fn goals_follow_the_city() {
     assert_eq!(population.status(&world), Status::Pending(Some(0)));
     // Aucune année n'est encore close.
     assert_eq!(profit.status(&world), Status::Pending(None));
-    (0..9600).for_each(|_| world.tick());
-    assert_eq!(population.status(&world), Status::Met);
+    // Quatre mois : les huttes sont pleines (plus tard, la maladie les éclaircit).
+    (0..3200).for_each(|_| world.tick());
+    assert_eq!(population.status(&world), Status::Met, "population {} humeur {}", world.population(), world.sentiment);
+    (0..6400).for_each(|_| world.tick());
     assert_eq!(treasury.status(&world), Status::Pending(Some(world.money)));
     assert_eq!(housing.status(&world), Status::Pending(Some(0)));
     // Ni impôts ni salaires dans cette rue : une année à l'équilibre.
@@ -944,9 +946,10 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
     assert!(world.sentiment < 15, "humeur {}", world.sentiment);
     assert!(world.population() < before);
     let low = world.sentiment;
-    // Plus d'impôts : l'humeur remonte, lentement en très difficile (les huttes ne
-    // mangent pas et les chômeurs sont nombreux).
+    // Plus d'impôts : en très difficile, cela ne compense pas le chômage et la faim
+    // (les huttes ne mangent pas) ; en très facile, l'humeur remonte, lentement.
     world.set_tax_level(0);
+    world.difficulty = 0;
     (0..24 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.sentiment > low, "humeur {} puis {}", low, world.sentiment);
     let saved = world.save();

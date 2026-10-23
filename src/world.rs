@@ -127,10 +127,24 @@ const WALK_FRAMES: usize = 12;
 /// Pas de simulation pour parcourir une case : les personnages des sauvegardes
 /// d'origine avancent de 0 à 14 sur leur case (octet 57 de leur enregistrement).
 const WALK_TICKS: usize = 15;
-/// Intervalle entre deux arrivées d'immigrants, en pas de simulation.
-const IMMIGRATION_INTERVAL: u64 = 20;
-/// Taille d'un groupe d'immigrants.
+/// Migrations (`Zeus.exe`, 0x567450, chaque jour) : taux selon l'humeur, de 100 au-delà
+/// de 70 à -25 jusqu'à 15 ; un jour amène taux×12/100 personnes (arrondi au-dessus), ou en
+/// fait partir autant si le taux est négatif. Les arrivants vont par groupes de quatre,
+/// les partants aussi, quatre au plus par maison.
+const MIGRATION_RATES: [(i32, i32); 6] = [(71, 100), (61, 75), (50, 50), (36, 0), (26, -8), (16, -17)];
+const MIGRATION_LOW_RATE: i32 = -25;
+const MIGRANTS_PER_DAY: i32 = 12;
 const IMMIGRANT_GROUP: i32 = 4;
+/// Une vague d'arrivées suspend les départs deux jours, et inversement.
+const MIGRATION_PAUSE: u8 = 2;
+/// Personne ne part d'une cité de 100 habitants ou moins, personne n'arrive au-delà de
+/// 200 000 habitants ni après plus de trois ans de dettes.
+const MIN_EMIGRATION_POPULATION: i32 = 100;
+const MAX_POPULATION: i32 = 200_000;
+const MAX_DEBT_YEARS: i32 = 3;
+/// Les arrivants vont d'abord dans les maisons vides, puis dans celles qui ont au moins
+/// huit places libres (`Zeus.exe`, 0x486860).
+const ROOMY_HOUSE: i32 = 8;
 /// Un bâtiment n'a qu'un marcheur dehors à la fois : les sauvegardes d'origine comptent
 /// un surintendant par maintenance, un guetteur par poste de garde, un percepteur par
 /// hôtel des impôts. Repos entre son retour et le départ suivant : quatre jours, d'après
@@ -602,13 +616,9 @@ const WORKFORCE_PERCENT: i32 = 40;
 /// par un percepteur (multiplié par le coefficient du niveau de logement) ; les
 /// autres taux du jeu le font varier en proportion.
 const TAX_PER_100_PEOPLE: i32 = 25;
-/// Niveau d'imposition normal (taux 9 du jeu), humeur de départ, et seuils d'humeur
-/// sous lesquels les immigrants ne viennent plus, puis les habitants s'en vont
-/// (Olympe).
+/// Niveau d'imposition normal (taux 9 du jeu) et humeur de départ.
 pub const NORMAL_TAX_LEVEL: usize = 3;
 const START_SENTIMENT: i32 = 60;
-const NO_IMMIGRATION_SENTIMENT: i32 = 30;
-const EMIGRATION_SENTIMENT: i32 = 15;
 /// Part des maisons visitées par un percepteur sous laquelle l'imposition compte
 /// comme nulle pour l'humeur, et population à partir de laquelle les effets négatifs
 /// comptent (`Zeus.exe`, 0x567120 et 0x5671a0).
@@ -1144,8 +1154,10 @@ pub struct World {
     cells: Vec<Cell>,
     house_levels: Vec<HouseModel>,
     walkers: WalkerImages,
-    /// Maison servie à la prochaine arrivée, pour répartir les immigrants.
-    next_house: usize,
+    /// Migrants pas encore assez nombreux pour former un groupe (arrivants, partants),
+    /// et jours pendant lesquels arrivées et départs restent suspendus.
+    migrants: (i32, i32),
+    migration_pause: (u8, u8),
     /// État du générateur pseudo-aléatoire (tournées des marcheurs).
     random: u32,
     /// Dernier bilan mensuel : (impôts perçus, salaires versés).
@@ -1251,7 +1263,8 @@ impl World {
             cells: vec![Cell::Terrain; GRID * GRID],
             house_levels,
             walkers,
-            next_house: 0,
+            migrants: (0, 0),
+            migration_pause: (0, 0),
             random: 0x2545_F491,
             last_month: (0, 0),
             year_profit: 0,
@@ -2833,18 +2846,17 @@ impl World {
             }
         }
         self.figures.retain(|f| !matches!(f.role, Role::Soldier { health, .. } if health <= 0));
-        // Envahisseurs libres : vers le bâtiment le plus proche, qu'ils détruisent.
+        // Envahisseurs libres : vers le bâtiment le plus proche, qu'ils détruisent. Les
+        // bâtiments tombent après la boucle : leur disparition emporte des personnages.
+        let mut burnt = Vec::new();
         for i in 0..self.figures.len() {
             let Role::Soldier { enemy: true, army, health, target, fighting: false } = self.figures[i].role else { continue };
             if !self.figures[i].path.is_empty() {
                 continue;
             }
             let at = self.figures[i].from;
-            if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
-                let (kind, x, y) = (building.kind, building.x, building.y);
-                self.remove_building(target, Cell::Fire(0));
-                self.disasters.push(Disaster { fire: true, kind, x, y });
-                raid.buildings += 1;
+            if self.buildings.get(target as usize).is_some_and(|b| b.is_some()) {
+                burnt.push(target);
                 self.figures[i].role = Role::Soldier { enemy: true, army, health, target: NO_TARGET, fighting: false };
                 continue;
             }
@@ -2860,6 +2872,13 @@ impl World {
             }
             figure.path = path;
             figure.role = Role::Soldier { enemy: true, army, health, target: id as u16, fighting: false };
+        }
+        for target in burnt {
+            let Some(building) = self.buildings[target as usize].as_ref() else { continue };
+            let (kind, x, y) = (building.kind, building.x, building.y);
+            self.remove_building(target, Cell::Fire(0));
+            self.disasters.push(Disaster { fire: true, kind, x, y });
+            raid.buildings += 1;
         }
         let invaders = self.figures.iter().filter(|f| f.soldier() == Some(true)).count();
         let nothing_left = self.buildings.iter().all(|b| b.is_none());
@@ -3081,8 +3100,8 @@ impl World {
         self.ticks += 1;
         self.move_figures();
         self.fight();
-        if self.ticks % IMMIGRATION_INTERVAL == 0 && self.sentiment >= NO_IMMIGRATION_SENTIMENT {
-            self.send_immigrants();
+        if self.ticks % TICKS_PER_DAY == 0 {
+            self.migrate();
         }
         self.run_buildings();
         self.burn_out();
@@ -3400,12 +3419,6 @@ impl World {
             _ => change,
         };
         self.sentiment = (self.sentiment + change).clamp(0, 100);
-        // Cité exaspérée : une part des habitants s'en va (Olympe).
-        if self.sentiment < EMIGRATION_SENTIMENT {
-            for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()) {
-                house.population -= (house.population / 20).max((house.population > 0) as i32);
-            }
-        }
     }
 
     /// Criminalité des logements modestes (`Zeus.exe`, 0x566f20) : une fois la cité
@@ -4153,28 +4166,90 @@ impl World {
         }
     }
 
-    /// Envoie un groupe d'immigrants vers la prochaine maison qui a de la place.
-    fn send_immigrants(&mut self) {
-        let count = self.buildings.len();
-        for step in 0..count {
-            let id = (self.next_house + step) % count;
-            let Some(building) = &self.buildings[id] else { continue };
-            let Some(house) = &building.house else { continue };
-            let room = self.capacity(house) - house.population - house.arriving;
-            let size = self.kinds[building.kind].size as i32;
-            let (x, y) = (building.x as i32, building.y as i32);
-            if room <= 0 || !self.has_road_access(x, y, size) {
-                continue;
-            }
-            let Some(path) = self.path_from_edge(x, y, size) else { continue };
-            let people = room.min(IMMIGRANT_GROUP);
-            let image = if house.level >= ELITE_FIRST_LEVEL { self.walkers.elite_immigrant } else { self.walkers.immigrant };
-            self.spawn_on_path(image, path, Role::Immigrant { home: id as u16, people });
-            if let Some(house) = self.buildings[id].as_mut().and_then(|b| b.house.as_mut()) {
-                house.arriving += people;
-            }
-            self.next_house = id + 1;
+    /// Migrations du jour (`Zeus.exe`, 0x567450 et 0x486190).
+    fn migrate(&mut self) {
+        let rate = MIGRATION_RATES.iter().find(|(from, _)| self.sentiment >= *from).map_or(MIGRATION_LOW_RATE, |&(_, rate)| rate);
+        let population = self.population();
+        let in_debt = self.months_in_debt as i32 / 12 > MAX_DEBT_YEARS;
+        if rate == 0 || population >= MAX_POPULATION || (rate > 0 && in_debt) {
             return;
+        }
+        let count = (rate.abs() * MIGRANTS_PER_DAY + 99) / 100;
+        let (arrivals, departures) = &mut self.migration_pause;
+        let (pause, other) = if rate > 0 { (arrivals, departures) } else { (departures, arrivals) };
+        if *pause > 0 {
+            *pause -= 1;
+            return;
+        }
+        if rate < 0 && population <= MIN_EMIGRATION_POPULATION {
+            return;
+        }
+        *other = MIGRATION_PAUSE;
+        // Moins de quatre migrants attendent les suivants pour faire un groupe.
+        let waiting = if rate > 0 { &mut self.migrants.0 } else { &mut self.migrants.1 };
+        let count = if count >= IMMIGRANT_GROUP {
+            count
+        } else if *waiting + count >= IMMIGRANT_GROUP {
+            std::mem::take(waiting) + count
+        } else {
+            *waiting += count;
+            return;
+        };
+        if rate > 0 { self.send_immigrants(count) } else { self.send_away(count) }
+    }
+
+    /// Répartit les arrivants entre les maisons qui n'en attendent pas déjà : quatre
+    /// dans chaque maison vide, puis dans celles qui ont huit places, puis de quoi
+    /// remplir les autres. Ceux qui ne trouvent pas de place ne viennent pas.
+    fn send_immigrants(&mut self, mut count: i32) {
+        for pass in 0..3 {
+            for id in 0..self.buildings.len() {
+                if count == 0 {
+                    return;
+                }
+                let Some(building) = &self.buildings[id] else { continue };
+                let Some(house) = &building.house else { continue };
+                let room = self.capacity(house) - house.population - house.arriving;
+                let wanted = match pass {
+                    0 => house.population == 0,
+                    1 => room >= ROOMY_HOUSE,
+                    _ => true,
+                };
+                if room <= 0 || house.arriving > 0 || !wanted {
+                    continue;
+                }
+                let size = self.kinds[building.kind].size as i32;
+                let (x, y) = (building.x as i32, building.y as i32);
+                if !self.has_road_access(x, y, size) {
+                    continue;
+                }
+                let Some(path) = self.path_from_edge(x, y, size) else { continue };
+                let people = count.min(if pass < 2 { IMMIGRANT_GROUP } else { room });
+                let image = if house.level >= ELITE_FIRST_LEVEL { self.walkers.elite_immigrant } else { self.walkers.immigrant };
+                self.spawn_on_path(image, path, Role::Immigrant { home: id as u16, people });
+                if let Some(house) = self.buildings[id].as_mut().and_then(|b| b.house.as_mut()) {
+                    house.arriving += people;
+                }
+                count -= people;
+            }
+        }
+    }
+
+    /// Fait partir des habitants, quatre au plus par maison, en commençant par les
+    /// logements les plus modestes (`Zeus.exe`, 0x486ab0).
+    fn send_away(&mut self, mut count: i32) {
+        let levels = self.house_levels.len();
+        for level in 0..levels {
+            for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()) {
+                if count == 0 {
+                    return;
+                }
+                if house.level == level && house.population > 0 {
+                    let leaving = house.population.min(IMMIGRANT_GROUP).min(count);
+                    house.population -= leaving;
+                    count -= leaving;
+                }
+            }
         }
     }
 
@@ -4317,7 +4392,7 @@ impl World {
             "etat {} {} {} {} {} {} {} {} {}",
             self.ticks,
             self.money,
-            self.next_house,
+            0,
             self.random,
             self.last_month.0,
             self.last_month.1,
@@ -4333,6 +4408,7 @@ impl World {
         let _ = writeln!(out, "prix {}", list(&self.price_shift));
         let _ = writeln!(out, "salaires {}", self.wage_shift);
         let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
+        let _ = writeln!(out, "migrants {} {} {} {}", self.migrants.0, self.migrants.1, self.migration_pause.0, self.migration_pause.1);
         for &(city, until) in &self.armies_away {
             let _ = writeln!(out, "absente {city} {until}");
         }
@@ -4475,6 +4551,7 @@ impl World {
         let (mut wage_shift, mut away, mut floods) = (0, Vec::new(), Vec::new());
         let mut raid = None;
         let mut mood = None;
+        let mut migration = None;
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -4513,6 +4590,7 @@ impl World {
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "salaires" => wage_shift = number_at(0)? as i32,
+                "migrants" => migration = Some(((number_at(0)? as i32, number_at(1)? as i32), (number_at(2)? as u8, number_at(3)? as u8))),
                 "humeur" => mood = Some((number_at(0)? as usize, number_at(1)? as i32, number_at(2).unwrap_or(0) != 0, number_at(3).unwrap_or(0) as u32)),
                 "raid" => raid = Some(Raid { city: number_at(0)? as usize, soldiers: number_at(1)? as i32, buildings: number_at(2)? as i32, limit: number_at(3)? as i32 }),
                 "absente" => away.push((number_at(0)? as usize, number_at(1)? as u64)),
@@ -4714,7 +4792,7 @@ impl World {
                 _ => return Err(bad()),
             }
         }
-        let (ticks, money, next_house, random, taxes, wages) = state.ok_or("sauvegarde sans ligne d'état")?;
+        let (ticks, money, _, random, taxes, wages) = state.ok_or("sauvegarde sans ligne d'état")?;
         // Un personnage ne doit pas désigner un bâtiment absent.
         let exists = |id: u16| buildings.get(id as usize).is_some_and(|b: &Option<Building>| b.is_some());
         figures.retain(|f| match f.role {
@@ -4736,7 +4814,7 @@ impl World {
         self.figures = figures;
         self.ticks = ticks as u64;
         self.money = money as i32;
-        self.next_house = next_house as usize;
+        (self.migrants, self.migration_pause) = migration.unwrap_or_default();
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;

@@ -106,8 +106,11 @@ Ce qui fonctionne :
   les taux du jeu, et humeur de la cité calculée comme dans `Zeus.exe`, deux fois par
   mois : impôts selon la difficulté (`tax_sentiment_model.txt`), salaires, chômage,
   vivres de chaque maison et dettes, amortis hors de la zone 41–60, et sans effet
-  négatif tant que la cité n'a pas dépassé 349 habitants ; une cité mécontente
-  n'attire plus d'immigrants, puis ses habitants s'en vont ;
+  négatif tant que la cité n'a pas dépassé 349 habitants ; chaque jour, l'humeur
+  règle les migrations comme dans le jeu : de 12 arrivants au-delà de 70 à aucun
+  entre 36 et 49, puis jusqu'à 3 départs par jour sous 16 (pas sous 100 habitants),
+  les arrivants allant d'abord aux maisons vides, les partants quittant d'abord les
+  logements les plus modestes ; plus d'arrivants après trois ans de dettes ;
 - criminalité des logements modestes comme dans le jeu (incrément et base de chaque
   niveau, écart de l'humeur à 40, passage des gardes) : au-delà de 80 une maison
   produit un voleur, qui pille une maison luxueuse ou le trésor ; sans hôpital, une
@@ -127,8 +130,8 @@ figurés par des obélisques ;
 l'interface est celle d'Olympe, habillée des images d'origine. Les rythmes des
 producteurs, des ateliers et de la pêcherie, et l'usure de la laine, de l'huile et du
 vin dans les maisons, sont ceux du jeu ; d'autres réglages d'équilibre (laiterie,
-pavillon de chasse, quantités de matériaux) sont approchés et non repris du jeu, de même que les seuils d'humeur qui arrêtent l'immigration ou font partir les
-habitants, le butin des voleurs et le rythme et la gravité des épidémies.
+pavillon de chasse, quantités de matériaux) sont approchés et non repris du jeu, de
+même que le butin des voleurs et le rythme et la gravité des épidémies.
 
 
 ## Installation
