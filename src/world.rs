@@ -485,6 +485,10 @@ const GOD_STAY_TICKS: u64 = TICKS_PER_MONTH * 6;
 const GOD_REST_TICKS: u64 = TICKS_PER_MONTH;
 /// Séjour d'un dieu hostile quand un dieu favorable protège la cité (Olympe).
 const GOD_REPELLED_TICKS: u64 = TICKS_PER_MONTH;
+/// Dieux qui défendent la cité contre un dieu hostile (`Zeus.exe`, 0x482e0b), dans
+/// l'ordre où le jeu les essaie, s'ils ont leur sanctuaire achevé : Zeus contre tous,
+/// Aphrodite contre Arès, Héphaïstos, Hermès et Dionysos, Héra contre Zeus.
+const GOD_DEFENDERS: [(u8, &[u8]); 3] = [(0, &[]), (6, &[5, 9, 7, 10]), (12, &[0])];
 
 /// Chemin en ligne droite, case par case (diagonales permises), rangé à l'envers.
 fn straight_path(from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
@@ -3010,9 +3014,11 @@ impl World {
         let now = self.ticks;
         let due: Vec<u8> = self.invasions.iter().filter(|&&(at, _)| at <= now).map(|&(_, god)| god).collect();
         self.invasions.retain(|&(at, _)| at > now);
-        // Un dieu favorable dont le sanctuaire est achevé chasse vite l'envahisseur.
-        let stay = if self.sanctuaries().is_empty() { GOD_STAY_TICKS } else { GOD_REPELLED_TICKS };
+        let built = self.sanctuaries();
         for god in due {
+            // Un dieu défenseur dont le sanctuaire est achevé chasse vite l'envahisseur.
+            let defended = GOD_DEFENDERS.iter().any(|&(defender, foes)| built.contains(&defender) && (foes.is_empty() || foes.contains(&god)));
+            let stay = if defended { GOD_REPELLED_TICKS } else { GOD_STAY_TICKS };
             let at = self.city_entrance();
             self.figures.push(Figure {
                 image_base: 1,

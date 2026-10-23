@@ -57,8 +57,9 @@ Ce qui fonctionne :
   deux mois jusqu'à ce que leur héros, venu de son temple, les tue (les monstres
   marins restent au large) ; un monstre lâché ou envahisseur arrive à sa date ;
 - dieux hostiles en personne : à la date de leur événement, ils entrent dans la
-  cité et la ravagent six mois, un seul si un dieu favorable y a son sanctuaire
-  (durées et rythme d'Olympe) ;
+  cité et la ravagent six mois, un seul si un dieu défenseur y a son sanctuaire
+  (comme dans le jeu, Zeus contre tous, Aphrodite contre Arès, Héphaïstos, Hermès
+  et Dionysos, Héra contre Zeus ; durées et rythme d'Olympe) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
