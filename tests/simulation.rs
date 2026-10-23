@@ -962,14 +962,19 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
 }
 
 #[test]
-fn guards_and_doctors_keep_thieves_and_plague_away() {
+fn guards_and_dionysus_keep_thieves_away() {
     let Some(data) = data() else { return };
-    let run = |protected: bool| {
+    // Rien, des gardes (et une infirmerie), ou le sanctuaire de Dionysos.
+    let run = |protection: u8| {
         let (mut world, x, y) = world(&data);
         street(&mut world, x, y);
         assert!(world.place_building(MAINTENANCE, x + 8, y + 5));
         assert!(world.place_building(FOUNTAIN, x + 8, y + 2));
-        if protected {
+        if protection == 2 {
+            world.kinds.push(Kind::simple("sanctuaire de Dionysos".into(), 0, 3, 1460, Function::Sanctuary { god: 10, needs: [0, 0, 0] }, 0));
+            assert!(world.place_building(world.kinds.len() - 1, x, y + 5));
+        }
+        if protection == 1 {
             world.kinds.push(Kind::simple("infirmerie".into(), 20, 2, 1075, Function::Service(Service::Health), 0));
             world.kinds.push(Kind::simple("garde".into(), 20, 2, 1075, Function::Service(Service::Security), 0));
             assert!(world.place_building(world.kinds.len() - 2, x, y + 5));
@@ -985,12 +990,14 @@ fn guards_and_doctors_keep_thieves_and_plague_away() {
         incidents
     };
     let theft = |i: &zeus::world::Incident| matches!(i, zeus::world::Incident::Theft { .. });
-    let exposed = run(false);
+    let exposed = run(0);
     assert!(exposed.iter().any(theft), "{exposed:?}");
     // Une petite cité reste en bonne santé : pas d'épidémie, protégée ou non.
     assert!(exposed.iter().all(theft), "{exposed:?}");
-    let protected = run(true);
-    assert!(protected.is_empty(), "{protected:?}");
+    for protection in [1, 2] {
+        let protected = run(protection);
+        assert!(protected.is_empty(), "{protected:?}");
+    }
 }
 
 #[test]

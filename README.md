@@ -113,7 +113,9 @@ Ce qui fonctionne :
   logements les plus modestes ; plus d'arrivants après trois ans de dettes ;
 - criminalité des logements modestes comme dans le jeu (incrément et base de chaque
   niveau, écart de l'humeur à 40, passage des gardes) : au-delà de 80 une maison
-  produit un voleur, qui pille une maison luxueuse ou le trésor ;
+  produit un voleur, qui pille une maison luxueuse ou le trésor ; le sanctuaire de
+  Dionysos fait au contraire baisser la criminalité, et celui d'Aphrodite retient tous
+  les habitants, comme dans le jeu ;
 - santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
   mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
   bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut

@@ -591,6 +591,14 @@ const CRIME_NEUTRAL_SENTIMENT: i32 = 40;
 const GUARD_CRIME_REDUCTION: i32 = 50;
 const CRIMINAL_CRIME: i32 = 80;
 const THEFT_PER_PERSON: i32 = 2;
+/// Bienfaits permanents de deux sanctuaires (`Zeus.exe`, objets des dieux en 0xef5dd8,
+/// 0x34 octets par dieu) : celui de Dionysos fait baisser la criminalité de 20 à chaque
+/// mise à jour au lieu de la faire monter (0x566f20), celui d'Aphrodite retient tous
+/// les habitants (0x486ab0). Le jeu les accorde dès la première étape du chantier ;
+/// Olympe, qui ne suit pas les étapes, attend son achèvement.
+const DIONYSUS: u8 = 10;
+const DIONYSUS_CRIME_RELIEF: i32 = 20;
+const APHRODITE: u8 = 6;
 /// Santé de la cité (`Zeus.exe`, 0x566c00) : chaque mois, la cible est la moyenne, par
 /// habitant, de 50 pour une maison que visite un médecin et 50 pour une maison qui a
 /// mangé, plus un bonus pour les petites cités ; la santé s'en approche d'un point par
@@ -1977,6 +1985,11 @@ impl World {
             Function::Sanctuary { god, .. } => Some(god),
             _ => None,
         }
+    }
+
+    /// La cité a achevé le sanctuaire de ce dieu.
+    fn has_sanctuary(&self, god: u8) -> bool {
+        self.buildings.iter().flatten().any(|b| self.sanctuary_god(b.kind) == Some(god) && self.is_complete(b))
     }
 
     /// Le sanctuaire a reçu tous ses matériaux.
@@ -3501,6 +3514,7 @@ impl World {
     /// Au-delà de 80, la maison produit un criminel, qui pille une maison luxueuse ou,
     /// à défaut, le trésor (Olympe), et sa criminalité retombe à la base.
     fn update_crime(&mut self) {
+        let relieved = self.has_sanctuary(DIONYSUS);
         let mut criminals = Vec::new();
         for building in self.buildings.iter_mut().flatten() {
             let (x, y) = (building.x, building.y);
@@ -3511,7 +3525,7 @@ impl World {
             }
             let Some(model) = self.house_levels.get(house.level) else { continue };
             if self.grown {
-                house.crime += model.crime + (CRIME_NEUTRAL_SENTIMENT - self.sentiment) / 2;
+                house.crime += if relieved { -DIONYSUS_CRIME_RELIEF } else { model.crime + (CRIME_NEUTRAL_SENTIMENT - self.sentiment) / 2 };
             }
             house.crime = house.crime.max(model.crime_base).min(100);
             if house.crime > CRIMINAL_CRIME {
@@ -4307,8 +4321,12 @@ impl World {
     }
 
     /// Fait partir des habitants, quatre au plus par maison, en commençant par les
-    /// logements les plus modestes (`Zeus.exe`, 0x486ab0).
+    /// logements les plus modestes (`Zeus.exe`, 0x486ab0) ; personne tant que la cité a
+    /// le sanctuaire d'Aphrodite.
     fn send_away(&mut self, mut count: i32) {
+        if self.has_sanctuary(APHRODITE) {
+            return;
+        }
         let levels = self.house_levels.len();
         for level in 0..levels {
             for house in self.buildings.iter_mut().flatten().filter_map(|b| b.house.as_mut()) {
