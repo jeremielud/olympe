@@ -933,18 +933,19 @@ fn heavy_taxes_sour_the_city_and_stop_immigration() {
     assert!(world.place_building(world.kinds.len() - 1, x + 4, y + 5));
     (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.population() > 0);
-    // Taux scandaleux en très difficile : l'humeur s'effondre, les maisons se vident
+    // Taux scandaleux en très difficile : l'humeur s'effondre et plus personne n'arrive
     // (une cité qui a déjà dépassé 349 habitants ; avant, le jeu ne compte pas les
-    // mécontentements).
+    // mécontentements). Sous 100 habitants, personne ne part non plus.
     world.grown = true;
     world.difficulty = 4;
     world.set_tax_level(6);
     world.set_tax_level(9);
     assert_eq!(world.tax_level, 6);
+    (0..6 * TICKS_PER_MONTH).for_each(|_| world.tick());
     let before = world.population();
-    (0..12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    (0..6 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.sentiment < 15, "humeur {}", world.sentiment);
-    assert!(world.population() < before);
+    assert!(world.population() <= before, "population {} puis {}", before, world.population());
     let low = world.sentiment;
     // Plus d'impôts : en très difficile, cela ne compense pas le chômage et la faim
     // (les huttes ne mangent pas) ; en très facile, l'humeur remonte, lentement.
@@ -983,10 +984,36 @@ fn guards_and_doctors_keep_thieves_and_plague_away() {
         }
         incidents
     };
-    let plague = |i: &zeus::world::Incident| matches!(i, zeus::world::Incident::Plague { .. });
     let theft = |i: &zeus::world::Incident| matches!(i, zeus::world::Incident::Theft { .. });
     let exposed = run(false);
-    assert!(exposed.iter().any(plague) && exposed.iter().any(theft), "{exposed:?}");
+    assert!(exposed.iter().any(theft), "{exposed:?}");
+    // Une petite cité reste en bonne santé : pas d'épidémie, protégée ou non.
+    assert!(exposed.iter().all(theft), "{exposed:?}");
     let protected = run(true);
     assert!(protected.is_empty(), "{protected:?}");
+}
+
+#[test]
+fn a_sickly_city_catches_the_plague() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 5));
+    assert!(world.place_building(FOUNTAIN, x + 8, y + 2));
+    (0..3 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    // Une petite cité tend vers une santé de 80 : aucune chance d'épidémie.
+    assert_eq!(world.health, 80);
+    // Santé tenue au plus bas pendant deux ans : 3 chances sur 100 par jour, au plus
+    // une épidémie par mois et six par an.
+    let mut plagues = 0;
+    for _ in 0..24 * TICKS_PER_MONTH {
+        world.health = 0;
+        world.tick();
+        plagues += world.incidents.drain(..).filter(|i| matches!(i, zeus::world::Incident::Plague { .. })).count();
+    }
+    assert!((1..=12).contains(&plagues), "{plagues} épidémies");
+    let saved = world.save();
+    let (mut other, ..) = self::world(&data);
+    other.load(&saved).unwrap();
+    assert_eq!(other.save(), saved);
 }

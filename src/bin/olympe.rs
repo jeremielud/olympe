@@ -1309,6 +1309,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
             format!("{} : {served} maisons sur {} ({percent} %)", service_name(text, service), houses.len())
         })
         .collect();
+    services.push(format!("Santé de la cité : {} sur 100", world.health));
     services.push(format!("Vivres aux greniers : {} chargements", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()));
     let goods: Vec<String> = GOODS
         .iter()

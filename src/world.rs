@@ -585,13 +585,30 @@ const RISK_DAILY_CHANCE: u32 = 8;
 /// Criminalité (`Zeus.exe`) : humeur à laquelle elle ne bouge que de l'incrément du
 /// logement, baisse au passage d'un garde (réducteur de risque des règles), et seuil
 /// au-delà duquel la maison « va bientôt produire un criminel ». Un voleur qui ne trouve
-/// pas de maison luxueuse à piller emporte deux drachmes par habitant de sa maison, et
-/// une épidémie la moitié des habitants (Olympe).
+/// pas de maison luxueuse à piller emporte deux drachmes par habitant de sa maison
+/// (Olympe).
 const CRIME_NEUTRAL_SENTIMENT: i32 = 40;
 const GUARD_CRIME_REDUCTION: i32 = 50;
 const CRIMINAL_CRIME: i32 = 80;
 const THEFT_PER_PERSON: i32 = 2;
-const PLAGUE_PERCENT: i32 = 50;
+/// Santé de la cité (`Zeus.exe`, 0x566c00) : chaque mois, la cible est la moyenne, par
+/// habitant, de 50 pour une maison que visite un médecin et 50 pour une maison qui a
+/// mangé, plus un bonus pour les petites cités ; la santé s'en approche d'un point par
+/// jour (0x566b90). Elle part de 80.
+const START_HEALTH: i32 = 80;
+const HEALER_HEALTH: i32 = 50;
+const FED_HEALTH: i32 = 50;
+const HEALTH_POPULATION_BONUS: [(i32, i32); 10] = [(100, 80), (200, 80), (300, 70), (400, 60), (500, 50), (600, 40), (700, 30), (800, 20), (900, 10), (1000, 0)];
+/// Épidémies (0x447ff0) : chances sur 10 000, chaque jour, selon la santé ; au plus une
+/// par mois, chances×384/10 000 sur deux années, et la moitié de ce nombre dans l'année.
+/// Une épidémie frappe 40 % des maisons habitées, les plus exposées d'abord (sans
+/// médecin, puis sans vivres) : la première moitié à coup sûr, les autres une fois sur
+/// deux (0x448490) ; elle emporte une part des habitants selon la difficulté (0x447f70).
+const PLAGUE_ODDS: [(i32, i32); 7] = [(10, 300), (20, 250), (30, 200), (45, 100), (60, 50), (75, 25), (100, 0)];
+const PLAGUE_DAYS: i32 = 384;
+const PLAGUE_HOUSES_PERCENT: i32 = 40;
+const FED_PLAGUE_SHIELD: i32 = 20;
+const PLAGUE_DEATHS: [(i32, i32); 5] = [(1, 4), (1, 3), (1, 2), (2, 3), (1, 1)];
 /// Durée d'un incendie avant qu'il ne reste que des décombres.
 const FIRE_TICKS: u64 = TICKS_PER_MONTH;
 /// Images de décombres dans `zeus_terrain.sg3`.
@@ -930,7 +947,6 @@ pub struct House {
     /// Risques de criminalité et de maladie accumulés depuis le dernier passage d'un
     /// garde ou d'un médecin.
     pub crime: i32,
-    pub disease: i32,
     /// La maison a mangé au dernier mois ; sinon, depuis combien de mises à jour de
     /// l'humeur elle a faim (au plus 3).
     pub ate: bool,
@@ -1213,6 +1229,12 @@ pub struct World {
     pub grown: bool,
     /// Mois consécutifs de trésor négatif.
     pub months_in_debt: u32,
+    /// Santé de la cité et santé visée (0 à 100), épidémies de l'année en cours et de
+    /// la précédente, et épidémie survenue ce mois-ci.
+    pub health: i32,
+    health_target: i32,
+    plagues: (u32, u32),
+    plague_month: bool,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
     /// et cadeaux reçus depuis la dernière lecture : (cité, ressource, quantité).
     pub carried: [i32; RESOURCES],
@@ -1296,6 +1318,10 @@ impl World {
             sentiment: START_SENTIMENT,
             grown: false,
             months_in_debt: 0,
+            health: START_HEALTH,
+            health_target: START_HEALTH,
+            plagues: (0, 0),
+            plague_month: false,
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
@@ -1630,7 +1656,7 @@ impl World {
         let id = self.buildings.len() as u16;
         let first_level = if size == ELITE_SIZE { ELITE_FIRST_LEVEL } else { 0 };
         let house = (function == Function::House)
-            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()], crime: 0, disease: 0, ate: false, hungry: 0 });
+            .then_some(House { level: first_level, population: 0, arriving: 0, covered_until: [0; SERVICES.len()], goods: [0; GOODS.len()], crime: 0, ate: false, hungry: 0 });
         self.buildings.push(Some(Building {
             kind,
             x: x as usize,
@@ -3109,6 +3135,7 @@ impl World {
         if self.ticks % TICKS_PER_DAY == 0 {
             self.update_risks();
             self.supply_sites();
+            self.update_health();
         }
         // Humeur et criminalité : aussi en milieu de mois.
         if self.ticks % TICKS_PER_MONTH == TICKS_PER_MONTH / 2 {
@@ -3119,6 +3146,7 @@ impl World {
             self.update_houses();
             self.assign_workers();
             self.settle_month();
+            self.aim_health();
         }
     }
 
@@ -3284,7 +3312,6 @@ impl World {
             if self.next_random() % RISK_DAILY_CHANCE != 0 {
                 continue;
             }
-            self.update_house_risks(id);
             let Some(building) = self.buildings[id].as_mut() else { continue };
             let kind = &self.kinds[building.kind];
             building.fire += kind.fire_risk;
@@ -3298,21 +3325,68 @@ impl World {
         }
     }
 
-    /// Maladie d'une maison habitée, au même rythme que l'incendie, selon l'incrément
-    /// de son niveau de logement ; passé le seuil, elle emporte une part des habitants.
-    fn update_house_risks(&mut self, id: usize) {
-        let Some(building) = self.buildings[id].as_mut() else { return };
-        let (x, y) = (building.x, building.y);
-        let Some(house) = building.house.as_mut() else { return };
-        let Some(model) = self.house_levels.get(house.level) else { return };
-        house.disease += model.disease.max(0);
-        if house.disease > RISK_LIMIT {
-            house.disease = 0;
-            let dead = house.population * PLAGUE_PERCENT / 100;
-            if dead > 0 {
-                house.population -= dead;
-                self.incidents.push(Incident::Plague { dead, x, y });
+    /// Santé visée pour le mois (`Zeus.exe`, 0x566c00) ; une nouvelle épidémie redevient
+    /// possible.
+    fn aim_health(&mut self) {
+        let now = self.ticks;
+        let (mut people, mut weighted) = (0, 0);
+        for house in self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0) {
+            let healed = if house.has(Service::Health, now) { HEALER_HEALTH } else { 0 };
+            let fed = if house.ate { FED_HEALTH } else { 0 };
+            people += house.population;
+            weighted += house.population * (healed + fed);
+        }
+        let average = if people > 0 { weighted / people } else { 0 };
+        let bonus = HEALTH_POPULATION_BONUS.iter().find(|(below, _)| people < *below).map_or(0, |&(_, bonus)| bonus);
+        self.health_target = (average + bonus).clamp(0, 100);
+        self.plague_month = false;
+    }
+
+    /// Chaque jour, la santé se rapproche d'un point de sa cible, puis une épidémie peut
+    /// éclater (`Zeus.exe`, 0x566b90 et 0x447ff0).
+    fn update_health(&mut self) {
+        self.health = (self.health + (self.health_target - self.health).signum()).clamp(0, 100);
+        let Some(&(_, odds)) = PLAGUE_ODDS.iter().find(|(below, _)| self.health < *below) else { return };
+        let most = ((odds * PLAGUE_DAYS + 9_999) / 10_000) as u32;
+        let (this_year, last_year) = self.plagues;
+        if this_year + last_year >= most || self.plague_month || this_year >= most.div_ceil(2) {
+            return;
+        }
+        if (self.next_random() % 10_000) < odds as u32 {
+            self.plague();
+        }
+    }
+
+    fn plague(&mut self) {
+        self.plague_month = true;
+        self.plagues.0 += 1;
+        let now = self.ticks;
+        // Les maisons habitées, des plus exposées aux mieux protégées.
+        let mut houses: Vec<(i32, usize)> = (0..self.buildings.len())
+            .filter_map(|id| {
+                let house = self.buildings[id].as_ref()?.house.as_ref().filter(|h| h.population > 0)?;
+                let care = house.covered_until[Service::Health as usize].saturating_sub(now).div_ceil(TICKS_PER_DAY) as i32;
+                Some((if house.ate { FED_PLAGUE_SHIELD } else { 0 } + care, id))
+            })
+            .collect();
+        houses.sort();
+        let stricken = houses.len() as i32 * 2 * PLAGUE_HOUSES_PERCENT / 200;
+        let (part, whole) = PLAGUE_DEATHS[self.difficulty.min(PLAGUE_DEATHS.len() - 1)];
+        let (mut dead, mut at) = (0, None);
+        for (rank, &(_, id)) in houses.iter().take(stricken as usize).enumerate() {
+            if rank as i32 >= stricken / 2 && self.next_random() % 2 == 0 {
+                continue;
             }
+            let Some(building) = self.buildings[id].as_mut() else { continue };
+            let (x, y) = (building.x, building.y);
+            let Some(house) = building.house.as_mut() else { continue };
+            let killed = house.population * part / whole;
+            house.population -= killed;
+            dead += killed;
+            at.get_or_insert((x, y));
+        }
+        if let Some((x, y)) = at.filter(|_| dead > 0) {
+            self.incidents.push(Incident::Plague { dead, x, y });
         }
     }
 
@@ -3497,6 +3571,7 @@ impl World {
         if (self.ticks / TICKS_PER_MONTH) % 12 == 0 {
             self.best_year_profit = Some(self.best_year_profit.map_or(self.year_profit, |best| best.max(self.year_profit)));
             self.year_profit = 0;
+            self.plagues = (0, self.plagues.0);
             for (best, year) in self.best_produced.iter_mut().zip(&mut self.produced) {
                 *best = (*best).max(std::mem::take(year));
             }
@@ -3859,14 +3934,10 @@ impl World {
             match &mut rounds {
                 Rounds::Service(service) => {
                     house.covered_until[*service as usize] = until;
-                    // Le garde chasse les voleurs, le médecin soigne.
-                    match service {
-                        Service::Security => {
-                            let base = self.house_levels.get(house.level).map_or(0, |l| l.crime_base);
-                            house.crime = (house.crime - GUARD_CRIME_REDUCTION).max(base).min(100);
-                        }
-                        Service::Health => house.disease = 0,
-                        _ => {}
+                    // Le garde chasse les voleurs.
+                    if *service == Service::Security {
+                        let base = self.house_levels.get(house.level).map_or(0, |l| l.crime_base);
+                        house.crime = (house.crime - GUARD_CRIME_REDUCTION).max(base).min(100);
                     }
                 }
                 Rounds::Goods { good, carried, .. } => {
@@ -4409,6 +4480,7 @@ impl World {
         let _ = writeln!(out, "salaires {}", self.wage_shift);
         let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
         let _ = writeln!(out, "migrants {} {} {} {}", self.migrants.0, self.migrants.1, self.migration_pause.0, self.migration_pause.1);
+        let _ = writeln!(out, "sante {} {} {} {} {}", self.health, self.health_target, self.plagues.0, self.plagues.1, self.plague_month as u8);
         for &(city, until) in &self.armies_away {
             let _ = writeln!(out, "absente {city} {until}");
         }
@@ -4488,8 +4560,8 @@ impl World {
                 let goods: Vec<String> = h.goods.iter().map(i32::to_string).collect();
                 let _ = write!(out, " maison {} {} {} {} {}", h.level, h.population, h.arriving, goods.join(" "), covered.join(" "));
             }
-            if let Some(h) = b.house.as_ref().filter(|h| h.crime != 0 || h.disease != 0 || h.ate || h.hungry != 0) {
-                let _ = write!(out, " risques {} {} {} {}", h.crime, h.disease, h.ate as u8, h.hungry);
+            if let Some(h) = b.house.as_ref().filter(|h| h.crime != 0 || h.ate || h.hungry != 0) {
+                let _ = write!(out, " risques {} 0 {} {}", h.crime, h.ate as u8, h.hungry);
             }
             if b.foods.iter().any(|&f| f != 0) {
                 let _ = write!(out, " vivres {}", b.foods.iter().map(i32::to_string).collect::<Vec<_>>().join(" "));
@@ -4552,6 +4624,7 @@ impl World {
         let mut raid = None;
         let mut mood = None;
         let mut migration = None;
+        let mut health = None;
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
         for (number, line) in lines.enumerate() {
@@ -4590,6 +4663,7 @@ impl World {
                 }),
                 "invasion" => invasions.push((number_at(0)? as u64, number_at(1)? as u8)),
                 "salaires" => wage_shift = number_at(0)? as i32,
+                "sante" => health = Some((number_at(0)? as i32, number_at(1)? as i32, (number_at(2)? as u32, number_at(3)? as u32), number_at(4)? != 0)),
                 "migrants" => migration = Some(((number_at(0)? as i32, number_at(1)? as i32), (number_at(2)? as u8, number_at(3)? as u8))),
                 "humeur" => mood = Some((number_at(0)? as usize, number_at(1)? as i32, number_at(2).unwrap_or(0) != 0, number_at(3).unwrap_or(0) as u32)),
                 "raid" => raid = Some(Raid { city: number_at(0)? as usize, soldiers: number_at(1)? as i32, buildings: number_at(2)? as i32, limit: number_at(3)? as i32 }),
@@ -4676,7 +4750,6 @@ impl World {
                                 goods,
                                 covered_until,
                                 crime: 0,
-                                disease: 0,
                                 ate: false,
                                 hungry: 0,
                             })
@@ -4685,7 +4758,7 @@ impl World {
                     };
                     let mut house = house;
                     if let (Some(house), Some(at)) = (house.as_mut(), rest.iter().position(|&w| w == "risques")) {
-                        (house.crime, house.disease) = (number_at(at + 1)? as i32, number_at(at + 2)? as i32);
+                        house.crime = number_at(at + 1)? as i32;
                         (house.ate, house.hungry) = (number_at(at + 3).unwrap_or(0) != 0, number_at(at + 4).unwrap_or(0).min(3) as u8);
                     }
                     // Vivres du grenier par ressource : absents des sauvegardes plus
@@ -4815,6 +4888,7 @@ impl World {
         self.ticks = ticks as u64;
         self.money = money as i32;
         (self.migrants, self.migration_pause) = migration.unwrap_or_default();
+        (self.health, self.health_target, self.plagues, self.plague_month) = health.unwrap_or((START_HEALTH, START_HEALTH, (0, 0), false));
         self.random = (random as u32).max(1);
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;

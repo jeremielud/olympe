@@ -34,8 +34,8 @@ pub struct HouseModel {
     pub arms: i32,
     pub capacity: i32,
     pub tax_multiplier: i32,
-    /// Risques de criminalité (incrément et base) et de maladie, qui montent comme
-    /// celui d'incendie ; négatifs, ils n'en font courir aucun.
+    /// Risques de criminalité (incrément et base) et de maladie ; `Zeus.exe` ne lit pas
+    /// la colonne de la maladie (les épidémies dépendent de la santé de la cité).
     pub crime: i32,
     pub crime_base: i32,
     pub disease: i32,

@@ -113,8 +113,13 @@ Ce qui fonctionne :
   logements les plus modestes ; plus d'arrivants après trois ans de dettes ;
 - criminalité des logements modestes comme dans le jeu (incrément et base de chaque
   niveau, écart de l'humeur à 40, passage des gardes) : au-delà de 80 une maison
-  produit un voleur, qui pille une maison luxueuse ou le trésor ; sans hôpital, une
-  épidémie emporte des habitants ;
+  produit un voleur, qui pille une maison luxueuse ou le trésor ;
+- santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
+  mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
+  bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut
+  éclater (jusqu'à 3 chances sur 100 par jour sous 10, une par mois au plus) et
+  frapper 40 % des maisons, les moins soignées d'abord, emportant d'un quart des
+  habitants en très facile à tous en très difficile ;
 - sauvegarde et rechargement d'une partie.
 
 Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
@@ -131,7 +136,7 @@ l'interface est celle d'Olympe, habillée des images d'origine. Les rythmes des
 producteurs, des ateliers et de la pêcherie, et l'usure de la laine, de l'huile et du
 vin dans les maisons, sont ceux du jeu ; d'autres réglages d'équilibre (laiterie,
 pavillon de chasse, quantités de matériaux) sont approchés et non repris du jeu, de
-même que le butin des voleurs et le rythme et la gravité des épidémies.
+même que le butin des voleurs.
 
 
 ## Installation
