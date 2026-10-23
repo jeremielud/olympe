@@ -142,10 +142,12 @@ orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
 sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
 figurés par des obélisques ; 
 l'interface est celle d'Olympe, habillée des images d'origine. Les rythmes des
-producteurs, des ateliers et de la pêcherie, et l'usure de la laine, de l'huile et du
-vin dans les maisons, sont ceux du jeu ; d'autres réglages d'équilibre (laiterie,
-pavillon de chasse, quantités de matériaux) sont approchés et non repris du jeu, de
-même que le butin des voleurs.
+producteurs et des ateliers, et l'usure de la laine, de l'huile et du vin dans les
+maisons, sont ceux du jeu ; ceux de la pêcherie (selon la distance au banc de poissons
+le plus proche placé dans l'éditeur), de la laiterie et du pavillon de chasse ont été
+mesurés dans le jeu, mais Olympe ne fait paraître ni bateaux, ni chèvres, ni gibier.
+D'autres réglages d'équilibre (quantités de matériaux) sont approchés et non repris du
+jeu, de même que le butin des voleurs.
 
 
 ## Installation

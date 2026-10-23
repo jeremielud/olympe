@@ -40,6 +40,12 @@ const ENTRY_POINTS_OFFSET: usize = 908;
 const DISASTER_X_OFFSET: usize = 916;
 const DISASTER_Y_OFFSET: usize = 932;
 const DISASTER_POINTS: usize = 8;
+/// Points de poissons de l'éditeur (« Sea Animal Points ») : huit abscisses (16 bits)
+/// en 668, huit ordonnées en 684, -1 pour un point vide. Les bancs de poissons du jeu
+/// s'y tiennent.
+const FISH_X_OFFSET: usize = 668;
+const FISH_Y_OFFSET: usize = 684;
+const FISH_POINTS: usize = 8;
 const INVASION_X_OFFSET: usize = 744;
 const INVASION_Y_OFFSET: usize = 776;
 const LAND_INVASION_POINTS: usize = 8;
@@ -261,6 +267,18 @@ impl Map {
         let (x, y) = (value(DISASTER_X_OFFSET + 2 * i)?, value(DISASTER_Y_OFFSET + 2 * i)?);
         let in_grid = |v: i16| (0..GRID as i16).contains(&v);
         (in_grid(x) && in_grid(y)).then_some((x as usize, y as usize))
+    }
+
+    /// Points de poissons placés dans l'éditeur.
+    pub fn fish_points(&self) -> Vec<(usize, usize)> {
+        let Some(data) = self.blocks.get(SCENARIO).map(|b| &b.data) else { return Vec::new() };
+        let value = |at: usize| data.get(at..at + 2).map(|b| i16::from_le_bytes([b[0], b[1]]));
+        let in_grid = |v: i16| (0..GRID as i16).contains(&v);
+        (0..FISH_POINTS)
+            .filter_map(|i| Some((value(FISH_X_OFFSET + 2 * i)?, value(FISH_Y_OFFSET + 2 * i)?)))
+            .filter(|&(x, y)| in_grid(x) && in_grid(y))
+            .map(|(x, y)| (x as usize, y as usize))
+            .collect()
     }
 
     /// Prix des marchandises réglés dans l'éditeur (« World Properties ») : un bloc de

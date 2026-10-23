@@ -269,3 +269,14 @@ fn rule_goals_name_foreign_cities() {
     assert_eq!(cities[1].sells, [(7, 36), (12, 24), (13, 24), (14, 24)]);
     assert_eq!((cities[3].sells.clone(), cities[3].buys.clone()), (vec![(14, 12)], vec![(12, 12), (21, 12)]));
 }
+
+/// Points de poissons de l'éditeur : ceux de l'Odyssée sont tous dans l'eau.
+#[test]
+fn fish_points_lie_in_the_water() {
+    let Some(data) = data() else { return };
+    let map = Map::parse(&fs::read(data.join("adventures/l'odyssée/l'odysséep.map")).unwrap()).unwrap();
+    let fish = map.fish_points();
+    assert_eq!(fish.len(), 8);
+    assert_eq!(fish[0], (99, 69));
+    assert!(fish.iter().all(|&(x, y)| map.terrain(x, y) & 0x4 != 0), "{fish:?}");
+}

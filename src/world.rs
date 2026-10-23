@@ -548,11 +548,18 @@ const WORKSHOP_TICKS: u64 = 2 * TICKS_PER_MONTH;
 const SCULPTURE_BRONZE: i32 = 4;
 const GOODS_CART: i32 = 1;
 const PRODUCER_STORAGE: i32 = 8;
-/// Une pêcherie livre 100 unités tous les 20 jours (progression de 200), soit six
-/// chargements de vivres d'Olympe (de 16 unités : un chargement nourrit 64 habitants
-/// un mois, et le jeu donne 25 unités pour 100 habitants par mois).
+/// Une pêcherie livre 100 unités par sortie de son bateau, soit six chargements de
+/// vivres d'Olympe (de 16 unités : un chargement nourrit 64 habitants un mois, et le jeu
+/// donne 25 unités pour 100 habitants par mois). Mesuré dans le jeu : le bateau parcourt
+/// environ 33 cases en 9 jours jusqu'au banc le plus proche, pêche 8 jours (deux tiers
+/// de ce temps avec Poséidon, `Zeus.exe` 0x4b624c), revient et décharge en 4 jours. Sans
+/// banc sur la carte, une sortie dure 20 jours (Olympe).
 const FISHERY_TICKS: u64 = 20 * TICKS_PER_DAY;
-const FISHERY_LOADS: i32 = 6;
+const FOOD_CART_LOADS: i32 = 6;
+const BOAT_TILES: u64 = 33;
+const BOAT_DAYS: u64 = 9;
+const FISHING_TICKS: u64 = 8 * TICKS_PER_DAY;
+const UNLOADING_TICKS: u64 = 4 * TICKS_PER_DAY;
 /// Une trière demande quatre charges de bois et trois mois de chantier (barème
 /// d'Olympe), puis une charge d'armement pour être opérationnelle (aide du jeu).
 const TRIREME_WOOD: i32 = 4;
@@ -567,8 +574,10 @@ const RACETRACK_CURVES: [(u8, usize); 4] = [(0b1100, 423), (0b1001, 425), (0b001
 /// Recette mensuelle d'un hippodrome achevé, par section (barème d'Olympe).
 const RACETRACK_INCOME: i32 = 10;
 const TRIREME_TICKS: u64 = 3 * TICKS_PER_MONTH;
-/// Durée de fabrication d'un chargement de fromage : deux par mois (provisoire).
-const DAIRY_TICKS: u64 = TICKS_PER_MONTH / 2;
+/// Laiterie et pavillon de chasse, mesurés dans le jeu (troupeau d'une quinzaine de
+/// chèvres, sangliers à proximité) : 100 unités, soit une charrette de six chargements,
+/// environ tous les 10 jours (9 pour la chasse). Olympe ne fait pas paraître les bêtes.
+const DAIRY_TICKS: u64 = 10 * TICKS_PER_DAY;
 /// Matière première qu'un atelier accepte d'avance.
 const WORKSHOP_RAW_STORAGE: i32 = 8;
 /// Réserve de laine, d'huile ou de vin qu'une maison cherche à garder (200 unités
@@ -3718,7 +3727,8 @@ impl World {
 
     /// Activité de chaque bâtiment : pousse, livraisons, achats, tournées.
     fn run_buildings(&mut self) {
-        let fishing = if self.has_sanctuary(POSEIDON) { FISHERY_TICKS * POSEIDON_FISHING_PERCENT / 100 } else { FISHERY_TICKS };
+        let fishing = if self.has_sanctuary(POSEIDON) { FISHING_TICKS * POSEIDON_FISHING_PERCENT / 100 } else { FISHING_TICKS };
+        let fish = self.map.fish_points();
         // Disciplines dont une école est en activité.
         let palace = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Palace);
         let mut taught = [false; SERVICES.len()];
@@ -3766,11 +3776,17 @@ impl World {
                 }
                 Function::Producer(_) | Function::Fishery => {
                     let good = if let Function::Producer(good) = function { good } else { Good::Food };
-                    // Laiterie et pavillon de chasse : barème d'Olympe ; pêcherie et
-                    // autres producteurs : celui du jeu.
+                    // Pêcherie, laiterie et pavillon de chasse : rythmes mesurés dans le
+                    // jeu ; autres producteurs : ceux de `Zeus.exe`.
                     let (needed, loads, cart) = match function {
-                        Function::Fishery => (fishing, FISHERY_LOADS, FISHERY_LOADS),
-                        _ if good == Good::Food => (DAIRY_TICKS, 1, CARRIER_LOAD),
+                        Function::Fishery => {
+                            // Distance au banc le plus proche, en cases (le bateau va en diagonale).
+                            let (x, y) = (building.x as i64, building.y as i64);
+                            let near = fish.iter().map(|&(fx, fy)| (fx as i64 - x).abs().max((fy as i64 - y).abs()) as u64).min();
+                            let trip = near.map_or(FISHERY_TICKS, |d| 2 * d * BOAT_DAYS * TICKS_PER_DAY / BOAT_TILES + fishing + UNLOADING_TICKS);
+                            (trip, FOOD_CART_LOADS, FOOD_CART_LOADS)
+                        }
+                        _ if good == Good::Food => (DAIRY_TICKS, FOOD_CART_LOADS, FOOD_CART_LOADS),
                         _ => (PRODUCTION_TICKS, 1, GOODS_CART),
                     };
                     if self.ticks - building.sown_at >= needed {
@@ -3889,8 +3905,8 @@ impl World {
         };
         let Some((granary, path)) = found else { return };
         let building = self.buildings[farm].as_mut().unwrap();
-        // Une pêcherie charge toute sa prise (une charrette de 100 unités du jeu).
-        let load = building.stock.min(if function == Function::Fishery { FISHERY_LOADS } else { CARRIER_LOAD });
+        // Pêcherie, laiterie et pavillon de chasse chargent une charrette de 100 unités du jeu.
+        let load = building.stock.min(if matches!(function, Function::Fishery | Function::Producer(Good::Food)) { FOOD_CART_LOADS } else { CARRIER_LOAD });
         building.stock -= load;
         building.errand_out = true;
         let role = Role::Deliver { to: granary, load, from: farm as u16 };
