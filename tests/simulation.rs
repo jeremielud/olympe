@@ -113,6 +113,15 @@ fn houses_burn_without_maintenance_and_stand_with_it() {
     (0..3 * 9600).for_each(|_| world.tick());
     assert_eq!(world.buildings.iter().flatten().count(), 5);
     assert!(world.disasters.is_empty());
+
+    // Sans maintenance mais avec le sanctuaire d'Héphaïstos : aucun incendie (les huttes
+    // ne risquent pas de s'effondrer).
+    let (mut world, x, y) = self::world(&data);
+    street(&mut world, x, y);
+    world.kinds.push(Kind::simple("sanctuaire d'Héphaïstos".into(), 0, 3, 1460, Function::Sanctuary { god: 9, needs: [0, 0, 0] }, 0));
+    assert!(world.place_building(world.kinds.len() - 1, x, y + 5));
+    (0..3 * 9600).for_each(|_| world.tick());
+    assert!(world.disasters.is_empty());
 }
 
 #[test]
@@ -998,6 +1007,21 @@ fn guards_and_dionysus_keep_thieves_away() {
         let protected = run(protection);
         assert!(protected.is_empty(), "{protected:?}");
     }
+}
+
+#[test]
+fn a_sickly_city_dwindles_at_the_turn_of_the_year() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 5));
+    let year = 12 * TICKS_PER_MONTH;
+    (0..year - 1).for_each(|_| world.tick());
+    assert_eq!(world.population(), 32);
+    // Santé de 5 et santé visée sous 30 : 5 % des habitants meurent dans l'année.
+    (world.health, world.health_target) = (5, 5);
+    world.tick();
+    assert_eq!(world.population(), 31);
 }
 
 #[test]

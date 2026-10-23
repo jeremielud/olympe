@@ -599,6 +599,25 @@ const THEFT_PER_PERSON: i32 = 2;
 const DIONYSUS: u8 = 10;
 const DIONYSUS_CRIME_RELIEF: i32 = 20;
 const APHRODITE: u8 = 6;
+/// Autres bienfaits permanents : Héphaïstos ôte tout risque d'incendie (règles des
+/// bâtiments, colonne 6, 0x433d50) ; Aphrodite abaisse de 10 l'attrait que demandent
+/// les logements pour ne pas régresser et pour évoluer (0x433d80) ; les bateaux de pêche
+/// de Poséidon reviennent en 66 % du temps (0x4b624c) ; Héra ajoute 3 points au croît
+/// annuel de la population (0x566d40).
+const HEPHAISTOS: u8 = 9;
+const APHRODITE_APPEAL: i32 = 10;
+const POSEIDON: u8 = 1;
+const POSEIDON_FISHING_PERCENT: u64 = 66;
+const HERA: u8 = 12;
+const HERA_GROWTH: i32 = 3;
+/// Croît naturel, une fois l'an (`Zeus.exe`, 0x566d40) : pour cent de la population
+/// selon la santé (au-delà de 90, 80, 70, 60, 50, 40) ; en dessous, -1 tant que la santé
+/// visée dépasse 30, sinon -2, -3 ou -5 au-delà de 20, 10 ou 0. Les naissances
+/// remplissent les logements modestes déjà habités (0x486ef0), les décès les vident
+/// (0x487020).
+const HEALTHY_GROWTH: [(i32, i32); 6] = [(90, 6), (80, 4), (70, 3), (60, 2), (50, 1), (40, 0)];
+const DECLINE_TARGET: i32 = 30;
+const SICKLY_DECLINE: [(i32, i32); 3] = [(20, -2), (10, -3), (0, -5)];
 /// Santé de la cité (`Zeus.exe`, 0x566c00) : chaque mois, la cible est la moyenne, par
 /// habitant, de 50 pour une maison que visite un médecin et 50 pour une maison qui a
 /// mangé, plus un bonus pour les petites cités ; la santé s'en approche d'un point par
@@ -1240,7 +1259,7 @@ pub struct World {
     /// Santé de la cité et santé visée (0 à 100), épidémies de l'année en cours et de
     /// la précédente, et épidémie survenue ce mois-ci.
     pub health: i32,
-    health_target: i32,
+    pub health_target: i32,
     plagues: (u32, u32),
     plague_month: bool,
     /// Marchandises mises de côté par la cité précédente, que ses cadeaux apportent,
@@ -3316,6 +3335,7 @@ impl World {
     /// Chaque jour, les bâtiments que la maintenance ne visite pas risquent de se
     /// dégrader ; passé le seuil, ils brûlent ou s'effondrent.
     fn update_risks(&mut self) {
+        let fireproof = self.has_sanctuary(HEPHAISTOS);
         for id in 0..self.buildings.len() {
             let Some(building) = self.buildings[id].as_ref() else { continue };
             // Une maison vide ne risque rien.
@@ -3327,7 +3347,9 @@ impl World {
             }
             let Some(building) = self.buildings[id].as_mut() else { continue };
             let kind = &self.kinds[building.kind];
-            building.fire += kind.fire_risk;
+            if !fireproof {
+                building.fire += kind.fire_risk;
+            }
             building.damage += kind.damage_risk;
             let (burns, collapses) = (building.fire > RISK_LIMIT, building.damage > RISK_LIMIT);
             let (kind, x, y) = (building.kind, building.x, building.y);
@@ -3367,6 +3389,34 @@ impl World {
         }
         if (self.next_random() % 10_000) < odds as u32 {
             self.plague();
+        }
+    }
+
+    /// Naissances et décès de l'année (`Zeus.exe`, 0x566d40).
+    fn natural_growth(&mut self) {
+        let healthy = HEALTHY_GROWTH.iter().find(|(above, _)| self.health > *above).map(|&(_, rate)| rate);
+        let rate = healthy.unwrap_or(if self.health_target > DECLINE_TARGET {
+            -1
+        } else {
+            SICKLY_DECLINE.iter().find(|(above, _)| self.health > *above).map_or(0, |&(_, rate)| rate)
+        }) + if self.has_sanctuary(HERA) { HERA_GROWTH } else { 0 };
+        let mut count = self.population() * rate.abs() / 100;
+        for id in 0..self.buildings.len() {
+            if count == 0 {
+                break;
+            }
+            let capacity = self.buildings[id].as_ref().and_then(|b| b.house.as_ref()).map_or(0, |h| self.capacity(h));
+            let Some(house) = self.buildings[id].as_mut().and_then(|b| b.house.as_mut()).filter(|h| h.level < ELITE_FIRST_LEVEL) else { continue };
+            let change = if rate > 0 {
+                if house.population == 0 {
+                    continue;
+                }
+                (capacity - house.population - house.arriving).clamp(0, count)
+            } else {
+                -house.population.min(count)
+            };
+            house.population += change;
+            count -= change.abs();
         }
     }
 
@@ -3586,6 +3636,7 @@ impl World {
             self.best_year_profit = Some(self.best_year_profit.map_or(self.year_profit, |best| best.max(self.year_profit)));
             self.year_profit = 0;
             self.plagues = (0, self.plagues.0);
+            self.natural_growth();
             for (best, year) in self.best_produced.iter_mut().zip(&mut self.produced) {
                 *best = (*best).max(std::mem::take(year));
             }
@@ -3648,6 +3699,7 @@ impl World {
 
     /// Activité de chaque bâtiment : pousse, livraisons, achats, tournées.
     fn run_buildings(&mut self) {
+        let fishing = if self.has_sanctuary(POSEIDON) { FISHERY_TICKS * POSEIDON_FISHING_PERCENT / 100 } else { FISHERY_TICKS };
         // Disciplines dont une école est en activité.
         let palace = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Palace);
         let mut taught = [false; SERVICES.len()];
@@ -3698,7 +3750,7 @@ impl World {
                     // Laiterie et pavillon de chasse : barème d'Olympe ; pêcherie et
                     // autres producteurs : celui du jeu.
                     let (needed, loads, cart) = match function {
-                        Function::Fishery => (FISHERY_TICKS, FISHERY_LOADS, FISHERY_LOADS),
+                        Function::Fishery => (fishing, FISHERY_LOADS, FISHERY_LOADS),
                         _ if good == Good::Food => (DAIRY_TICKS, 1, CARRIER_LOAD),
                         _ => (PRODUCTION_TICKS, 1, GOODS_CART),
                     };
@@ -4197,9 +4249,10 @@ impl World {
         // Le stade profite à toute la cité dès qu'il a son personnel (lecture provisoire
         // de l'exigence « stade » des règles).
         let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        let appeal_relief = if self.has_sanctuary(APHRODITE) { APHRODITE_APPEAL } else { 0 };
         for id in 0..self.buildings.len() {
             let Some(building) = self.buildings[id].as_ref() else { continue };
-            let appeal = self.appeal(building.x as i32, building.y as i32);
+            let appeal = self.appeal(building.x as i32, building.y as i32) + appeal_relief;
             let Some(house) = self.buildings[id].as_mut().and_then(|b| b.house.as_mut()) else { continue };
             // Une maison vide attend ses habitants ; un terrain de luxe, lui, attend
             // d'abord d'être desservi pour les attirer.
