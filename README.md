@@ -124,9 +124,10 @@ cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre n
 orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
 sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
 figurés par des obélisques ; 
-l'interface est celle d'Olympe, habillée des images d'origine. Plusieurs réglages
-d'équilibre (rendements, consommations, quantités de matériaux) sont approchés et non
-repris du jeu, de même que les seuils d'humeur qui arrêtent l'immigration ou font partir les
+l'interface est celle d'Olympe, habillée des images d'origine. Les rythmes des
+producteurs, des ateliers et de la pêcherie, et l'usure de la laine, de l'huile et du
+vin dans les maisons, sont ceux du jeu ; d'autres réglages d'équilibre (laiterie,
+pavillon de chasse, quantités de matériaux) sont approchés et non repris du jeu, de même que les seuils d'humeur qui arrêtent l'immigration ou font partir les
 habitants, le butin des voleurs et le rythme et la gravité des épidémies.
 
 

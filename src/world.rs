@@ -519,10 +519,21 @@ const MONUMENT_PAD_IMAGE: usize = 664;
 const SANCTUARY_FLOOR_IMAGES: std::ops::RangeInclusive<usize> = 1447..=1458;
 /// Dallage uni (six variantes) qui tient leur place pendant le chantier.
 const SANCTUARY_PLAIN_IMAGE: usize = 1453;
-/// Part de la population en âge de travailler, en pour cent.
-/// Durée de fabrication d'un chargement (bergerie, pressoir).
-const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH / 8;
+/// Production (`Zeus.exe`, 0x485360 et 0x48cfb0) : la progression d'un bâtiment au
+/// complet monte de 10 par jour ; un producteur livre 100 unités (un chargement de
+/// marchandise) à 160, soit tous les 16 jours, et un atelier, qui consomme 100 unités
+/// de matière (400 de bronze pour une sculpture), à 320. Chaque chargement part
+/// aussitôt en charrette.
+const PRODUCTION_TICKS: u64 = TICKS_PER_MONTH;
+const WORKSHOP_TICKS: u64 = 2 * TICKS_PER_MONTH;
+const SCULPTURE_BRONZE: i32 = 4;
+const GOODS_CART: i32 = 1;
 const PRODUCER_STORAGE: i32 = 8;
+/// Une pêcherie livre 100 unités tous les 20 jours (progression de 200), soit six
+/// chargements de vivres d'Olympe (de 16 unités : un chargement nourrit 64 habitants
+/// un mois, et le jeu donne 25 unités pour 100 habitants par mois).
+const FISHERY_TICKS: u64 = 20 * TICKS_PER_DAY;
+const FISHERY_LOADS: i32 = 6;
 /// Une trière demande quatre charges de bois et trois mois de chantier (barème
 /// d'Olympe), puis une charge d'armement pour être opérationnelle (aide du jeu).
 const TRIREME_WOOD: i32 = 4;
@@ -539,13 +550,14 @@ const RACETRACK_INCOME: i32 = 10;
 const TRIREME_TICKS: u64 = 3 * TICKS_PER_MONTH;
 /// Durée de fabrication d'un chargement de fromage : deux par mois (provisoire).
 const DAIRY_TICKS: u64 = TICKS_PER_MONTH / 2;
-/// Durée de fonte d'une sculpture : deux par mois (provisoire).
-const SCULPTURE_TICKS: u64 = TICKS_PER_MONTH / 2;
 /// Matière première qu'un atelier accepte d'avance.
 const WORKSHOP_RAW_STORAGE: i32 = 8;
-/// Réserve de laine ou d'huile qu'une maison cherche à garder, et mois que dure un chargement.
+/// Réserve de laine, d'huile ou de vin qu'une maison cherche à garder (200 unités
+/// du jeu), et mois que dure un chargement : une maison en consomme une unité aux
+/// jours 0 et 7 de chaque mois (`Zeus.exe`, 0x484c50), soit 100 unités en 50 mois.
+/// L'armement ne s'use pas.
 const HOUSE_GOODS_RESERVE: i32 = 2;
-const GOODS_MONTHS: u64 = 4;
+const GOODS_MONTHS: u64 = 50;
 /// L'attrait ne rayonne jamais plus loin, quelles que soient les règles.
 const APPEAL_MAX_RANGE: i32 = 6;
 const APPEAL_LIMIT: i32 = 100;
@@ -3581,32 +3593,38 @@ impl World {
                 }
                 Function::Producer(_) | Function::Fishery => {
                     let good = if let Function::Producer(good) = function { good } else { Good::Food };
-                    // Une laiterie met plus de temps à faire un chargement de vivres.
-                    let needed = if good == Good::Food { DAIRY_TICKS } else { PRODUCTION_TICKS };
+                    // Laiterie et pavillon de chasse : barème d'Olympe ; pêcherie et
+                    // autres producteurs : celui du jeu.
+                    let (needed, loads, cart) = match function {
+                        Function::Fishery => (FISHERY_TICKS, FISHERY_LOADS, FISHERY_LOADS),
+                        _ if good == Good::Food => (DAIRY_TICKS, 1, CARRIER_LOAD),
+                        _ => (PRODUCTION_TICKS, 1, GOODS_CART),
+                    };
                     if self.ticks - building.sown_at >= needed {
                         let building = self.buildings[id].as_mut().unwrap();
                         building.sown_at = self.ticks;
                         let before = building.stock;
-                        building.stock = (building.stock + 1).min(PRODUCER_STORAGE);
+                        building.stock = (building.stock + loads).min(PRODUCER_STORAGE.max(loads));
                         let (kind, made) = (building.kind, building.stock - before);
                         self.count_production(kind, made);
                     }
-                    if stock >= CARRIER_LOAD && !errand_out {
+                    if stock >= cart && !errand_out {
                         self.send_harvest(id, function);
                     }
                 }
                 Function::Workshop(_) => {
-                    if building.raw == 0 || building.stock >= PRODUCER_STORAGE {
+                    let raw = if function == Function::Workshop(Good::Sculpture) { SCULPTURE_BRONZE } else { 1 };
+                    if building.raw < raw || building.stock >= PRODUCER_STORAGE {
                         self.buildings[id].as_mut().unwrap().sown_at = self.ticks;
-                    } else if self.ticks - building.sown_at >= if function == Function::Workshop(Good::Sculpture) { SCULPTURE_TICKS } else { PRODUCTION_TICKS } {
+                    } else if self.ticks - building.sown_at >= WORKSHOP_TICKS {
                         let building = self.buildings[id].as_mut().unwrap();
                         building.sown_at = self.ticks;
-                        building.raw -= 1;
+                        building.raw -= raw;
                         building.stock += 1;
                         let kind = building.kind;
                         self.count_production(kind, 1);
                     }
-                    if stock >= CARRIER_LOAD && !errand_out {
+                    if stock >= GOODS_CART && !errand_out {
                         self.send_harvest(id, function);
                     }
                 }
@@ -3698,7 +3716,8 @@ impl World {
         };
         let Some((granary, path)) = found else { return };
         let building = self.buildings[farm].as_mut().unwrap();
-        let load = building.stock.min(CARRIER_LOAD);
+        // Une pêcherie charge toute sa prise (une charrette de 100 unités du jeu).
+        let load = building.stock.min(if function == Function::Fishery { FISHERY_LOADS } else { CARRIER_LOAD });
         building.stock -= load;
         building.errand_out = true;
         let role = Role::Deliver { to: granary, load, from: farm as u16 };
@@ -4096,9 +4115,10 @@ impl World {
             // Les niveaux qui ne demandent aucun vivre ne mangent pas (`Zeus.exe`, 0x48b8d0).
             house.ate = fed && self.house_levels.get(house.level).is_some_and(|l| l.food_types > 0);
             house.goods[Good::Food as usize] = (house.goods[Good::Food as usize] - needed).max(0);
-            if goods_month {
-                for good in [Good::Fleece, Good::Oil, Good::Wine, Good::Arms] {
-                    house.goods[good as usize] = (house.goods[good as usize] - 1).max(0);
+            // Seules s'usent les marchandises que le niveau exige (colonnes 9 à 11).
+            if let Some(level) = self.house_levels.get(house.level).filter(|_| goods_month) {
+                for (good, used) in [(Good::Fleece, level.fleece), (Good::Oil, level.olive_oil), (Good::Wine, level.wine)] {
+                    house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
             let culture = CULTURE.iter().filter(|&&service| house.has(service, now)).count() as i32;
