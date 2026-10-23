@@ -117,7 +117,9 @@ Ce qui fonctionne :
 - bienfaits permanents des sanctuaires, comme dans le jeu : Dionysos fait baisser la
   criminalité, Aphrodite retient tous les habitants et abaisse de 10 l'attrait que
   demandent les logements, Héphaïstos ôte tout risque d'incendie, Poséidon fait
-  pêcher en deux tiers du temps, Héra ajoute 3 points au croît de la population ;
+  pêcher en deux tiers du temps, Héra ajoute 3 points au croît de la population,
+  Hermès rend les porteurs plus rapides d'un tiers, Athéna donne 4 points d'armure
+  contre les projectiles aux soldats de la cité ;
 - santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
   mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
   bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut

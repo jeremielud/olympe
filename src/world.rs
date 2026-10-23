@@ -610,6 +610,14 @@ const POSEIDON: u8 = 1;
 const POSEIDON_FISHING_PERCENT: u64 = 66;
 const HERA: u8 = 12;
 const HERA_GROWTH: i32 = 3;
+/// Caractéristiques des personnages (`Zeus.exe`, 0x4e1b20) : Hermès rend charrettes et
+/// livreurs plus rapides d'un tiers (et caravanes et navires marchands de moitié, qu'Olympe
+/// ne fait pas circuler) ; Athéna donne 4 points d'armure contre les projectiles aux
+/// soldats de la cité.
+const HERMES: u8 = 7;
+const HERMES_SPEED_PERCENT: usize = 133;
+const ATHENA: u8 = 8;
+const ATHENA_MISSILE_ARMOR: i32 = 4;
 /// Croît naturel, une fois l'an (`Zeus.exe`, 0x566d40) : pour cent de la population
 /// selon la santé (au-delà de 90, 80, 70, 60, 50, 40) ; en dessous, -1 tant que la santé
 /// visée dépasse 30, sinon -2, -3 ou -5 au-delà de 20, 10 ou 0. Les naissances
@@ -2796,7 +2804,11 @@ impl World {
         } else {
             self.fighters.citizens.get(army as usize).copied()
         };
-        found.filter(|f| f.health > 0).unwrap_or(FALLBACK_FIGHTER)
+        let mut fighter = found.filter(|f| f.health > 0).unwrap_or(FALLBACK_FIGHTER);
+        if !enemy && self.has_sanctuary(ATHENA) {
+            fighter.missile_armor += ATHENA_MISSILE_ARMOR;
+        }
+        fighter
     }
 
     /// Portée d'un soldat, en cases : celle de ses projectiles (les règles la donnent
@@ -4024,6 +4036,7 @@ impl World {
     }
 
     fn move_figures(&mut self) {
+        let carts_hasten = self.has_sanctuary(HERMES);
         // Personnages qui viennent d'atteindre une case.
         let mut reached = Vec::new();
         for (index, figure) in self.figures.iter_mut().enumerate() {
@@ -4032,11 +4045,13 @@ impl World {
                 reached.push(index);
                 continue;
             };
-            let progress = figure.frame as f32 / WALK_TICKS as f32;
+            let carrier = matches!(figure.role, Role::Deliver { .. } | Role::Supply { .. });
+            let tile_ticks = if carts_hasten && carrier { WALK_TICKS * 100 / HERMES_SPEED_PERCENT } else { WALK_TICKS };
+            let progress = (figure.frame as f32 / tile_ticks as f32).min(1.0);
             let (fx, fy) = (figure.from.0 as f32, figure.from.1 as f32);
             figure.x = fx + (tx as f32 - fx) * progress;
             figure.y = fy + (ty as f32 - fy) * progress;
-            if figure.frame >= WALK_TICKS {
+            if figure.frame >= tile_ticks {
                 figure.frame = 0;
                 figure.came_from = Some(figure.from);
                 figure.from = (tx, ty);
