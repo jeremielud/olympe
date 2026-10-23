@@ -480,7 +480,8 @@ const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 const NO_TARGET: u16 = u16::MAX;
 const MONSTER_REST_TICKS: u64 = TICKS_PER_MONTH * 2;
 const SEA_MONSTERS: [u8; 2] = [1, 10];
-/// Un dieu hostile reste six mois et détruit un bâtiment par mois (valeurs d'Olympe).
+/// Un dieu hostile reste six mois, 96 jours comme dans le jeu (`Zeus.exe`, séjour posé
+/// en 0x4ec15e…), et détruit un bâtiment par mois (rythme d'Olympe).
 const GOD_STAY_TICKS: u64 = TICKS_PER_MONTH * 6;
 const GOD_REST_TICKS: u64 = TICKS_PER_MONTH;
 /// Séjour d'un dieu hostile quand un dieu favorable protège la cité (Olympe).

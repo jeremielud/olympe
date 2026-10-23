@@ -59,7 +59,8 @@ Ce qui fonctionne :
 - dieux hostiles en personne : à la date de leur événement, ils entrent dans la
   cité et la ravagent six mois, un seul si un dieu défenseur y a son sanctuaire
   (comme dans le jeu, Zeus contre tous, Aphrodite contre Arès, Héphaïstos, Hermès
-  et Dionysos, Héra contre Zeus ; durées et rythme d'Olympe) ;
+  et Dionysos, Héra contre Zeus ; six mois de séjour comme dans le jeu, mais durée
+  écourtée et rythme des destructions d'Olympe) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
 - cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
