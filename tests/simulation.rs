@@ -1058,3 +1058,22 @@ fn a_sickly_city_catches_the_plague() {
     other.load(&saved).unwrap();
     assert_eq!(other.save(), saved);
 }
+
+/// Un grenier au bout d'un embranchement, qui s'effondrerait en deux mois sans
+/// entretien : le surintendant posté sur la rue doit aller jusqu'à lui.
+#[test]
+fn maintenance_reaches_the_end_of_a_side_road() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    assert!(world.place_building(MAINTENANCE, x + 8, y + 2));
+    let granary = world.kinds.len();
+    world.kinds.push(Kind::simple("grenier".into(), 100, 4, 473, Function::Granary, 0));
+    world.kinds[granary].damage_risk = 16;
+    for dy in 5..9 {
+        assert!(world.place_road(x + 4, y + dy, 0));
+    }
+    assert!(world.place_building(granary, x + 5, y + 6));
+    (0..24 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.buildings.iter().flatten().any(|b| b.kind == granary), "le grenier s'est effondré");
+}

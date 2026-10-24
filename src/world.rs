@@ -681,7 +681,13 @@ const EMPTY_BAY_IMAGE: usize = 934;
 /// Le marbre noir et l'orichalque n'ont pas de baie dans `zeus_general.sg3` : ceux
 /// du marbre et du bronze en tiennent lieu.
 const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873, 849, 845];
-const WORKFORCE_PERCENT: i32 = 40;
+/// Part des habitants des logements modestes qui travaillent (`Zeus.exe`, 0x4865a0),
+/// en pour cent : selon la difficulté, plus selon le niveau de salaire le plus proche
+/// (`WAGE_LEVELS`), plus selon la santé (dès 20, 35, 65 et 80).
+const WORKFORCE_BY_DIFFICULTY: [i32; 5] = [50, 45, 40, 37, 35];
+const WORKFORCE_BY_WAGE: [i32; 6] = [-10, -6, -3, 0, 3, 5];
+const WORKFORCE_BY_HEALTH: [(i32, i32); 4] = [(80, 2), (65, 1), (35, 0), (20, -1)];
+const WORKFORCE_SICK: i32 = -2;
 /// Impôt mensuel au taux normal, en drachmes pour 100 habitants d'une maison visitée
 /// par un percepteur (multiplié par le coefficient du niveau de logement) ; les
 /// autres taux du jeu le font varier en proportion.
@@ -3500,7 +3506,11 @@ impl World {
         // Les habitants des logements luxueux ne travaillent pas.
         let houses = self.buildings.iter().flatten().filter_map(|b| b.house.as_ref());
         let common: i32 = houses.filter(|h| h.level < ELITE_FIRST_LEVEL).map(|h| h.population).sum();
-        common * WORKFORCE_PERCENT / 100
+        let wage = NORMAL_WAGE + self.wage_shift;
+        let wage_level = WAGE_LEVELS.iter().enumerate().min_by_key(|(_, level)| (**level - wage).abs()).map_or(3, |(i, _)| i);
+        let health = WORKFORCE_BY_HEALTH.iter().find(|(from, _)| self.health >= *from).map_or(WORKFORCE_SICK, |&(_, bonus)| bonus);
+        let percent = WORKFORCE_BY_DIFFICULTY[self.difficulty.min(4)] + WORKFORCE_BY_WAGE[wage_level] + health;
+        common * percent / 100
     }
 
     /// Employés demandés par l'ensemble des bâtiments.
