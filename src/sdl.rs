@@ -50,6 +50,7 @@ pub const KEY_D: u32 = 0x64;
 pub const KEY_C: u32 = 0x63;
 pub const KEY_F: u32 = 0x66;
 pub const KEY_H: u32 = 0x68;
+pub const KEY_J: u32 = 0x6A;
 pub const KEY_M: u32 = 0x6D;
 pub const KEY_O: u32 = 0x6F;
 pub const KEY_V: u32 = 0x76;

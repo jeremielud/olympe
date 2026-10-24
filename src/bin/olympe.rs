@@ -346,7 +346,7 @@ const HELP: [&str; 18] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
-    "V : vues (eau, risques, attrait, criminalité, culture, santé, impôts)",
+    "V : vues (eau, risques, attrait, criminalité, culture, santé, impôts) ; J : journal",
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "+ et - : taux d'imposition",
@@ -1921,6 +1921,11 @@ fn city_report(world: &World) -> String {
     .join("\n")
 }
 
+/// Annonces gardées au journal, et réponses aux commandes du joueur qui n'y entrent pas.
+const JOURNAL_LINES: usize = 20;
+const JOURNAL_SKIPS: [&str; 13] =
+    ["H : aide", "Vue", "Vitesse", "Musique", "Bruitages", "Imposition", "Partie", "Enregistrement", "Chargement", "Rien à mettre", "Route commerciale", "Pas de route", "Pas assez de drachmes"];
+
 /// Vues en surimpression (touche V), comme celles du jeu : chaque bâtiment est teinté
 /// du vert au rouge selon ce qu'elles mesurent.
 #[derive(Clone, Copy, PartialEq)]
@@ -2830,6 +2835,9 @@ fn run(
         let mut paused = false;
         // Vue en surimpression (touche V).
         let mut overlay = Overlay::None;
+        // Journal des annonces (touche J) : date et texte, la plus récente en dernier.
+        let mut journal: Vec<(String, String)> = Vec::new();
+        let (mut journal_panel, mut logged) = (false, notice.clone());
         let mut speed = NORMAL_SPEED;
         graphics.set_ground(plain_ground(&world));
         // Mini-carte : texture, emplacement à l'écran (x, y) et images écoulées depuis sa mise à jour.
@@ -2965,6 +2973,7 @@ fn run(
                         "-" => Some(sdl::Event::key_down(0, sdl::KEY_MINUS)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
                         "v" => Some(sdl::Event::key_down(0, sdl::KEY_V)),
+                        "j" => Some(sdl::Event::key_down(0, sdl::KEY_J)),
                         _ => None,
                     },
                     // Pause en temps réel, pour laisser vivre ce qui en dépend (son).
@@ -3327,6 +3336,20 @@ fn run(
                 (told, narrated) = ((journey.step(), Moment::Victory), false);
             }
 
+            // Les annonces de la cité entrent au journal ; pas les réponses aux commandes.
+            if notice != logged {
+                logged = notice.clone();
+                if !JOURNAL_SKIPS.iter().any(|skip| notice.0.starts_with(skip)) {
+                    let (day, month, year) = world.date();
+                    let year = if start_year == 0 { year as i64 + 1 } else { start_year as i64 + year as i64 };
+                    let date = format!("{} {} {}{}", day + 1, months[month as usize], year.abs(), if year < 0 { " av. J.-C." } else { "" });
+                    journal.push((date, notice.0.clone()));
+                    if journal.len() > JOURNAL_LINES {
+                        journal.remove(0);
+                    }
+                }
+            }
+
             while sdl::SDL_PollEvent(&mut event) {
                 // Sur un écran mis à l'échelle, la souris est en points et le rendu en pixels.
                 sdl::SDL_ConvertEventToRenderCoordinates(renderer, &mut event);
@@ -3417,6 +3440,7 @@ fn run(
                             }
                         }
                         sdl::KEY_H => help = !help,
+                        sdl::KEY_J => journal_panel = !journal_panel,
                         sdl::KEY_O => goals_panel = !goals_panel,
                         sdl::KEY_C => cities_panel = !cities_panel,
                         sdl::KEY_A => advisor_panel = !advisor_panel,
@@ -4286,6 +4310,22 @@ fn run(
                     if !trade.is_empty() {
                         menu_rows.push(((split, y, px + width - split, row), MenuRow::Trade(*city)));
                     }
+                }
+            }
+
+            // Journal : les dernières annonces, la plus récente en haut.
+            if journal_panel {
+                let heading = "Journal".to_string();
+                let lines: Vec<String> = if journal.is_empty() { vec!["Aucune annonce".to_string()] } else { journal.iter().rev().map(|(date, line)| format!("{date} : {line}")).collect() };
+                let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
+                let height = title_line + 32.0 + row * lines.len() as f32;
+                let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
+                graphics.panel(px, py, width, height);
+                graphics.panel(px, py, width, height);
+                let heading_width = graphics.text_width(FONT_TITLE, &heading);
+                graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
+                for (i, l) in lines.iter().enumerate() {
+                    graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 24.0 + row * i as f32);
                 }
             }
 
