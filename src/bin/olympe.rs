@@ -1924,6 +1924,43 @@ fn city_report(world: &World) -> String {
     .join("\n")
 }
 
+/// Groupes de textes des fiches de bâtiments du jeu : un titre, puis une phrase qui
+/// décrit le bâtiment (puis l'état de son effectif, non repris ici).
+const INFO_GROUPS: std::ops::Range<usize> = 60..200;
+/// Longueur des lignes de la description dans la fiche.
+const INFO_LINE: usize = 56;
+
+/// Description de chaque type de bâtiment, prise dans les fiches du jeu : celle dont
+/// le titre est son nom, ou à défaut le finit (« Bureau de maintenance »).
+fn building_descriptions(text: &Text, kinds: &[Kind]) -> Vec<Option<String>> {
+    let heads: Vec<(String, String)> = INFO_GROUPS.map(|g| (text.get(g, 0).to_lowercase(), text.get(g, 1))).filter(|(title, line)| !title.is_empty() && line.chars().count() > 30).collect();
+    kinds
+        .iter()
+        .map(|kind| {
+            let name = kind.name.to_lowercase();
+            let exact = heads.iter().find(|(title, _)| *title == name);
+            exact.or_else(|| heads.iter().find(|(title, _)| title.ends_with(&format!(" {name}")))).map(|(_, line)| line.clone())
+        })
+        .collect()
+}
+
+/// Coupe un texte en lignes d'au plus `width` caractères, entre les mots.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in text.split_whitespace() {
+        let line = lines.last_mut().unwrap();
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            lines.push(word.to_string());
+        } else {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        }
+    }
+    lines
+}
+
 /// Annonces gardées au journal, et réponses aux commandes du joueur qui n'y entrent pas.
 const JOURNAL_LINES: usize = 20;
 const JOURNAL_SKIPS: [&str; 13] =
@@ -2838,6 +2875,8 @@ fn run(
         let mut paused = false;
         // Vue en surimpression (touche V).
         let mut overlay = Overlay::None;
+        // Description de chaque type de bâtiment, pour sa fiche.
+        let descriptions = building_descriptions(&text, &world.kinds);
         // Journal des annonces (touche J) : date et texte, la plus récente en dernier.
         let mut journal: Vec<(String, String)> = Vec::new();
         let (mut journal_panel, mut logged) = (false, notice.clone());
@@ -4044,6 +4083,9 @@ fn run(
             // Panneau d'information sur le bâtiment survolé.
             if let Some(building) = world.building_at(under.0, under.1) {
                 let mut lines = vec![world.kinds[building.kind].name.clone()];
+                if let Some(Some(description)) = descriptions.get(building.kind) {
+                    lines.extend(wrap(description, INFO_LINE));
+                }
                 let employees = world.kinds[building.kind].employees;
                 if employees > 0 {
                     lines.push(format!("{} : {} / {}", text.get(8, 13), building.workers, employees));
