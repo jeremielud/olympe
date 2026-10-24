@@ -269,12 +269,12 @@ impl Goal {
             Kind::Partners => amount(line(34), first),
             Kind::Support => {
                 let unit = match first {
-                    11 => "soldats ou mieux",
-                    12 => "hoplites ou mieux",
-                    13 => "cavaliers",
-                    _ => "trières",
+                    11 => crate::lang::tr("soldats ou mieux"),
+                    12 => crate::lang::tr("hoplites ou mieux"),
+                    13 => crate::lang::tr("cavaliers"),
+                    _ => crate::lang::tr("trières"),
                 };
-                amount(line(24), second).replace("[military_or_better]", unit)
+                amount(line(24), second).replace("[military_or_better]", &unit)
             }
             Kind::SetAside => amount(line(if in_colony { 35 } else { 36 }), second).replace("[item]", &resource(first)),
             Kind::Sanctuary if first == -1 => match (second >= 2, third != 0) {

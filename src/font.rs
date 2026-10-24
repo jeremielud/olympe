@@ -36,10 +36,38 @@ impl Font {
     }
 }
 
+/// Lettres de l'espéranto, que les polices n'ont pas : la lettre de base et l'accent à
+/// poser dessus (le circonflexe de la police, retourné pour la brève du « ŭ »).
+pub fn esperanto(c: char) -> Option<(char, Accent)> {
+    let base = match c {
+        'ĉ' => 'c',
+        'ĝ' => 'g',
+        'ĥ' => 'h',
+        'ĵ' => 'j',
+        'ŝ' => 's',
+        'Ĉ' => 'C',
+        'Ĝ' => 'G',
+        'Ĥ' => 'H',
+        'Ĵ' => 'J',
+        'Ŝ' => 'S',
+        'ŭ' => return Some(('u', Accent::Breve)),
+        'Ŭ' => return Some(('U', Accent::Breve)),
+        _ => return None,
+    };
+    Some((base, Accent::Circumflex))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Accent {
+    Circumflex,
+    Breve,
+}
+
 /// Rang du glyphe d'un caractère (0 = « A »).
 fn glyph(c: char) -> Option<usize> {
     const PUNCTUATION: &str = "!\"%*()-+=:;'?\\/,._";
-    const ACCENTS: &str = "äáàâëéèêïíìîöóòôüúùûçñæßÄÉÜÑÆŒœÁÂÀÊÈÍÎÌÓÔÒÖÚÛÙ¡¿^¨ÅØåø";
+    // Chaque voyelle minuscule : tréma, aigu, circonflexe, grave (relevé sur les glyphes).
+    const ACCENTS: &str = "äáâàëéêèïíîìöóôòüúûùçñæßÄÉÜÑÆŒœÁÂÀÊÈÍÎÌÓÔÒÖÚÛÙ¡¿^¨ÅØåø";
     let index = match c {
         'A'..='Z' => c as usize - 'A' as usize,
         'a'..='z' => 26 + c as usize - 'a' as usize,
@@ -72,7 +100,18 @@ mod tests {
         assert_eq!(font.image('1'), Some(253));
         assert_eq!(font.image('0'), Some(262));
         assert!(font.image('é').is_some());
+        // Dans la police, le circonflexe précède le grave.
+        assert_eq!(font.image('â'), Some(201 + 82));
+        assert_eq!(font.image('à'), Some(201 + 83));
+        assert_eq!(font.image('è'), Some(201 + 87));
         assert_eq!(font.image(' '), None);
+    }
+
+    #[test]
+    fn esperanto_letters_are_composed() {
+        use super::{Accent, esperanto};
+        assert_eq!(esperanto('ĉ'), Some(('c', Accent::Circumflex)));
+        assert_eq!(esperanto('Ŭ'), Some(('U', Accent::Breve)));
     }
 
     #[test]

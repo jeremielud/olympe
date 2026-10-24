@@ -1489,20 +1489,20 @@ impl World {
 
     /// Pourquoi un bâtiment ne se pose pas en (x, y), quand la raison tient à son
     /// emplacement (ressource trop loin, eau ou pré manquants).
-    pub fn placement_hint(&self, kind: usize, x: i32, y: i32) -> Option<&'static str> {
+    pub fn placement_hint(&self, kind: usize, x: i32, y: i32) -> Option<String> {
         let k = self.kinds.get(kind)?;
         let size = k.size as i32;
         match k.function {
             function if deposit_of(function).is_some_and(|wanted| !self.waived(wanted) && !self.near_deposit(x, y, size, wanted)) => Some(match deposit_of(function) {
-                Some(Deposit::Trees) => "il faut des arbres à moins de huit cases",
-                Some(Deposit::Marble) => "il faut une carrière de marbre à moins de huit cases",
-                Some(Deposit::Copper) => "il faut des rochers de cuivre à moins de huit cases",
-                Some(Deposit::BlackMarble) => "il faut un gisement de marbre noir à moins de huit cases",
-                _ => "il faut un gisement d'orichalque à moins de huit cases",
+                Some(Deposit::Trees) => crate::lang::tr("il faut des arbres à moins de huit cases"),
+                Some(Deposit::Marble) => crate::lang::tr("il faut une carrière de marbre à moins de huit cases"),
+                Some(Deposit::Copper) => crate::lang::tr("il faut des rochers de cuivre à moins de huit cases"),
+                Some(Deposit::BlackMarble) => crate::lang::tr("il faut un gisement de marbre noir à moins de huit cases"),
+                _ => crate::lang::tr("il faut un gisement d'orichalque à moins de huit cases"),
             }),
-            Function::Fishery | Function::Wharf => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
-            Function::Farm => Some("elle se pose sur un pré fleuri"),
-            Function::Racetrack => Some("une section se pose dans le prolongement de la piste"),
+            Function::Fishery | Function::Wharf => Some(crate::lang::tr("il se pose au bord de l'eau, sur un terrain dégagé")),
+            Function::Farm => Some(crate::lang::tr("elle se pose sur un pré fleuri")),
+            Function::Racetrack => Some(crate::lang::tr("une section se pose dans le prolongement de la piste")),
             _ => None,
         }
     }

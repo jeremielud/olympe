@@ -1,0 +1,239 @@
+# Anglais : texte français<TAB>traduction.
+difficulté inconnue : {} (debutant, mortel, heros, titan, olympien)	unknown difficulty: {} (debutant, mortel, heros, titan, olympien)
+Les données du jeu ne sont pas installées dans {}.	The game data is not installed in {}.
+Installez-les depuis votre exemplaire du jeu : un dossier où il est installé,	Install them from your copy of the game: a folder where it is installed,
+ou les images (ou le contenu) des CD de Zeus puis de Poséidon :	or the images (or contents) of the Zeus then Poseidon CDs:
+    olympe installer <source> [<source>…]	    olympe installer <source> [<source>…]
+erreur : {}	error: {}
+non suivi	not tracked
+aucun bâtiment permis ne le produit	no allowed building produces it
+aucun emplacement pour le produire	nowhere to produce it
+ni produit ni vendu par une cité	neither produced nor sold by a city
+sanctuaire non permis	sanctuary not allowed
+monument non permis	monument not allowed
+hippodrome non permis	hippodrome not allowed
+quai non permis	wharf not allowed
+aucun temple de héros permis	no hero hall allowed
+{} épisodes sur {} ont tous leurs objectifs suivis et réalisables	{} of {} episodes have all their goals tracked and achievable
+partie enregistrée au niveau {}, relancez avec --difficulte {}	game saved at level {}, restart with --difficulte {}
+Débutant	Beginner
+Mortel	Mortal
+Héros	Hero
+Titan	Titan
+Olympien	Olympian
+carte de colonie absente	colony map missing
+{} {} mis de côté	{} {} set aside
+{} : {} en stock sur {}	{}: {} in stock out of {}
+Rien à mettre de côté	Nothing to set aside
+ : les habitants s'en vont	: residents are leaving
+ : les immigrants ne viennent plus	: immigrants no longer come
+ : mécontentement	: discontent
+{} habitants dans {} maisons	{} residents in {} houses
+{} : {} ({} habitants)	{}: {} ({} residents)
+Population	Population
+{} postes pour {} travailleurs ; {} sans emploi	{} jobs for {} workers; {} unemployed
+{} postes pour {} travailleurs ; il manque {} ouvriers	{} jobs for {} workers; {} workers short
+{} : {} postes, {} bâtiments, {} à l'arrêt	{}: {} jobs, {} buildings, {} idle
+Emploi	Employment
+Finances	Finances
+Trésor : {} dr.	Treasury: {} dr.
+Dernier mois : impôts {} dr., salaires {} dr.	Last month: taxes {} dr., wages {} dr.
+Imposition (+ et -) : {}	Taxation (+ and -): {}
+Humeur de la cité : {} sur 100{}	City mood: {} out of 100{}
+Bénéfice de l'année en cours : {} dr.	Profit this year: {} dr.
+Meilleure année achevée : {} dr.	Best completed year: {} dr.
+Aucune année achevée	No completed year
+Commerce depuis le début : ventes {} dr., achats {} dr.	Trade so far: sales {} dr., purchases {} dr.
+{} : {} maisons sur {} ({} %)	{}: {} houses out of {} ({} %)
+Santé de la cité : {} sur 100	City health: {} out of 100
+Vivres aux greniers : {} chargements	Food in granaries: {} loads
+Entrepôts : vides	Storehouses: empty
+Entrepôts : {}	Storehouses: {}
+Services et réserves	Services and reserves
+Sanctuaire de {}	Sanctuary of {}
+Aucun sanctuaire achevé	No completed sanctuary
+{} est dans la cité	{} is in the city
+Quête en attente de {}	Quest awaiting {}
+{} est parti en quête	{} has gone on a quest
+Quête de {} accomplie	{}'s quest accomplished
+Monstres encore à vaincre : {}	Monsters still to defeat: {}
+Mythologie	Mythology
+Armée et commerce	Army and trade
+Force de l'armée : {}	Army strength: {}
+Invasion en cours : {} soldats de {}	Invasion under way: {} soldiers from {}
+{} cités rivales	{} rival cities
+{} partenaires commerciaux, {} demandes en attente	{} trade partners, {} pending requests
+Trières à quai : {}	Triremes at the wharf: {}
+{} part : {}	{} leaves: {}
+Quête accomplie : {}	Quest accomplished: {}
+Un héros affronte {}	A hero confronts {}
+{} est vaincu	{} is defeated
+{} entre dans la cité !	{} enters the city!
+{} {}{} en réserve	{} {}{} in reserve
+{} trières	{} triremes
+{} manoirs ou mieux	{} manors or better
+{} sanctuaires : {}	{} sanctuaries: {}
+Condition particulière	Special condition
+{} % sur {} %	{} % out of {} %
+pas encore	not yet
+non simulé, tenu pour rempli	not simulated, taken as met
+démo : pas de place pour « {} » en ({}, {})	demo: no room for “{}” at ({}, {})
+Installation dans {}	Installing into {}
+{} fichiers installés ({} Mo).	{} files installed ({} MB).
+{} fichiers mis à jour par un correctif.	{} files updated by a patch.
+{} fichiers audio convertis en Opus.	{} audio files converted to Opus.
+{} fichiers audio laissés en MP3 (non lus par le jeu).	{} audio files left as MP3 (not played by the game).
+Lancez le jeu avec : olympe	Start the game with: olympe
+aucune aventure dans le dossier de données	no adventure in the data folder
+Choisissez une aventure	Choose an adventure
+Langue	Language
+type {} absent des règles	type {} missing from the rules
+image {} absente	image {} missing
+règles des personnages : {}	figure rules: {}
+impôts : {}	taxes: {}
+Zeus — {}{}	Zeus — {}{}
+H : aide	H: help
+pas de musique : {}	no music: {}
+sauvegarde : {} octets, aller-retour {}	save: {} bytes, round trip {}
+par niveau {}, réserves totales {}	per level {}, total reserves {}
+maisons : {} | attrait {} | stocks : {}	houses: {} | appeal {} | stocks: {}
+bâtiments debout : {} | sauvegarde : {} cases en ruine, {} en feu	standing buildings: {} | save: {} tiles in ruins, {} on fire
+drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles | humeur {}	drachmas {} | last month: taxes {}, wages {} | workers {} wanted, {} available | mood {}
+après {} pas : population {}, {} maisons desservies [{}], {} personnages {}, scène en {}	after {} ticks: population {}, {} houses served [{}], {} figures {}, scene in {}
+pas d'ambiance : {}	no ambience: {}
+pas de narration : {}	no narration: {}
+étape de script inconnue : {}	unknown script step: {}
+script terminé : population {}, drachmes {}, {} cases en feu, {} en ruine, bâtiments [{}]	script finished: population {}, drachmas {}, {} tiles on fire, {} in ruins, buildings [{}]
+Sanctuaire de {} achevé : {} vous offre {}	Sanctuary of {} completed: {} grants you {}
+Sanctuaire de {} achevé	Sanctuary of {} completed
+{} demande davantage de {}	{} wants more {}
+{} demande moins de {}	{} wants less {}
+{} vend davantage de {}	{} sells more {}
+{} vend moins de {}	{} sells less {}
+Le prix de {} monte : {} dr.	The price of {} rises: {} dr.
+Le prix de {} baisse : {} dr.	The price of {} falls: {} dr.
+Cadeaux reçus : {}	Gifts received: {}
+Invasion ! L'armée de {} ({} soldats) marche sur la cité ; {} hoplites la défendent	Invasion! The army of {} ({} soldiers) marches on the city; {} hoplites defend it
+L'armée de {} ({} soldats) est repoussée	The army of {} ({} soldiers) is driven back
+L'armée de {} pille la cité : {} drachmes et {} bâtiments perdus	The army of {} sacks the city: {} drachmas and {} buildings lost
+{} vous rend visite et vous offre {} {}	{} visits you and grants you {} {}
+Tributs reçus : {}	Tributes received: {}
+{} s'abat sur la cité !	{} descends upon the city!
+{} s'abat sur la cité, mais {} le chassera bientôt	{} descends upon the city, but {} will soon drive them off
+{} quitte la cité	{} leaves the city
+{} demande {} {} (touche C)	{} requests {} {} (C key)
+La demande de {} n'a pas été satisfaite	The request from {} was not met
+Tremblement de terre ! La terre s'ouvre	Earthquake! The ground splits open
+Éruption ! La lave recouvre le pays	Eruption! Lava covers the land
+Raz-de-marée ! Les eaux envahissent la côte	Tidal wave! The waters flood the coast
+Glissement de terrain ! Des éboulis dévalent la pente	Landslide! Rubble pours down the slope
+Inondation ! La mer engloutit la côte pour toujours	Flood! The sea swallows the coast for ever
+ : un bâtiment détruit	: one building destroyed
+ : {} bâtiments détruits	: {} buildings destroyed
+Les salaires {} de {} dr. : {} dr. par an pour dix ouvriers	Wages {} by {} dr.: {} dr. a year for ten workers
+{} redevient votre alliée	{} is your ally again
+{} devient votre rivale	{} becomes your rival
+{} devient votre vassale	{} becomes your vassal
+{} se rebelle	{} rebels
+{} renforce son armée	{} strengthens its army
+L'armée de {} s'affaiblit	The army of {} weakens
+{} cesse de commercer avec vous	{} stops trading with you
+{} ouvre son commerce avec vous	{} opens trade with you
+L'armée de {} part en campagne : la cité est vulnérable	The army of {} goes on campaign: the city is vulnerable
+{} se retire du monde	{} withdraws from the world
+{} reparaît dans le monde	{} reappears in the world
+Des voleurs ont pillé une maison luxueuse : postez des gardes	Thieves have looted a luxury house: post guards
+Un voleur a dérobé {} dr. au trésor : postez des gardes	A thief stole {} dr. from the treasury: post guards
+Une épidémie a emporté {} habitants : bâtissez des infirmeries	An epidemic killed {} residents: build infirmaries
+Incendie	Fire
+Effondrement	Collapse
+épisode suivant : {}	next episode: {}
+Aventure terminée : la partie continue sans objectif	Adventure over: the game goes on without goals
+aventure terminée	adventure over
+Épisode terminé	Episode complete
+Tous les objectifs de l'épisode sont atteints.	All the episode's goals are met.
+Partie enregistrée : {}	Game saved: {}
+Enregistrement impossible : {}	Cannot save: {}
+Partie chargée	Game loaded
+Chargement impossible : {}	Cannot load: {}
+Musique : {}	Music: {}
+Imposition : {}	Taxation: {}
+Bruitages : {}	Sound effects: {}
+Vitesse : {} %	Speed: {} %
+Demande de {} satisfaite	Request from {} met
+Pas assez de {} : {} sur {}	Not enough {}: {} out of {}
+Route commerciale ouverte avec {}	Trade route opened with {}
+Pas de route possible avec {}	No route possible with {}
+{} devient vassale	{} becomes a vassal
+Armée trop faible contre {} : {} sur {}	Army too weak against {}: {} out of {}
+L'armée est déjà en campagne	The army is already on campaign
+{} ne peut pas être soumise	{} cannot be subdued
+Pas assez de drachmes pour {}	Not enough drachmas for {}
+ — Démolir	 — Demolish
+ — case {},{} terrain {}	 — tile {},{} terrain {}
+Risques : feu {} %, dégâts {} %	Risks: fire {} %, damage {} %
+Hippodrome : {} stades, {}	Hippodrome: {} stadia, {}
+les courses ont lieu	races are held
+piste pas encore fermée	track not yet closed
+Trière en chantier : {} {} / 2, {} {} / 2	Trireme under construction: {} {} / 2, {} {} / 2
+Une trière est à quai	A trireme is at the wharf
+Chantier : {}	Construction site: {}
+Attrait : {}	Appeal: {}
+{} mis de côté, {} en stock	{} set aside, {} in stock
+pas encore simulé par Olympe	not yet simulated by Olympe
+R : mettre de côté ce qui est en stock	R: set aside what is in stock
+Conseiller : {} ({}/{}, Tab)	Adviser: {} ({}/{}, Tab)
+Cités du monde	Cities of the world
+, soumettre : {} sur {}	, subdue: {} out of {}
+  vend {} ; achète {} (ventes {} dr., achats {} dr.)	  sells {}; buys {} (sales {} dr., purchases {} dr.)
+  [ouvrir le commerce : {} dr.]	  [open trade: {} dr.]
+{} ({}, faveur {}, force {}{}{})	{} ({}, favour {}, strength {}{}{})
+, armée partie	, army away
+Aucune cité étrangère	No foreign city
+{} demande {} {} (vous avez {}, encore {} mois) [envoyer]	{} requests {} {} (you have {}, {} months left) [send]
+mesure : {} images en {} ms, soit {} images/s ({} ms par image, la plus lente {} ms) ; {} × {} pixels, interface × {}, affichage « {} », rendu « {} », {} sprites en mémoire	measure: {} frames in {} ms, i.e. {} frames/s ({} ms per frame, slowest {} ms); {} × {} pixels, interface × {}, display “{}”, renderer “{}”, {} sprites in memory
+il faut des arbres à moins de huit cases	it needs trees within eight tiles
+il faut une carrière de marbre à moins de huit cases	it needs a marble quarry within eight tiles
+il faut des rochers de cuivre à moins de huit cases	it needs copper rocks within eight tiles
+il faut un gisement de marbre noir à moins de huit cases	it needs a black marble deposit within eight tiles
+il faut un gisement d'orichalque à moins de huit cases	it needs an orichalc deposit within eight tiles
+il se pose au bord de l'eau, sur un terrain dégagé	it goes on the shore, on clear ground
+elle se pose sur un pré fleuri	it goes on a flowering meadow
+une section se pose dans le prolongement de la piste	a section goes in line with the track
+soldats ou mieux	soldiers or better
+hoplites ou mieux	hoplites or better
+cavaliers	horsemen
+trières	triremes
+Clic droit ou flèches : déplacer la vue	Right click or arrows: move the view
+Molette : zoom	Wheel: zoom
+Mini-carte : clic pour s'y rendre	Minimap: click to go there
+1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment	1 to 9 and 0: open a category, then pick a building
+Clic gauche : bâtir ; glisser pour tracer une route	Left click: build; drag to lay a road
+X : dégager	X: clear
+Echap : lâcher l'outil, refermer la catégorie, quitter	Esc: drop the tool, close the category, quit
+Espace : pause	Space: pause
+Page préc. et Page suiv. : vitesse du jeu	Page Up and Page Down: game speed
+F5 : enregistrer ; F9 : recharger	F5: save; F9: reload
+F : plein écran	F: full screen
+M : musique ; B : bruitages	M: music; B: sound effects
+O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)	O: episode goals; C: cities of the world (click: subdue); A: advisers (Tab: page)
+R : mettre de côté les marchandises demandées	R: set aside the requested goods
++ et - : taux d'imposition	+ and -: tax rate
+Survoler un bâtiment : ses informations ; clic sur un passant : il parle	Hover a building: its details; click a walker: they talk
+H : refermer cette aide	H: close this help
+Agriculture	Agriculture
+Industrie	Industry
+Distribution	Distribution
+Hygiène et sécurité	Health and safety
+Administration	Administration
+Culture	Culture
+Embellissement	Beautification
+Armée	Army
+aucun	none
+très bas	very low
+bas	low
+normal	normal
+haut	high
+très haut	very high
+scandaleux	outrageous
+usage :\n  olympe                              lance le jeu (écran de choix d'aventure)\n  olympe <aventure.pak | carte.map>   lance directement une aventure ou une carte\n  olympe installer <source>…          installe les données du jeu d'origine ; une source\n                                      est un dossier où le jeu est installé, le contenu\n                                      d'un CD, une image de CD (Zeus, puis Poséidon), ou\n                                      le programme d'un correctif officiel, donné en dernier\noptions :\n  --donnees DOSSIER  dossier des données (par défaut celui de l'installateur)\n  --vers DOSSIER     avec « installer » : où ranger les données\n  --langue LANGUE    fr, en ou eo (par défaut celle choisie la dernière fois, ou celle du système)\n  --size LxH         taille de la fenêtre (1600x900 par défaut)\n  --demo             bâtit une cité de démonstration (carte « Les plus jeunes jumeaux »)\n  --mesure N         dessine N images, affiche la cadence obtenue et quitte\n  --capture IMAGE    enregistre la première image rendue et quitte\n  --sans-intro       ne joue pas la vidéo d'introduction\n  --bilan            vérifie, pour chaque épisode de chaque aventure installée, que\n                     ses objectifs sont suivis et réalisables, puis quitte\n  --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien\n  --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)\n  --script "…"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),\n                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,\n                     t:n (pas), p:ms (pause), fin (termine l'épisode en cours)\nen jeu : H affiche l'aide	usage:\n  olympe                              starts the game (adventure selection screen)\n  olympe <adventure.pak | map.map>    starts an adventure or a map directly\n  olympe installer <source>…          installs the original game's data; a source\n                                      is a folder where the game is installed, the contents\n                                      of a CD, a CD image (Zeus, then Poseidon), or\n                                      an official patch program, given last\noptions:\n  --donnees FOLDER   data folder (by default the installer's)\n  --vers FOLDER      with “installer”: where to put the data\n  --langue LANGUAGE  fr, en or eo (by default the one chosen last, or the system's)\n  --size WxH         window size (1600x900 by default)\n  --demo             builds a demonstration city (map “The Youngest Twins”)\n  --mesure N         draws N frames, shows the frame rate and quits\n  --capture IMAGE    saves the first rendered frame and quits\n  --sans-intro       does not play the introduction video\n  --bilan            checks, for each episode of each installed adventure, that\n                     its goals are tracked and achievable, then quits\n  --difficulte LEVEL debutant, mortel, heros (default), titan or olympien\n  --ticks N          simulation ticks played before the capture (1500 by default)\n  --script "…"      scripted test, one step per frame, before the capture: m:x,y (pointer),\n                     d / u (left button), w:n (wheel), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,\n                     t:n (ticks), p:ms (pause), fin (ends the current episode)\nin game: H shows the help
