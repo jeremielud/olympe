@@ -1960,6 +1960,9 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     };
     // Au départ : maintenance, vivres, eau.
     put(world, maintenance, x - 1, y - 9);
+    // Le grenier borde la grand-rue : sans surintendant qui y passe, il s'effondre en
+    // deux mois.
+    put(world, maintenance, x + 20, y - 2);
     put_farm(world, 0);
     put(world, kind_of(world, &role(Function::Granary)), x + 9, y + 1);
     put(world, kind_of(world, &role(Function::Agora { grand: true })), x + 2, y - 5);
@@ -1967,13 +1970,12 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     put(world, vendor(world, Good::Food), x + 2, y - 5);
     put(world, service(world, Service::Water), x - 1, y - 11);
     // Masures : seconde fontaine (un porteur d'eau ne fait pas le tour entier),
-    // philosophie et sport, maintenance de la grand-rue, deuxième exploitation.
+    // philosophie et sport, deuxième exploitation.
     stage.set(150);
     put(world, service(world, Service::Water), x + 14, y - 4);
     put(world, kind_of(world, &role(Function::School(Service::Philosophy))), x + 40, y - 3);
     put(world, service(world, Service::Philosophy), x - 1, y - 7);
     put(world, service(world, Service::Athletics), x + 14, y - 12);
-    put(world, maintenance, x + 20, y - 2);
     put_farm(world, 1);
     // Taudis : seconde épicière, laine, école de théâtre.
     stage.set(280);
@@ -1987,6 +1989,8 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     put(world, service(world, Service::Drama), x + 14, y - 9);
     put_farm(world, 2);
     put_farm(world, 3);
+    // La ruelle du stade a sa maintenance dès qu'une exploitation la borde.
+    put(world, maintenance, x + 24, y + 11);
     put(world, service(world, Service::Tax), x - 1, y - 3);
     put(world, kind_of(world, &role(Function::Palace)), x + 14, y + 1);
     // Immeubles : huile, garde, hôpital.
@@ -2016,8 +2020,6 @@ fn demo_scene(world: &mut World, road_cost: i32) -> Option<((i32, i32), DemoPlan
     put(world, vendor(world, Good::Horses), x + 6, y - 2);
     stage.set(700);
     put(world, kind_of(world, &role(Function::Stadium)), x + 21, y + 1);
-    // Le stade a sa propre maintenance, au bord de la ruelle qui le longe.
-    put(world, maintenance, x + 24, y + 11);
     stage.set(0);
 
     // Maisons le long de la boucle, dedans et dehors, jardins au cœur de l'îlot et

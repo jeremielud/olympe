@@ -3898,13 +3898,23 @@ impl World {
 
     /// Fait partir un marcheur en tournée depuis la route qui longe le bâtiment.
     fn start_rounds(&mut self, id: usize, image_base: usize, rounds: Rounds) -> bool {
-        let mut heading = 0;
+        let mut walks = 0;
         if let Some(building) = self.buildings[id].as_mut() {
             building.next_walk = self.ticks + ROUNDS_INTERVAL;
             building.walks = building.walks.wrapping_add(1);
-            heading = building.walks % NEIGHBOURS.len() as u8;
+            walks = building.walks;
         }
         let Some(from) = self.road_next_to(id) else { return false };
+        // Les tournées partent tour à tour dans chacune des directions où la route
+        // continue : un bâtiment au bord d'une rue droite envoie son marcheur une fois
+        // d'un côté, une fois de l'autre.
+        let open: Vec<u8> = (0..NEIGHBOURS.len() as u8)
+            .filter(|&h| {
+                let (dx, dy) = NEIGHBOURS[h as usize];
+                self.is_road(from.0 as i32 + dx, from.1 as i32 + dy)
+            })
+            .collect();
+        let heading = if open.is_empty() { 0 } else { open[walks as usize % open.len()] };
         let Some(next) = self.next_road_step(from, None, heading) else { return false };
         self.figures.push(Figure {
             image_base,
@@ -4108,8 +4118,9 @@ impl World {
 
     fn move_figures(&mut self) {
         let carts_hasten = self.has_sanctuary(HERMES);
-        // Personnages qui viennent d'atteindre une case.
-        let mut reached = Vec::new();
+        // Personnages qui viennent d'atteindre une case, et marcheurs qui rentrent d'une
+        // tournée.
+        let (mut reached, mut homeward) = (Vec::new(), Vec::new());
         for (index, figure) in self.figures.iter_mut().enumerate() {
             figure.frame += 1;
             let Some(&(tx, ty)) = figure.path.last() else {
@@ -4127,10 +4138,27 @@ impl World {
                 figure.came_from = Some(figure.from);
                 figure.from = (tx, ty);
                 figure.path.pop();
+                if matches!(figure.role, Role::Return { .. }) {
+                    homeward.push(index);
+                }
                 match figure.path.last() {
                     Some(&next) => figure.direction = direction(figure.from, next),
                     None => reached.push(index),
                 }
+            }
+        }
+        // Sur le chemin du retour, le marcheur dessert encore ce qu'il longe : sans cela,
+        // un grenier à mi-parcours d'une tournée peut attendre la maintenance plus de
+        // deux mois et s'effondrer.
+        for index in homeward {
+            let Role::Return { home, good, carried } = self.figures[index].role else { continue };
+            let rounds = match self.buildings[home as usize].as_ref().map(|b| self.kinds[b.kind].function) {
+                Some(Function::Service(service)) => Rounds::Service(service),
+                Some(Function::Vendor(_)) => Rounds::Goods { good, carried, vendor: home },
+                _ => continue,
+            };
+            if let Rounds::Goods { carried, .. } = self.serve_houses(self.figures[index].from, rounds) {
+                self.figures[index].role = Role::Return { home, good, carried };
             }
         }
 
