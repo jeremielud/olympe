@@ -12,6 +12,26 @@ un jeu déjà installé, les CD, ou leurs images.
 
 Olympe est une réécriture en cours, pas encore un remplaçant complet du jeu.
 
+### Avancement : environ 70 %
+
+Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre :
+
+| Domaine | Avancement |
+|---|---|
+| Installation et lecture des données (cartes, images, textes, sons, vidéos) | 100 % |
+| Affichage de la cité (terrain, bâtiments, personnages, mini-carte, zoom) | 90 % |
+| Aventures, épisodes, colonies et objectifs (152 épisodes sur 152 suivis) | 85 % |
+| Musique, bruitages, voix et récits narrés | 85 % |
+| Économie et logements (emploi, vivres, marchandises, évolution, impôts, risques) | 80 % |
+| Interface (menus, fiches, superviseurs, panneaux) | 70 % |
+| Commerce et cités du monde | 60 % |
+| Mythologie (dieux, héros, monstres, quêtes) | 60 % |
+| Armée et combats (simulés de façon abstraite) | 40 % |
+| Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
+
+Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
+*Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
+
 Ce qui fonctionne :
 
 - installation des données depuis un jeu installé, le contenu d'un CD ou une image de CD ;
