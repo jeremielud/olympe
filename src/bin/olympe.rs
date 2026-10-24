@@ -2078,6 +2078,7 @@ fn install(args: &[String]) {
 /// Aventures jouables : (nom affiché, fichier), les grandes aventures d'abord.
 fn adventures(data: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
+    let messages = fs::read(data.join("zeus_mm.eng")).ok().and_then(|file| Messages::parse(file).ok());
     let folder = data.join("adventures");
     for entry in fs::read_dir(&folder).into_iter().flatten().flatten() {
         let path = entry.path();
@@ -2100,11 +2101,21 @@ fn adventures(data: &Path) -> Vec<(String, PathBuf)> {
             }
             // Les leçons du tutoriel portent un simple mot anglais : en fin de liste.
             let lesson = stem.is_ascii() && !stem.contains(' ') && stem == folder_name;
-            found.push((lesson, name, pak));
+            // Une leçon prend le titre de son récit d'ouverture (« Didacticiel :
+            // construire une cité »…), et les leçons se suivent dans l'ordre des récits.
+            let intro = lesson
+                .then(|| fs::read(&pak).ok().and_then(|file| Settings::parse(&file)))
+                .flatten()
+                .and_then(|settings| settings.parent.first().map(|episode| episode.intro_message))
+                .unwrap_or(0);
+            if let Some(message) = messages.as_ref().filter(|_| intro > 0).and_then(|m| m.get(intro as usize)) {
+                name = message.title.trim().to_string();
+            }
+            found.push((lesson, intro, name, pak));
         }
     }
     found.sort();
-    found.into_iter().map(|(_, name, pak)| (name, pak)).collect()
+    found.into_iter().map(|(_, _, name, pak)| (name, pak)).collect()
 }
 
 /// Écran de choix d'aventure, sur le fond d'origine du jeu. Rend le fichier choisi, ou
