@@ -470,7 +470,8 @@ fn heroes_fight_monsters_then_leave_on_quests() {
     (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(!world.heroes[3]);
     let checks: Vec<_> = zeus::heroes::requirements(3).map(|r| r.check(&world, (x as usize, y as usize, 4))).collect();
-    assert_eq!(checks[0], zeus::heroes::Check::Unsimulated, "popularité");
+    // Popularité excellente : l'humeur de la cité, sur 100.
+    assert_eq!(checks[0], zeus::heroes::Check::Missing { current: world.sentiment, wanted: 89 }, "popularité");
     assert_eq!(checks[3], zeus::heroes::Check::Missing { current: 0, wanted: 32 }, "huile");
     // Une fois là, il affronte d'abord le monstre, puis part en quête.
     world.heroes[3] = true;

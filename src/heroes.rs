@@ -44,6 +44,7 @@ const ANY_FOOD: i32 = 25;
 const SCULPTURE: i32 = 19;
 /// Paramètre des exigences de comptage : chevaux (43) ou trières (57).
 const HORSES: i32 = 43;
+const TRIREMES: i32 = 57;
 /// Niveaux luxueux : résidence, puis hôtel particulier.
 const RESIDENCE: usize = ELITE_FIRST_LEVEL + 2;
 const MANSION: usize = ELITE_FIRST_LEVEL + 3;
@@ -97,11 +98,12 @@ impl Requirement {
                 };
                 against(stored(b).max(stored(c)), a / unit)
             }
-            // Chevaux dans les écuries ; les trières ne sont pas simulées.
+            // Chevaux dans les écuries, ou trières à quai.
             1 if b == HORSES => {
                 let horses = world.buildings.iter().flatten().filter(|x| world.kinds[x.kind].function == Function::Producer(Good::Horses)).map(|x| x.stock).sum();
                 against(horses, a)
             }
+            1 if b == TRIREMES => against(world.triremes(), a),
             // Hôtels particuliers ou mieux (types 12 et 13 des règles), et logements
             // luxueux habités (résidences ou mieux).
             2 => against(houses().filter(|h| h.level >= MANSION).count() as i32, a),
@@ -118,7 +120,9 @@ impl Requirement {
             }
             5 => against(coverage(Service::Athletics), a),
             7 => against(world.population(), a),
-            9 => against(coverage(Service::Health), a),
+            // Popularité et santé générale : humeur et santé de la cité, sur 100.
+            8 => against(world.sentiment, a),
+            9 => against(world.health, a),
             11 => against(world.money, a),
             17 => against(coverage(Service::Tax), a),
             // Temple à moins de `a` cases du palais.
@@ -133,7 +137,7 @@ impl Requirement {
             }
             // Attrait autour du temple.
             13 => against(world.appeal(hall.0 as i32, hall.1 as i32), a),
-            // Troubles, popularité, jeux panhelléniques, murs, trières…
+            // Troubles, jeux panhelléniques, murs…
             _ => Check::Unsimulated,
         }
     }
