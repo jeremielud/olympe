@@ -45,7 +45,7 @@ def free_rect(grid, x, y, w, h):
     return all(grid[y + j][x + i] in FREE for j in range(h) for i in range(w))
 
 
-def choose_site(grid, want_water):
+def choose_site(grid, want_water, want_meadow=False):
     # Sommes cumulées des cases libres, pour tester chaque rectangle d'un coup.
     acc = [[0] * (GRID + 1) for _ in range(GRID + 1)]
     for y in range(GRID):
@@ -62,27 +62,28 @@ def choose_site(grid, want_water):
                 score = min((abs(wx - cx) + abs(wy - cy) for wx, wy in water), default=999)
             else:
                 score = abs(cx - GRID // 2) + abs(cy - GRID // 2)
+            if want_meadow:
+                # Fermes au sud de la dernière rue : autant de prés que possible.
+                score -= 1000 * len(meadow_slots(grid, x, y))
             if best is None or score < best[0]:
                 best = (score, x, y)
     return best and best[1:]
 
 
-def shore_route(grid, start, taken):
-    """Route depuis `start` jusqu'à un emplacement de pêcherie (3 × 3 libre, au bord de
-    l'eau) : rend (chemin, coin de la pêcherie)."""
-    def fishery_at(x, y):
-        if not all(0 <= x + i < GRID and 0 <= y + j < GRID and grid[y + j][x + i] in FREE and (x + i, y + j) not in taken
-                   for i in range(3) for j in range(3)):
-            return False
-        ring = [(x + i, y + j) for i in range(-1, 4) for j in range(-1, 4)]
-        return any(0 <= rx < GRID and 0 <= ry < GRID and grid[ry][rx] == '~' for rx, ry in ring)
+def meadow_slots(grid, x0, y0):
+    return [dx for dx in range(1, 25, 3) if all(grid[y0 + 20 + j][x0 + dx + i] == ':' for i in range(3) for j in range(3))]
 
+
+def route_to(grid, start, taken, fits):
+    """Route depuis `start` jusqu'à un emplacement 3 × 3 qui convient (`fits`) : rend
+    (chemin, coin de l'emplacement)."""
     previous = {start: None}
     queue = collections.deque([start])
     while queue:
         x, y = queue.popleft()
         for fx, fy in [(x + 1, y - 1), (x - 3, y - 1), (x - 1, y + 1), (x - 1, y - 3)]:
-            if fishery_at(fx, fy):
+            footprint = [(fx + i, fy + j) for i in range(3) for j in range(3)]
+            if all(0 <= tx < GRID and 0 <= ty < GRID and (tx, ty) not in taken and (tx, ty) not in previous for tx, ty in footprint) and fits(fx, fy):
                 path = []
                 at = (x, y)
                 while at:
@@ -96,6 +97,20 @@ def shore_route(grid, start, taken):
     return None, None
 
 
+def shore(grid):
+    """Emplacement de pêcherie : libre, au bord de l'eau."""
+    def fits(x, y):
+        ring = [(x + i, y + j) for i in range(-1, 4) for j in range(-1, 4)]
+        return all(grid[y + j][x + i] in FREE for i in range(3) for j in range(3)) and any(
+            0 <= rx < GRID and 0 <= ry < GRID and grid[ry][rx] == '~' for rx, ry in ring)
+    return fits
+
+
+def meadow(grid):
+    """Emplacement de ferme : tout en pré."""
+    return lambda x, y: all(grid[y + j][x + i] == ':' for i in range(3) for j in range(3))
+
+
 def plan(grid, allowed):
     def ok(name):
         return name in allowed
@@ -103,7 +118,7 @@ def plan(grid, allowed):
     food = 'Laiterie' if ok('Laiterie') else next((f for f in ['Exploitation de blé', 'Exploitation de carottes', "Exploitation d'oignons"] if ok(f)), None)
     if food is None and ok('Pêcherie'):
         food = 'Pêcherie'
-    site = choose_site(grid, food == 'Pêcherie')
+    site = choose_site(grid, food == 'Pêcherie', bool(food) and food.startswith('Exploitation'))
     if site is None:
         sys.exit('aucun terrain libre de 34 × 24 cases')
     x0, y0 = site
@@ -150,22 +165,25 @@ def plan(grid, allowed):
         for dx in (22, 24):
             put(dx, 17, 'Laiterie')
     elif food and food.startswith('Exploitation'):
-        for dx in (1, 4, 7, 10, 13, 16, 19, 22):
-            if all(grid[y0 + 20 + j][x0 + dx + i] == ':' for i in range(3) for j in range(3)):
-                put(dx, 20, food)
+        for dx in meadow_slots(grid, x0, y0):
+            put(dx, 20, food)
     put(28, 3, 'Palais')
-    if food == 'Pêcherie':
+    outside = {'Pêcherie': (shore(grid), 2), 'Exploitation': (meadow(grid), 4)}.get(food and food.split(' ')[0])
+    if outside and not (food.startswith('Exploitation') and len(meadow_slots(grid, x0, y0)) >= 3):
+        fits, count = outside
+        # Les vivres passent avant le reste, quand l'argent est compté.
+        city, steps = steps, []
         taken = {(x0 + i, y0 + j) for i in range(WIDTH) for j in range(HEIGHT)}
-        for _ in range(2):
-            path, corner = shore_route(grid, (x0 + 13, y0 + 19), taken - {(x0 + i, y0 + 19) for i in range(28)})
+        for _ in range(count):
+            path, corner = route_to(grid, (x0 + 13, y0 + 19), taken - {(x0 + i, y0 + 19) for i in range(28)}, fits)
             if not path:
                 break
             for (ax, ay), (bx, by) in zip(path, path[1:]):
                 steps.append(f'r:{ax},{ay},{bx},{by}')
-            steps.append(f'b:{corner[0]},{corner[1]},Pêcherie')
+            steps.append(f'b:{corner[0]},{corner[1]},{food.replace(" ", "_")}')
             taken |= {(corner[0] + i, corner[1] + j) for i in range(3) for j in range(3)}
-            # Une maintenance au bord de la route, près de la pêcherie : loin de la cité,
-            # aucun surintendant ne passerait.
+            # Une maintenance au bord de la route, près de l'exploitation : loin de la
+            # cité, aucun surintendant ne passerait.
             road = set(path)
             for px, py in path[:12]:
                 spot = next(((px + dx, py + dy) for dx, dy in [(1, 0), (-2, 0), (0, 1), (0, -2), (1, -1), (-2, -1), (-1, 1), (-1, -2)]
@@ -175,6 +193,7 @@ def plan(grid, allowed):
                     steps.append(f'b:{spot[0]},{spot[1]},Maintenance')
                     taken |= {(spot[0] + i, spot[1] + j) for i in range(2) for j in range(2)}
                     break
+        steps = city[:5] + steps + city[5:]
     return steps, (x0, y0), food
 
 
