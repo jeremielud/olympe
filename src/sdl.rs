@@ -52,6 +52,7 @@ pub const KEY_F: u32 = 0x66;
 pub const KEY_H: u32 = 0x68;
 pub const KEY_M: u32 = 0x6D;
 pub const KEY_O: u32 = 0x6F;
+pub const KEY_V: u32 = 0x76;
 pub const KEY_X: u32 = 0x78;
 pub const KEY_Q: u32 = 0x71;
 pub const KEY_R: u32 = 0x72;

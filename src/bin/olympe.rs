@@ -333,7 +333,7 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 17] = [
+const HELP: [&str; 18] = [
     "Clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
@@ -346,6 +346,7 @@ const HELP: [&str; 17] = [
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
     "M : musique ; B : bruitages",
+    "V : vues (eau, risques, attrait, criminalité, culture, santé, impôts)",
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "+ et - : taux d'imposition",
@@ -1918,6 +1919,63 @@ fn city_report(world: &World) -> String {
     .join("\n")
 }
 
+/// Vues en surimpression (touche V), comme celles du jeu : chaque bâtiment est teinté
+/// du vert au rouge selon ce qu'elles mesurent.
+#[derive(Clone, Copy, PartialEq)]
+enum Overlay {
+    None,
+    Water,
+    Fire,
+    Damage,
+    Appeal,
+    Crime,
+    Culture,
+    Health,
+    Tax,
+}
+
+const OVERLAYS: [(Overlay, &str); 9] = [
+    (Overlay::None, "Vue normale"),
+    (Overlay::Water, "Vue : eau"),
+    (Overlay::Fire, "Vue : risque d'incendie"),
+    (Overlay::Damage, "Vue : risque d'effondrement"),
+    (Overlay::Appeal, "Vue : attrait"),
+    (Overlay::Crime, "Vue : criminalité"),
+    (Overlay::Culture, "Vue : culture"),
+    (Overlay::Health, "Vue : santé"),
+    (Overlay::Tax, "Vue : impôts"),
+];
+
+/// Teinte d'un bâtiment dans une vue : de 0 (mauvais, rouge) à 100 (bon, vert) ; gris
+/// pour ce que la vue ne concerne pas.
+fn overlay_tint(world: &World, overlay: Overlay, building: &zeus::world::Building) -> Option<(u8, u8, u8)> {
+    const NEUTRAL: (u8, u8, u8) = (110, 110, 110);
+    let house = building.house.as_ref();
+    let served = |service: Service| house.map(|h| if h.has(service, world.ticks) { 100 } else { 0 });
+    let score = match overlay {
+        Overlay::None => return None,
+        Overlay::Fire => Some(100 - world.risks(building).0),
+        Overlay::Damage => Some(100 - world.risks(building).1),
+        Overlay::Water => served(Service::Water),
+        Overlay::Health => served(Service::Health),
+        Overlay::Tax => served(Service::Tax),
+        // Attrait de -20 (rouge) à +40 (vert).
+        Overlay::Appeal => house.map(|_| ((world.appeal(building.x as i32, building.y as i32) + 20) * 100 / 60).clamp(0, 100)),
+        Overlay::Crime => house.map(|h| 100 - h.crime.clamp(0, 100)),
+        Overlay::Culture => house.map(|h| {
+            let disciplines = [Service::Philosophy, Service::Athletics, Service::Drama].iter().filter(|&&s| h.has(s, world.ticks)).count() as i32;
+            disciplines * 100 / 3
+        }),
+    };
+    Some(score.map_or(NEUTRAL, |score| {
+        // Rouge, jaune, vert.
+        let score = score.clamp(0, 100) as u32;
+        let red = if score < 50 { 255 } else { 255 * (100 - score) / 50 };
+        let green = if score > 50 { 255 } else { 255 * score / 50 };
+        (red as u8, green as u8, 60)
+    }))
+}
+
 /// Pose une cité complète autour d'un îlot bouclé, comme en bâtissent les joueurs : une
 /// route en rectangle de 42 cases de tour, reliée à la grand-rue par un seul passage,
 /// pour qu'un marcheur parti de la boucle en fasse le tour. Maisons, agoras et services
@@ -2726,7 +2784,7 @@ fn run(
         let mut event = sdl::Event::new();
         let mut running = true;
         // (profondeur, couche, coin haut-gauche en pixels de monde, catalogue, image)
-        let mut draw_list: Vec<(i32, i32, f32, f32, Source, usize)> = Vec::new();
+        let mut draw_list: Vec<(i32, i32, f32, f32, Source, usize, Option<(u8, u8, u8)>)> = Vec::new();
         // Emplacement de la liste des outils : (x, y de la première ligne, largeur, hauteur de ligne).
         // Action de chaque ligne du menu, telle qu'affichée à la dernière image.
         let mut menu_rows: Vec<((f32, f32, f32, f32), MenuRow)> = Vec::new();
@@ -2768,6 +2826,8 @@ fn run(
         let mut force_end = false;
         let mut clock = sdl::SDL_GetTicks();
         let mut paused = false;
+        // Vue en surimpression (touche V).
+        let mut overlay = Overlay::None;
         let mut speed = NORMAL_SPEED;
         graphics.set_ground(plain_ground(&world));
         // Mini-carte : texture, emplacement à l'écran (x, y) et images écoulées depuis sa mise à jour.
@@ -2902,6 +2962,7 @@ fn run(
                         "+" => Some(sdl::Event::key_down(0, sdl::KEY_PLUS)),
                         "-" => Some(sdl::Event::key_down(0, sdl::KEY_MINUS)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
+                        "v" => Some(sdl::Event::key_down(0, sdl::KEY_V)),
                         _ => None,
                     },
                     // Pause en temps réel, pour laisser vivre ce qui en dépend (son).
@@ -3291,6 +3352,11 @@ fn run(
                         sdl::KEY_ESCAPE if open_category.is_some() => open_category = None,
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
                         sdl::KEY_SPACE => paused = !paused,
+                        sdl::KEY_V => {
+                            let next = (OVERLAYS.iter().position(|&(o, _)| o == overlay).unwrap_or(0) + 1) % OVERLAYS.len();
+                            overlay = OVERLAYS[next].0;
+                            notice = (OVERLAYS[next].1.to_string(), now);
+                        }
                         sdl::KEY_F5 => {
                             notice = match journey.save(&world, &save_file) {
                                 Ok(()) => (format!("Partie enregistrée : {}", save_file.display()), now),
@@ -3604,7 +3670,7 @@ fn run(
                         let top = oy + (n as f32 + 1.0) * HALF_HEIGHT - height - draw.lift as f32;
                         if let Some((source, image)) = draw.ground {
                             let ground_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
-                            draw_list.push((sum, tile.0 * 3, ox, oy + 2.0 * HALF_HEIGHT - ground_height, source, image));
+                            draw_list.push((sum, tile.0 * 3, ox, oy + 2.0 * HALF_HEIGHT - ground_height, source, image, None));
                         }
                         // Mer : la même tuile revient tous les quinze numéros, à un autre instant
                         // de la houle ; la carte donne à chaque case son instant de départ.
@@ -3616,11 +3682,12 @@ fn run(
                             }
                             false => draw.image,
                         };
-                        draw_list.push((sum + n - 1, tile.0 * 3 + 1, ox, top, draw.source, image));
+                        let tint = world.building_at(tile.0, tile.1).and_then(|b| overlay_tint(&world, overlay, b));
+                        draw_list.push((sum + n - 1, tile.0 * 3 + 1, ox, top, draw.source, image, tint));
                         // Pièce qui couronne un étage de monument.
                         if let Some((source, image, lift)) = draw.above {
                             let above_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ox, oy + 2.0 * HALF_HEIGHT - above_height - lift as f32, source, image));
+                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ox, oy + 2.0 * HALF_HEIGHT - above_height - lift as f32, source, image, tint));
                         }
                         // Incendie : une flamme animée, le pied au centre de la case, décalée
                         // d'une case à l'autre pour ne pas battre à l'unisson.
@@ -3629,18 +3696,18 @@ fn run(
                             let frame = FIRE_FIRST_IMAGE + ((world.ticks / FIRE_FRAME_TICKS) as usize + phase) % FIRE_FRAMES;
                             if let Some(flame) = graphics.destruction.images.get(frame) {
                                 let (fx, fy) = (ox + HALF_WIDTH - flame.width as f32 / 2.0, oy + 1.5 * HALF_HEIGHT - flame.height as f32);
-                                draw_list.push((sum, tile.0 * 3 + 2, fx, fy, Source::Destruction, frame));
+                                draw_list.push((sum, tile.0 * 3 + 2, fx, fy, Source::Destruction, frame, None));
                             }
                         }
                         // Bâtiment animé : l'image d'animation se pose sur la base, à l'ancrage indiqué.
                         let base = &graphics.catalog(draw.source).images[draw.image];
                         if let Some(overlay) = draw.overlay {
                             let (ax, ay) = (ox + base.offset_x as f32, top + base.offset_y as f32);
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, overlay));
+                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, overlay, tint));
                         } else if draw.source == Source::General && base.animation_frames > 0 {
                             let frame = (world.ticks / ANIMATION_TICKS) as usize % base.animation_frames;
                             let (ax, ay) = (ox + base.offset_x as f32, top + base.offset_y as f32);
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, draw.image + 1 + frame));
+                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, draw.image + 1 + frame, tint));
                         }
                     }
                 }
@@ -3666,7 +3733,7 @@ fn run(
                 let wx = (figure.x - figure.y) * HALF_WIDTH + HALF_WIDTH - 1.0 - info.offset_x as f32;
                 let wy = (figure.x + figure.y) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32;
                 if wx < right && wx + info.width as f32 > left && wy < bottom && wy + info.height as f32 > top {
-                    draw_list.push(((figure.x + figure.y).ceil() as i32, i32::MAX, wx, wy, figure.source, image));
+                    draw_list.push(((figure.x + figure.y).ceil() as i32, i32::MAX, wx, wy, figure.source, image, None));
                 }
             }
             draw_list.sort_unstable_by_key(|&(depth, layer, ..)| (depth, layer));
@@ -3701,7 +3768,7 @@ fn run(
                 _ => (window_view, w, h),
             };
             let scale_mode = if crisp || staged { sdl::SCALEMODE_NEAREST } else { sdl::SCALEMODE_LINEAR };
-            for &(_, _, wx, wy, source, image) in &draw_list {
+            for &(_, _, wx, wy, source, image, tint) in &draw_list {
                 let Some(sprite) = graphics.sprite(source, image) else { continue };
                 let (sx, sy) = view.to_screen(wx, wy, w, h);
                 let target = sdl::FRect {
@@ -3711,7 +3778,13 @@ fn run(
                     h: (sprite.height * view.zoom).ceil(),
                 };
                 sdl::SDL_SetTextureScaleMode(sprite.texture, scale_mode);
+                if let Some((r, g, b)) = tint {
+                    sdl::SDL_SetTextureColorMod(sprite.texture, r, g, b);
+                }
                 sdl::SDL_RenderTexture(renderer, sprite.texture, null(), &target);
+                if tint.is_some() {
+                    sdl::SDL_SetTextureColorMod(sprite.texture, 255, 255, 255);
+                }
             }
 
             // Traits des archers ennemis : un court trait sombre qui file vers sa cible.

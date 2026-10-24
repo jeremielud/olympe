@@ -119,6 +119,9 @@ Ce qui fonctionne :
   choix du joueur quand l'aventure en propose plus qu'elle n'a d'épisodes de colonie),
   retour à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours
   et les colonies choisies ;
+- vues en surimpression (touche `V`) : eau, risques d'incendie et d'effondrement,
+  attrait, criminalité, culture, santé et impôts, chaque bâtiment teinté du vert au
+  rouge ;
 - fiche des maisons : ce qui leur manque pour évoluer ; un service bloqué dit ce qu'il
   attend (palais pour les percepteurs, école pour les philosophes et les acteurs) ;
 - superviseurs (touche A, Tab pour changer de page) : population par niveau de
