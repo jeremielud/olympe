@@ -52,7 +52,9 @@ options :
   --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)
   --script \"…\"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),
                      d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,
-                     t:n (pas), p:ms (pause), fin (termine l'épisode en cours)
+                     t:n (pas), p:ms (pause), fin (termine l'épisode en cours),
+                     r:x1,y1,x2,y2 (route en équerre), b:x,y,nom (bâtiment, _ pour les
+                     espaces), bilan (état de la cité et des objectifs)
 en jeu : H affiche l'aide";
 
 /// Demi-largeur et demi-hauteur d'une case à l'écran, à l'échelle 1.
@@ -1829,6 +1831,46 @@ impl View {
     }
 }
 
+/// État de la cité pour les essais : logements par niveau, réserves, stocks, ruines,
+/// finances, emploi et services.
+fn city_report(world: &World) -> String {
+    let saved = world.save();
+    let houses: Vec<_> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).collect();
+    let served: Vec<String> = SERVICES.iter().map(|&s| format!("{s:?} {}", houses.iter().filter(|h| h.has(s, world.ticks)).count())).collect();
+    let mut by_level = [0; 13];
+    houses.iter().for_each(|h| by_level[h.level.min(12)] += 1);
+    let reserves = GOODS.map(|g| houses.iter().map(|h| h.goods[g as usize]).sum::<i32>());
+    let stocks: Vec<String> = world
+        .buildings
+        .iter()
+        .flatten()
+        .filter(|b| b.house.is_none() && world.kinds[b.kind].function != Function::None)
+        .map(|b| {
+            let goods = if b.goods.iter().any(|&g| g > 0) { format!("{:?}", b.goods) } else { String::new() };
+            let raw = if b.raw > 0 { format!("+{}", b.raw) } else { String::new() };
+            format!("{}@{},{}={}{raw}{goods} {}/{}", world.kinds[b.kind].name, b.x, b.y, b.stock, b.workers, world.kinds[b.kind].employees)
+        })
+        .collect();
+    let appeals: Vec<i32> = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| world.appeal(b.x as i32, b.y as i32)).collect();
+    [
+        format!("maisons : par niveau {by_level:?}, réserves totales {reserves:?} | attrait {appeals:?}"),
+        format!("stocks : {}", stocks.join(", ")),
+        format!("bâtiments debout : {} | {} cases en ruine, {} en feu", world.buildings.iter().flatten().count(), saved.matches("\nruine ").count(), saved.matches("\nfeu ").count()),
+        format!(
+            "drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles | humeur {} | santé {}",
+            world.money,
+            world.last_month.0,
+            world.last_month.1,
+            world.workers_needed(),
+            world.workers_available(),
+            world.sentiment,
+            world.health
+        ),
+        format!("population {}, {} maisons desservies [{}]", world.population(), houses.len(), served.join(", ")),
+    ]
+    .join("\n")
+}
+
 /// Pose une cité complète autour d'un îlot bouclé, comme en bâtissent les joueurs : une
 /// route en rectangle de 42 cases de tour, reliée à la grand-rue par un seul passage,
 /// pour qu'un marcheur parti de la boucle en fasse le tour. Maisons, agoras et services
@@ -2705,24 +2747,8 @@ fn run(
             world.load(&saved)?;
             println!("sauvegarde : {} octets, aller-retour {}", saved.len(), if world.save() == saved { "identique" } else { "DIFFÉRENT" });
             let nearest = world.figures.iter().map(|f| format!("({:.0},{:.0})", f.x, f.y)).collect::<Vec<_>>().join(" ");
-            let houses: Vec<_> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).collect();
-            let served: Vec<String> =
-                SERVICES.iter().map(|&s| format!("{s:?} {}", houses.iter().filter(|h| h.has(s, world.ticks)).count())).collect();
-            let mut by_level = [0; 13];
-            houses.iter().for_each(|h| by_level[h.level.min(12)] += 1);
-            let levels = [format!("par niveau {by_level:?}, réserves totales {:?}", GOODS.map(|g| houses.iter().map(|h| h.goods[g as usize]).sum::<i32>()))];
-            let stocks: Vec<String> = world.buildings.iter().flatten().filter(|b| b.house.is_none()).filter(|b| world.kinds[b.kind].function != Function::None).map(|b| format!("{}={}{}{}", world.kinds[b.kind].name, b.stock, if b.goods.iter().any(|&g| g > 0) { format!("{:?}", b.goods) } else { String::new() }, if b.staffed { "" } else { " (arrêt)" })).collect();
-            let appeals: Vec<i32> = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| world.appeal(b.x as i32, b.y as i32)).collect();
-            println!("maisons : {} | attrait {appeals:?} | stocks : {}", levels.join(", "), stocks.join(", "));
-            println!("bâtiments debout : {} | sauvegarde : {} cases en ruine, {} en feu", world.buildings.iter().flatten().count(), saved.matches("\nruine ").count(), saved.matches("\nfeu ").count());
-            println!("drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles | humeur {}", world.money, world.last_month.0, world.last_month.1, world.workers_needed(), world.workers_available(), world.sentiment);
-            println!(
-                "après {warmup} pas : population {}, {} maisons desservies [{}], {} personnages {nearest}, scène en {start:?}",
-                world.population(),
-                houses.len(),
-                served.join(", "),
-                world.figures.len()
-            );
+            println!("{}", city_report(&world));
+            println!("après {warmup} pas : {} personnages {nearest}, scène en {start:?}", world.figures.len());
         }
 
         let mut ambience = match capture.is_none() || !script.is_empty() {
@@ -2830,6 +2856,96 @@ fn run(
                         for _ in 0..ticks as u32 {
                             world.tick();
                             advance_demo(&mut world, &mut demo_plan);
+                        }
+                        None
+                    }
+                    // Route en équerre d'une case à l'autre : d'abord en x, puis en y.
+                    ("r", &[x1, y1, x2, y2]) => {
+                        let (x1, y1, x2, y2) = (x1 as i32, y1 as i32, x2 as i32, y2 as i32);
+                        let across = (x1.min(x2)..=x1.max(x2)).map(|x| (x, y1));
+                        let down = (y1.min(y2)..=y1.max(y2)).map(|y| (x2, y));
+                        let refused: Vec<String> = across.chain(down).filter(|&(x, y)| !world.is_road(x, y) && !world.place_road(x, y, road_cost)).map(|(x, y)| format!("{x},{y}")).collect();
+                        if !refused.is_empty() {
+                            eprintln!("route refusée en {}", refused.join(" "));
+                        }
+                        None
+                    }
+                    // Bâtiment par son nom (soulignés pour les espaces), coin nord en x,y.
+                    ("b", _) => {
+                        let mut parts = argument.splitn(3, ',');
+                        let (x, y) = (parts.next().and_then(|n| n.parse().ok()), parts.next().and_then(|n| n.parse().ok()));
+                        let name = parts.next().unwrap_or("").replace('_', " ").to_lowercase();
+                        match (x, y, world.kinds.iter().position(|k| k.name.to_lowercase() == name)) {
+                            (Some(x), Some(y), Some(kind)) if world.place_building(kind, x, y) => {}
+                            (Some(x), Some(y), Some(kind)) => eprintln!("{name} refusé en {x},{y} : {}", world.placement_hint(kind, x, y).unwrap_or("terrain occupé ou interdit")),
+                            _ => eprintln!("bâtiment inconnu : {step}"),
+                        }
+                        None
+                    }
+                    // Plan du terrain : . constructible, : pré, ~ eau, T arbres, ^ rochers,
+                    // # bâtiment, = route, ? autre.
+                    ("carte", &[x1, y1, x2, y2]) => {
+                        println!("carte de {x1},{y1} à {x2},{y2}");
+                        for y in y1 as i32..=y2 as i32 {
+                            let row: String = (x1 as i32..=x2 as i32)
+                                .map(|x| {
+                                    if world.is_road(x, y) {
+                                        return '=';
+                                    }
+                                    if !(0..GRID as i32).contains(&x) || !(0..GRID as i32).contains(&y) {
+                                        return ' ';
+                                    }
+                                    let t = world.map.terrain(x as usize, y as usize);
+                                    match () {
+                                        _ if world.building_at(x, y).is_some() => '#',
+                                        _ if t & zeus::world::TERRAIN_WATER != 0 => '~',
+                                        _ if t & zeus::world::TERRAIN_TREE != 0 => 'T',
+                                        _ if t & (zeus::world::TERRAIN_ROCK | zeus::world::TERRAIN_QUARRY | zeus::world::TERRAIN_ORE) != 0 => '^',
+                                        _ if world.can_build(x, y, 1) && t & zeus::world::TERRAIN_MEADOW != 0 => ':',
+                                        _ if world.can_build(x, y, 1) => '.',
+                                        _ => '?',
+                                    }
+                                })
+                                .collect();
+                            println!("{y:4} {row}");
+                        }
+                        None
+                    }
+                    // Chaque maison : niveau, habitants, attrait, réserves et services.
+                    ("maisons", _) => {
+                        for (level, model) in model.houses.iter().enumerate() {
+                            println!(
+                                "niveau {level} {} : attrait {}..{}, culture {}, eau {}, vivres {}, laine {}, huile {}, vin {}, capacité {}",
+                                model.name, model.devolve_desirability, model.evolve_desirability, model.culture, model.water, model.food_types, model.fleece, model.olive_oil, model.wine, model.capacity
+                            );
+                        }
+                        for building in world.buildings.iter().flatten() {
+                            let Some(house) = &building.house else { continue };
+                            let served: Vec<String> = SERVICES.iter().filter(|&&s| house.has(s, world.ticks)).map(|s| format!("{s:?}")).collect();
+                            println!(
+                                "  maison {},{} : niveau {}, {} habitants, attrait {}, réserves {:?}, {}",
+                                building.x,
+                                building.y,
+                                house.level,
+                                house.population,
+                                world.appeal(building.x as i32, building.y as i32),
+                                &house.goods[..4],
+                                served.join(" ")
+                            );
+                        }
+                        None
+                    }
+                    ("types", _) => {
+                        for kind in &world.kinds {
+                            println!("{} ({}×{}, {} dr., {} employés)", kind.name, kind.size, kind.depth, kind.cost, kind.employees);
+                        }
+                        None
+                    }
+                    ("bilan", _) => {
+                        println!("{}", city_report(&world));
+                        for goal in &goals {
+                            let label = goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_)));
+                            println!("  objectif {label} : {:?}", goal.status(&world));
                         }
                         None
                     }

@@ -177,7 +177,10 @@ const HARVEST_LOADS: i32 = 12;
 const FARM_STORAGE: i32 = 12;
 const GRANARY_STORAGE: i32 = 32;
 const VENDOR_STORAGE: i32 = 16;
-/// Chargements qu'emporte une acheteuse, ou un marchand ambulant en tournée.
+/// Chargements qu'emporte une acheteuse. Le marchand ambulant, lui, part avec tout le
+/// stock de l'échoppe et rapporte le reste : comme la marchande de Caesar III, dont
+/// descend le moteur, il puise dans la réserve et non dans une charge fixe ; avec huit
+/// chargements, il ne nourrissait que trois maisons d'immeubles par tournée.
 const VENDOR_LOAD: i32 = 8;
 /// Chargement d'un porteur ou d'une acheteuse.
 const CARRIER_LOAD: i32 = 4;
@@ -3884,7 +3887,7 @@ impl World {
                         self.send_buyer(id, good);
                     }
                     if stock > 0 && due {
-                        let loads = stock.min(VENDOR_LOAD);
+                        let loads = stock;
                         let carried = loads * units_per_load(good);
                         if self.start_rounds(id, walker, Rounds::Goods { good, carried, vendor: id as u16 }) {
                             self.buildings[id].as_mut().unwrap().stock -= loads;
