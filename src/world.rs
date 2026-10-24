@@ -928,6 +928,8 @@ pub enum Function {
     /// Quai des trières : posé au bord de l'eau, il arme une trière avec le bois de
     /// l'entrepôt.
     Wharf,
+    /// Tour : ses sentinelles tirent sur les envahisseurs à portée.
+    Tower,
     /// Monument de Poséidon (rang 0 à 14, type de bâtiment 100 + rang), et ce qu'il
     /// faut y livrer : marbre, bois, sculptures.
     Monument { model: u8, needs: [u16; 3] },
@@ -3009,6 +3011,30 @@ impl World {
                 let to = defenders.iter().copied().min_by(|a, b| (a.0 - from.0).hypot(a.1 - from.1).total_cmp(&(b.0 - from.0).hypot(b.1 - from.1)))?;
                 Some((from, to, progress))
             })
+            .chain(self.raid.is_some().then(|| self.tower_shots()).unwrap_or_default().into_iter().filter_map(|(shot, target)| {
+                let tower = self.buildings.iter().flatten().filter(|b| b.staffed && self.kinds[b.kind].function == Function::Tower).nth(shot)?;
+                let half = self.kinds[tower.kind].size as f32 / 2.0;
+                let enemy = &self.figures[target];
+                Some(((tower.x as f32 + half, tower.y as f32 + half), (enemy.x, enemy.y), progress))
+            }))
+            .collect()
+    }
+
+    /// Tirs des tours en activité : pour chacune, l'envahisseur le plus proche à portée
+    /// de ses sentinelles (rang du personnage). La portée des règles est en demi-cases.
+    fn tower_shots(&self) -> Vec<(usize, usize)> {
+        let reach = self.fighters.sentry.missile_range as f32 / 2.0;
+        let enemies: Vec<(usize, f32, f32)> = self.figures.iter().enumerate().filter(|(_, f)| f.soldier() == Some(true)).map(|(i, f)| (i, f.x, f.y)).collect();
+        self.buildings
+            .iter()
+            .flatten()
+            .filter(|b| b.staffed && self.kinds[b.kind].function == Function::Tower)
+            .enumerate()
+            .filter_map(|(shot, b)| {
+                let half = self.kinds[b.kind].size as f32 / 2.0;
+                let (cx, cy) = (b.x as f32 + half, b.y as f32 + half);
+                enemies.iter().map(|&(i, x, y)| (i, (x - cx).hypot(y - cy))).filter(|&(_, d)| d <= reach).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(i, _)| (shot, i))
+            })
             .collect()
     }
 
@@ -3082,6 +3108,15 @@ impl World {
                     figure.path = path;
                 }
                 _ => figure.role = Role::Soldier { enemy, army, health, target, fighting: false },
+            }
+        }
+        // Les tours tirent sur l'envahisseur le plus proche à portée de leurs sentinelles.
+        if strike {
+            for (shot, target) in self.tower_shots() {
+                let defense = defense[target].1;
+                if (self.ticks / STRIKE_TICKS * 37 + shot as u64 * 13) % 100 < self.fighters.sentry.rate.max(0) as u64 {
+                    wounds[target] += (self.fighters.sentry.missile_attack - defense).max(1);
+                }
             }
         }
         // Les blessés perdent leurs forces ; ceux qui n'en ont plus tombent.

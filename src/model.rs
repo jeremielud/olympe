@@ -153,10 +153,13 @@ pub struct Fighter {
 pub struct Fighters {
     pub citizens: [Fighter; 3],
     pub enemies: Vec<Fighter>,
+    /// Sentinelle de tour (personnage 46).
+    pub sentry: Fighter,
 }
 
-/// Rangs des soldats de la cité parmi les personnages.
+/// Rangs des soldats de la cité parmi les personnages, et de la sentinelle de tour.
 const CITIZEN_FIGHTERS: [usize; 3] = [11, 12, 13];
+const TOWER_SENTRY: usize = 46;
 
 impl Fighters {
     pub fn parse(file: &[u8]) -> Result<Fighters, String> {
@@ -192,6 +195,8 @@ impl Fighters {
                 fighters.enemies.push(fighter);
             } else if let Some(rank) = CITIZEN_FIGHTERS.iter().position(|&n| n == number) {
                 fighters.citizens[rank] = fighter;
+            } else if number == TOWER_SENTRY {
+                fighters.sentry = fighter;
             }
         }
         if fighters.enemies.is_empty() {

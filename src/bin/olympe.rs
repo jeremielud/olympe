@@ -82,6 +82,9 @@ const TEXT_BUILDINGS: usize = 28;
 const TYPE_ROAD: usize = 28;
 /// Mur (règles : 5 drachmes la case) ; la catégorie Armée du menu le propose.
 const TYPE_WALL: usize = 130;
+/// Tour (règles : type 132) et son image dans le catalogue général.
+const TYPE_TOWER: usize = 132;
+const TOWER_IMAGE: usize = 774;
 const MILITARY_CATEGORY: usize = 9;
 /// Groupes de personnages dans `sprmain.sg3`. Le catalogue nomme ses planches
 /// (Peddler, Actor, Ox…) dans l'ordre des groupes ; l'alignement a été fait sur les
@@ -284,7 +287,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::House => "COMMON_HOUSING",
         Function::Service(Service::Water) => "FOUNTAIN",
         Function::Service(Service::Maintenance) => "MAINTENANCE_OFFICE",
-        Function::Service(Service::Security) => "DEFENSIVE",
+        Function::Service(Service::Security) | Function::Tower => "DEFENSIVE",
         Function::Service(Service::Health) => "INFIRMARY",
         Function::Service(Service::Tax) => "MUNICIPAL",
         Function::Palace => "PALACE",
@@ -430,7 +433,7 @@ fn category_of(function: Function) -> usize {
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
-        Function::Wharf => 9,
+        Function::Wharf | Function::Tower => 9,
         Function::Racetrack => 5,
         Function::None => 8,
     }
@@ -2708,6 +2711,11 @@ fn run(
         });
         monument_layouts.push(layout);
     }
+    // Tour : l'image du catalogue général, les règles du type 132.
+    let mut tower = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_TOWER), rules(TYPE_TOWER)?.cost, size_of(TOWER_IMAGE)?, TOWER_IMAGE, Function::Tower, 0);
+    tower.employees = rules(TYPE_TOWER)?.employees;
+    tower.appeal = appeal_of(TYPE_TOWER)?;
+    (tower.fire_risk, tower.damage_risk) = (rules(TYPE_TOWER)?.fire_risk, rules(TYPE_TOWER)?.damage_risk);
     // Quai des trières : le jeu n'en a pas d'image reconnue ; Olympe prend celle d'une
     // pêcherie.
     let mut wharf = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_WHARF), rules(TYPE_WHARF)?.cost, 3, WHARF_IMAGE, Function::Wharf, 0);
@@ -2733,6 +2741,8 @@ fn run(
         entry.product = zeus::world::resource_of(good).unwrap_or(0);
         kinds.push(entry);
     }
+    // Ajoutée en dernier : les sauvegardes antérieures gardent leurs numéros de types.
+    kinds.push(tower);
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();

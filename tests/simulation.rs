@@ -1165,3 +1165,35 @@ fn walls_hold_invaders_back_until_breached() {
     other.load(&world.save()).unwrap();
     assert_eq!(walls(&other), walls(&world));
 }
+
+#[test]
+fn a_staffed_tower_shoots_invaders_down() {
+    use zeus::map::{City, RIVAL};
+    use zeus::world::INVASION;
+    let Some(data) = data() else { return };
+    let raid = |with_tower: bool| {
+        let (mut world, x, y) = world(&data);
+        world.fighters = zeus::model::Fighters::parse(&fs::read(data.join("model/figure_model_normal.txt")).unwrap()).unwrap();
+        street(&mut world, x, y);
+        // Des huttes bien remplies : des ouvriers pour la tour, mais pas de soldats.
+        for building in world.buildings.iter_mut().flatten() {
+            if let Some(house) = building.house.as_mut() {
+                house.population = 60;
+            }
+        }
+        if with_tower {
+            let tower = world.kinds.len();
+            let mut kind = Kind::simple("tour".into(), 100, 2, 774, Function::Tower, 0);
+            kind.employees = 15;
+            world.kinds.push(kind);
+            assert!(world.place_building(tower, x + 8, y + 2));
+        }
+        world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0 }];
+        world.schedule(INVASION, (0, 0), (3, 3), 1, (0, 0));
+        (0..8 * TICKS_PER_MONTH).for_each(|_| world.tick());
+        world.battles.last().copied()
+    };
+    // Sans tour ni armée, la cité est pillée ; une tour en activité repousse l'invasion.
+    assert!(raid(false).is_some_and(|b| !b.repelled));
+    assert!(raid(true).is_some_and(|b| b.repelled), "{:?}", raid(true));
+}

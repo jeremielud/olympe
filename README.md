@@ -26,7 +26,7 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Interface (menus, fiches, vues, journal, superviseurs, panneaux) | 80 % |
 | Commerce et cités du monde | 70 % |
 | Mythologie (dieux, héros, monstres, quêtes) | 65 % |
-| Armée et combats (murs ; ni tours ni corps de garde) | 45 % |
+| Armée et combats (murs et tours ; pas de corps de garde) | 50 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
@@ -74,7 +74,10 @@ Ce qui fonctionne :
 - murs (onglet Armée, tracés comme les routes, 5 drachmes la case) : l'image de chaque
   case suit ses voisins d'après la table du jeu ; les envahisseurs les contournent et,
   sans passage, sapent le plus proche jusqu'à la brèche (solidité d'Olympe). Les
-  citoyens passent encore au travers, faute de corps de garde ; les tours manquent ;
+  citoyens passent encore au travers, faute de corps de garde ;
+- tours (onglet Armée, règles du type 132) : en activité, leurs sentinelles tirent sur
+  l'envahisseur le plus proche à portée, avec la portée, l'attaque à distance et la
+  cadence de la « sentinelle de tour » des règles des personnages ;
 - quai des trières (onglet Armée), au bord de l'eau : il prend deux charges de
   bois et deux d'armement à l'entrepôt et lance une trière 32 jours plus tard (comme le jeu ; celui-ci
   n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
