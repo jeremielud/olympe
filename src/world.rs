@@ -3195,6 +3195,39 @@ impl World {
         ((building.fire * 100 / RISK_LIMIT).min(100), (building.damage * 100 / RISK_LIMIT).min(100))
     }
 
+    /// Ce qui manque à une maison pour évoluer, d'après ses réserves et les services
+    /// reçus (comme à la revue mensuelle) ; vide si elle évoluera.
+    pub fn house_needs(&self, building: &Building) -> Vec<Need> {
+        let Some(house) = &building.house else { return Vec::new() };
+        let (Some(current), (_, Some(next))) = (self.house_levels.get(house.level), house_steps(house.level)) else { return vec![Need::Top] };
+        let Some(wanted) = self.house_levels.get(next) else { return vec![Need::Top] };
+        let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        let state = HouseState {
+            fed: house.goods[Good::Food as usize] >= house.population.max(1),
+            had: house.goods.map(|amount| amount > 0),
+            water: house.has(Service::Water, self.ticks),
+            culture: culture_of(house, self.ticks),
+            stadium_open,
+        };
+        let mut needs = state.missing(wanted);
+        let relief = if self.has_sanctuary(APHRODITE) { APHRODITE_APPEAL } else { 0 };
+        if self.appeal(building.x as i32, building.y as i32) + relief < current.evolve_desirability {
+            needs.push(Need::Appeal(current.evolve_desirability));
+        }
+        needs
+    }
+
+    /// Pourquoi un bâtiment de service n'envoie pas son marcheur : percepteurs sans
+    /// palais, philosophes et acteurs sans école.
+    pub fn service_waits_for(&self, building: &Building) -> Option<Function> {
+        let has = |function: Function| self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == function);
+        match self.kinds[building.kind].function {
+            Function::Service(Service::Tax) if !self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Palace) => Some(Function::Palace),
+            Function::Service(service @ (Service::Philosophy | Service::Drama)) if !has(Function::School(service)) => Some(Function::School(service)),
+            _ => None,
+        }
+    }
+
     /// Capacité d'accueil d'une maison à son niveau actuel.
     pub fn capacity(&self, house: &House) -> i32 {
         self.house_levels.get(house.level).map_or(0, |level| level.capacity)
@@ -4389,34 +4422,18 @@ impl World {
                     house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
-            let culture = CULTURE.iter().filter(|&&service| house.has(service, now)).count() as i32;
-
-            // Les exigences d'un niveau.
-            let meets = |level: &HouseModel| {
-                (level.food_types == 0 || fed)
-                    && (level.stadium == 0 || stadium_open)
-                    && (level.horses == 0 || had[Good::Horses as usize])
-                    && (level.arms == 0 || had[Good::Arms as usize])
-                    && (level.water == 0 || house.has(Service::Water, now))
-                    && culture >= disciplines_for(level.culture)
-                    && (level.fleece == 0 || had[Good::Fleece as usize])
-                    && (level.olive_oil == 0 || had[Good::Oil as usize])
-                    && (level.wine == 0 || had[Good::Wine as usize])
-            };
+            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now), stadium_open };
+            let meets = |level: &HouseModel| state.missing(level).is_empty();
             let Some(current) = self.house_levels.get(house.level) else { continue };
-            // Un logement modeste va de 0 à 6. Un logement luxueux part du terrain vacant,
-            // saute l'état délabré en montant et ne retombe pas plus bas que lui.
-            let elite = house.level >= ELITE_FIRST_LEVEL;
-            let (floor, top) = if elite { (ELITE_DEVOLVED, ELITE_FIRST_LEVEL + ELITE_LEVELS - 1) } else { (0, HOUSE_IMAGES.len() - 1) };
-            let next = if house.level == ELITE_FIRST_LEVEL { house.level + 2 } else { house.level + 1 };
-            let next_ok = next <= top && self.house_levels.get(next).is_some_and(meets);
+            let (floor, next) = house_steps(house.level);
+            let next_ok = next.and_then(|next| self.house_levels.get(next)).is_some_and(meets);
             if (!meets(current) || appeal < current.devolve_desirability) && house.level > floor {
                 house.level -= 1;
                 // Les habitants en trop quittent la cité.
                 let capacity = self.house_levels[house.level].capacity;
                 house.population = house.population.min(capacity);
             } else if next_ok && appeal >= current.evolve_desirability {
-                house.level = next;
+                house.level = next.unwrap_or(house.level);
             }
         }
     }
@@ -4615,6 +4632,67 @@ fn units_per_load(good: Good) -> i32 {
         Good::Food => PEOPLE_PER_LOAD,
         _ => 1,
     }
+}
+
+/// Ce qui manque à une maison pour passer au niveau suivant.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Need {
+    Food,
+    Water,
+    /// Laine, huile, vin, armement ou chevaux.
+    Goods(Good),
+    Stadium,
+    /// Nombre de disciplines culturelles (philosophie, sport, théâtre) exigées.
+    Culture(i32),
+    /// Attrait exigé.
+    Appeal(i32),
+    /// Plus haut niveau atteint.
+    Top,
+}
+
+/// Ce dont dispose une maison au regard des exigences des niveaux.
+struct HouseState {
+    fed: bool,
+    had: [bool; GOODS.len()],
+    water: bool,
+    culture: i32,
+    stadium_open: bool,
+}
+
+impl HouseState {
+    /// Exigences d'un niveau qui ne sont pas remplies.
+    fn missing(&self, level: &HouseModel) -> Vec<Need> {
+        let disciplines = disciplines_for(level.culture);
+        [
+            (level.food_types > 0 && !self.fed, Need::Food),
+            (level.water > 0 && !self.water, Need::Water),
+            (level.stadium > 0 && !self.stadium_open, Need::Stadium),
+            (self.culture < disciplines, Need::Culture(disciplines)),
+            (level.fleece > 0 && !self.had[Good::Fleece as usize], Need::Goods(Good::Fleece)),
+            (level.olive_oil > 0 && !self.had[Good::Oil as usize], Need::Goods(Good::Oil)),
+            (level.wine > 0 && !self.had[Good::Wine as usize], Need::Goods(Good::Wine)),
+            (level.arms > 0 && !self.had[Good::Arms as usize], Need::Goods(Good::Arms)),
+            (level.horses > 0 && !self.had[Good::Horses as usize], Need::Goods(Good::Horses)),
+        ]
+        .into_iter()
+        .filter_map(|(missing, need)| missing.then_some(need))
+        .collect()
+    }
+}
+
+/// Disciplines culturelles dont profite une maison.
+fn culture_of(house: &House, now: u64) -> i32 {
+    CULTURE.iter().filter(|&&service| house.has(service, now)).count() as i32
+}
+
+/// Niveau le plus bas où une maison peut retomber, et niveau suivant s'il y en a un. Un
+/// logement modeste va de 0 à 6. Un logement luxueux part du terrain vacant, saute
+/// l'état délabré en montant et ne retombe pas plus bas que lui.
+fn house_steps(level: usize) -> (usize, Option<usize>) {
+    let elite = level >= ELITE_FIRST_LEVEL;
+    let (floor, top) = if elite { (ELITE_DEVOLVED, ELITE_FIRST_LEVEL + ELITE_LEVELS - 1) } else { (0, HOUSE_IMAGES.len() - 1) };
+    let next = if level == ELITE_FIRST_LEVEL { level + 2 } else { level + 1 };
+    (floor, (next <= top).then_some(next))
 }
 
 /// Nombre de disciplines (philosophie, sport, théâtre) qu'exige un seuil de culture

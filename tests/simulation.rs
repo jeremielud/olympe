@@ -1077,3 +1077,20 @@ fn maintenance_reaches_the_end_of_a_side_road() {
     (0..24 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.buildings.iter().flatten().any(|b| b.kind == granary), "le grenier s'est effondré");
 }
+
+#[test]
+fn a_house_tells_what_it_lacks_and_a_tax_office_waits_for_a_palace() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    (0..3200).for_each(|_| world.tick());
+    // Une hutte habitée, sans vivres : il lui faut de la nourriture pour devenir baraque.
+    let hut = world.buildings.iter().flatten().find(|b| b.house.as_ref().is_some_and(|h| h.population > 0)).unwrap();
+    assert!(world.house_needs(hut).contains(&zeus::world::Need::Food), "{:?}", world.house_needs(hut));
+    // Un hôtel des impôts sans palais attend le palais.
+    let tax = world.kinds.len();
+    world.kinds.push(Kind::simple("impôts".into(), 50, 2, 1075, Function::Service(Service::Tax), 0));
+    assert!(world.place_building(tax, x + 8, y + 5));
+    let office = world.buildings.iter().flatten().find(|b| b.kind == tax).unwrap();
+    assert_eq!(world.service_waits_for(office), Some(Function::Palace));
+}

@@ -28,7 +28,7 @@ use zeus::monument;
 use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
-use zeus::world::{TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
+use zeus::world::{Need, TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
 use zeus::world::{Appeal, Conquest, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
@@ -3878,12 +3878,36 @@ fn run(
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
                     lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
                     lines.push(format!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
-                    for good in GOODS.into_iter().filter(|&good| for_houses(good)) {
+                    // Les marchandises en réserve ; ce qui manque est dit plus bas.
+                    for good in GOODS.into_iter().filter(|&good| for_houses(good) && (good == Good::Food || house.goods[good as usize] > 0)) {
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
                     }
                     for service in SERVICES {
                         let label = service_name(&text, service);
                         lines.push(format!("{label} : {}", text.get(18, if house.has(service, world.ticks) { 1 } else { 0 })));
+                    }
+                    let needs: Vec<String> = world
+                        .house_needs(building)
+                        .into_iter()
+                        .map(|need| match need {
+                            Need::Food => good_names[Good::Food as usize].to_lowercase(),
+                            Need::Water => service_name(&text, Service::Water).to_lowercase(),
+                            Need::Goods(good) => good_names[good as usize].to_lowercase(),
+                            Need::Stadium => "un stade".to_string(),
+                            Need::Culture(n) => format!("{n} sortes de culture"),
+                            Need::Appeal(n) => format!("attrait {n}"),
+                            Need::Top => String::new(),
+                        })
+                        .collect();
+                    match needs.as_slice() {
+                        [] => lines.push("Va évoluer".to_string()),
+                        [top] if top.is_empty() => {}
+                        _ => lines.push(format!("Pour évoluer : {}", needs.join(", "))),
+                    }
+                }
+                if let Some(missing) = world.service_waits_for(building) {
+                    if let Some(kind) = world.kinds.iter().find(|k| k.function == missing) {
+                        lines.push(format!("En attente : {}", kind.name.to_lowercase()));
                     }
                 }
                 let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 32.0;
