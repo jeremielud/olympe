@@ -1124,3 +1124,44 @@ fn a_monster_can_wreck_buildings_whose_walkers_are_out() {
     (0..10 * 12 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert!(world.buildings.iter().flatten().count() < 10);
 }
+
+#[test]
+fn walls_hold_invaders_back_until_breached() {
+    use zeus::map::{City, RIVAL};
+    use zeus::world::INVASION;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Quatre maisons dans une enceinte, au milieu du terrain libre.
+    for i in 0..4 {
+        assert!(world.place_building(HOUSE, x + 2 + 2 * i, y + 2));
+    }
+    for i in 0..=11 {
+        for (wx, wy) in [(x + i, y), (x + i, y + 6), (x, y + i.min(6)), (x + 11, y + i.min(6))] {
+            if !world.is_wall(wx, wy) {
+                assert!(world.place_wall(wx, wy, 0), "mur refusé en {},{}", wx - x, wy - y);
+            }
+        }
+    }
+    let walls = |w: &World| (0..GRID as i32).flat_map(|ty| (0..GRID as i32).map(move |tx| (tx, ty))).filter(|&(tx, ty)| w.is_wall(tx, ty)).count();
+    let built = walls(&world);
+    assert!(built >= 30, "{built} murs");
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0 }];
+    world.schedule(INVASION, (0, 0), (8, 8), 1, (0, 0));
+    let standing = world.buildings.iter().flatten().count();
+    // L'armée arrive et sape le mur au lieu de brûler les maisons, qui tiennent.
+    let mut ticks = 0;
+    while !world.figures.iter().any(|f| f.soldier() == Some(true) && world.is_wall(f.x.round() as i32, f.y.round() as i32)) {
+        world.tick();
+        ticks += 1;
+        assert!(ticks < 6 * TICKS_PER_MONTH, "l'armée n'atteint pas le mur");
+    }
+    (0..TICKS_PER_MONTH / 2).for_each(|_| world.tick());
+    assert_eq!(world.buildings.iter().flatten().count(), standing, "les maisons ont brûlé derrière le mur : {:?}", world.disasters);
+    // Elle finit par faire une brèche.
+    (0..6 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(walls(&world) < built, "aucune brèche");
+    // Les murs passent par la sauvegarde.
+    let (mut other, ..) = self::world(&data);
+    other.load(&world.save()).unwrap();
+    assert_eq!(walls(&other), walls(&world));
+}

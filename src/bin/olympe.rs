@@ -80,6 +80,9 @@ const STARTING_MONEY: i32 = 5000;
 const TEXT_BUILDINGS: usize = 28;
 /// Numéro de type de la route.
 const TYPE_ROAD: usize = 28;
+/// Mur (règles : 5 drachmes la case) ; la catégorie Armée du menu le propose.
+const TYPE_WALL: usize = 130;
+const MILITARY_CATEGORY: usize = 9;
 /// Groupes de personnages dans `sprmain.sg3`. Le catalogue nomme ses planches
 /// (Peddler, Actor, Ox…) dans l'ordre des groupes ; l'alignement a été fait sur les
 /// dimensions annoncées par chaque planche, puis vérifié à l'œil.
@@ -555,7 +558,11 @@ const CHOOSER_BANNER: (f32, f32) = (512.0, 127.0);
 
 /// Outils d'une catégorie, dans l'ordre du menu ; la route ouvre la première.
 fn category_tools(world: &World, category: usize) -> Vec<Tool> {
-    let road = (category == 0).then_some(Tool::Road);
+    let road = match category {
+        0 => Some(Tool::Road),
+        MILITARY_CATEGORY => Some(Tool::Wall),
+        _ => None,
+    };
     let offered = |k: &usize| world.locked.get(*k) != Some(&true);
     let kinds = (0..world.kinds.len()).filter(|&k| category_of(world.kinds[k].function) == category).filter(offered).map(Tool::Build);
     road.into_iter().chain(kinds).collect()
@@ -583,6 +590,8 @@ enum MenuRow {
 enum Tool {
     None,
     Road,
+    /// Mur, tracé comme une route (catégorie Armée).
+    Wall,
     Demolish,
     Build(usize),
 }
@@ -2500,6 +2509,8 @@ fn run(
     let figures = Catalog::load(&data.join("data/sprmain.sg3"))?;
     let road_cost = model.buildings.get(TYPE_ROAD).map_or(0, |b| b.cost);
     let road_name = text.get(TEXT_BUILDINGS, TYPE_ROAD);
+    let wall_cost = model.buildings.get(TYPE_WALL).map_or(0, |b| b.cost);
+    let wall_name = text.get(TEXT_BUILDINGS, TYPE_WALL);
     let demolish_name = text.get(88, 13);
     let months: Vec<String> = (0..12).map(|m| text.get(25, m)).collect();
 
@@ -3056,6 +3067,18 @@ fn run(
                         }
                         None
                     }
+                    // Mur en équerre, comme la route.
+                    ("mur", &[x1, y1, x2, y2]) => {
+                        let (x1, y1, x2, y2) = (x1 as i32, y1 as i32, x2 as i32, y2 as i32);
+                        let across = (x1.min(x2)..=x1.max(x2)).map(|x| (x, y1));
+                        let down = (y1.min(y2)..=y1.max(y2)).map(|y| (x2, y));
+                        for (x, y) in across.chain(down) {
+                            if !world.is_wall(x, y) && !world.place_wall(x, y, wall_cost) {
+                                eprintln!("mur refusé en {x},{y}");
+                            }
+                        }
+                        None
+                    }
                     // Bâtiment par son nom (soulignés pour les espaces), coin nord en x,y.
                     ("b", _) => {
                         let mut parts = argument.splitn(3, ',');
@@ -3528,6 +3551,7 @@ fn run(
                             for &(tx, ty) in &path {
                                 match tool {
                                     Tool::Road => drop(world.place_road(tx, ty, road_cost)),
+                                    Tool::Wall => drop(world.place_wall(tx, ty, wall_cost)),
                                     Tool::Demolish => drop(world.demolish(tx, ty)),
                                     _ => {}
                                 }
@@ -3627,6 +3651,10 @@ fn run(
                                 world.place_road(x, y, road_cost);
                                 drag_from = Some((x, y));
                             }
+                            Tool::Wall => {
+                                world.place_wall(x, y, wall_cost);
+                                drag_from = Some((x, y));
+                            }
                             Tool::Demolish => {
                                 world.demolish(x, y);
                                 drag_from = Some((x, y));
@@ -3667,6 +3695,7 @@ fn run(
                 let held = match tool {
                     Tool::None => String::new(),
                     Tool::Road => format!(" — {road_name} ({road_cost})"),
+                    Tool::Wall => format!(" — {wall_name} ({wall_cost})"),
                     Tool::Demolish => " — Démolir".to_string(),
                     Tool::Build(kind) => format!(" — {} ({})", world.kinds[kind].name, world.kinds[kind].cost),
                 };
@@ -4035,6 +4064,7 @@ fn run(
                         let key = if slot < 9 { (slot + 1).to_string() } else { "-".to_string() };
                         match *picked {
                             Tool::Build(kind) => format!("{key}  {}  ({})", world.kinds[kind].name, world.kinds[kind].cost),
+                            Tool::Wall => format!("{key}  {wall_name}  ({wall_cost})"),
                             _ => format!("{key}  {road_name}  ({road_cost})"),
                         }
                     })

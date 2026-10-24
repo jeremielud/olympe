@@ -87,6 +87,67 @@ const BLOCKED: u32 = TERRAIN_TREE
 /// Terrains qu'un piéton ne traverse pas.
 const IMPASSABLE: u32 = TERRAIN_TREE | TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_ELEVATION | TERRAIN_MARSH;
 
+/// Murs (`zeus_general.sg3`, groupe 95) : l'image d'un mur dépend de ses huit voisins,
+/// d'après la table du jeu (`Zeus.exe`, 0x636820, lue en 0x49f950 par 0x4a6920) : pour
+/// chaque motif, l'état exigé de chaque voisin (0 : pas de mur, 1 : un mur, 2 : peu
+/// importe), dans l'ordre nord, nord-est, est… (voir `WALL_NEIGHBOURS`), puis le
+/// décalage d'image pour la vue d'origine. Le premier motif qui convient l'emporte.
+const WALL_FIRST_IMAGE: usize = 777;
+const WALL_PATTERNS: [([u8; 8], usize); 46] = [
+    ([1, 2, 1, 2, 1, 2, 1, 2], 26),
+    ([1, 2, 1, 2, 1, 2, 0, 2], 15),
+    ([0, 2, 1, 2, 1, 2, 1, 2], 16),
+    ([1, 2, 0, 2, 1, 2, 1, 2], 5),
+    ([1, 2, 1, 2, 0, 2, 1, 2], 10),
+    ([1, 2, 0, 2, 1, 2, 0, 2], 1),
+    ([0, 2, 1, 2, 0, 2, 1, 2], 4),
+    ([1, 2, 1, 2, 0, 0, 0, 2], 10),
+    ([0, 2, 1, 2, 1, 2, 0, 0], 12),
+    ([0, 0, 0, 2, 1, 2, 1, 2], 5),
+    ([1, 2, 0, 0, 0, 2, 1, 2], 7),
+    ([1, 2, 1, 2, 0, 1, 0, 2], 10),
+    ([0, 2, 1, 2, 1, 2, 0, 1], 12),
+    ([0, 1, 0, 2, 1, 2, 1, 2], 5),
+    ([1, 2, 0, 1, 0, 2, 1, 2], 22),
+    ([1, 2, 0, 0, 0, 0, 0, 2], 3),
+    ([0, 2, 1, 2, 0, 0, 0, 0], 4),
+    ([0, 0, 0, 2, 1, 2, 0, 0], 1),
+    ([0, 0, 0, 0, 0, 2, 1, 2], 2),
+    ([1, 2, 0, 1, 0, 0, 0, 2], 22),
+    ([0, 2, 1, 2, 0, 1, 0, 0], 4),
+    ([0, 0, 0, 2, 1, 2, 0, 1], 1),
+    ([0, 1, 0, 0, 0, 2, 1, 2], 24),
+    ([1, 2, 0, 0, 0, 1, 0, 2], 25),
+    ([0, 2, 1, 2, 0, 0, 0, 1], 4),
+    ([0, 1, 0, 2, 1, 2, 0, 0], 1),
+    ([0, 0, 0, 1, 0, 2, 1, 2], 22),
+    ([1, 2, 0, 1, 0, 1, 0, 2], 22),
+    ([0, 2, 1, 2, 0, 1, 0, 1], 4),
+    ([0, 1, 0, 2, 1, 2, 0, 1], 1),
+    ([0, 1, 0, 1, 0, 2, 1, 2], 22),
+    ([0, 1, 0, 1, 0, 1, 0, 1], 22),
+    ([0, 1, 0, 1, 0, 1, 0, 0], 22),
+    ([0, 0, 0, 1, 0, 1, 0, 1], 22),
+    ([0, 1, 0, 0, 0, 1, 0, 1], 23),
+    ([0, 1, 0, 1, 0, 0, 0, 1], 22),
+    ([0, 1, 0, 0, 0, 1, 0, 0], 17),
+    ([0, 0, 0, 1, 0, 0, 0, 1], 18),
+    ([0, 1, 0, 1, 0, 0, 0, 0], 22),
+    ([0, 0, 0, 1, 0, 1, 0, 0], 22),
+    ([0, 0, 0, 0, 0, 1, 0, 1], 19),
+    ([0, 1, 0, 0, 0, 0, 0, 1], 21),
+    ([0, 1, 0, 0, 0, 0, 0, 0], 21),
+    ([0, 0, 0, 1, 0, 0, 0, 0], 22),
+    ([0, 0, 0, 0, 0, 1, 0, 0], 19),
+    ([0, 0, 0, 0, 0, 0, 0, 1], 20),
+];
+/// Voisins dans l'ordre de la table des murs : la grille de `Zeus.exe` (nord = rang
+/// précédent) a ses axes échangés par rapport à celle d'Olympe.
+const WALL_NEIGHBOURS: [(i32, i32); 8] = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)];
+/// Solidité d'un mur neuf, en coups de sape (un tous les huit pas) : la brèche est
+/// faite en un mois et demi environ (barème d'Olympe).
+const WALL_HEALTH: u8 = 255;
+
 /// Première tuile de route dans le catalogue de terrain ; 18 variantes selon les bords.
 const ROAD_FIRST_IMAGE: usize = 897;
 /// Eau profonde, quand la carte n'en a pas à imiter.
@@ -1183,6 +1244,8 @@ enum Cell {
     Road,
     /// Route dallée d'une agora.
     AgoraRoad,
+    /// Mur, avec ce qu'il lui reste de solidité.
+    Wall(u8),
     Building(u16),
 }
 
@@ -1735,6 +1798,21 @@ impl World {
         true
     }
 
+    /// Pose un mur ; `false` si la case ne s'y prête pas ou si l'argent manque.
+    pub fn place_wall(&mut self, x: i32, y: i32, cost: i32) -> bool {
+        if !self.is_free(x, y) || self.money < cost {
+            return false;
+        }
+        self.cells[y as usize * GRID + x as usize] = Cell::Wall(WALL_HEALTH);
+        self.money -= cost;
+        true
+    }
+
+    /// La case porte un mur.
+    pub fn is_wall(&self, x: i32, y: i32) -> bool {
+        Self::in_grid(x, y) && matches!(self.cell(x as usize, y as usize), Cell::Wall(_))
+    }
+
     pub fn place_building(&mut self, kind: usize, x: i32, y: i32) -> bool {
         if !self.can_place(kind, x, y) {
             return false;
@@ -1805,7 +1883,7 @@ impl World {
         }
         match self.cell(x as usize, y as usize) {
             Cell::Terrain | Cell::Fire(_) | Cell::Chasm(_) | Cell::Lava(_) | Cell::Flood => false,
-            Cell::Rubble(_) | Cell::Road | Cell::AgoraRoad => {
+            Cell::Rubble(_) | Cell::Road | Cell::AgoraRoad | Cell::Wall(_) => {
                 self.cells[y as usize * GRID + x as usize] = Cell::Terrain;
                 true
             }
@@ -1915,6 +1993,11 @@ impl World {
                 lift: 0,
                 above: None,
             }),
+            Cell::Wall(_) => {
+                let around = WALL_NEIGHBOURS.map(|(dx, dy)| self.is_wall(x as i32 + dx, y as i32 + dy));
+                let offset = WALL_PATTERNS.iter().find(|(wanted, _)| wanted.iter().zip(around).all(|(&w, wall)| w == 2 || (w == 1) == wall)).map_or(0, |&(_, offset)| offset);
+                Some(Draw { source: Source::General, image: WALL_FIRST_IMAGE + offset, burning: false, overlay: None, ground: None, lift: 0, above: None })
+            }
             Cell::Road => {
                 let mut borders = 0;
                 for (bit, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
@@ -2730,14 +2813,24 @@ impl World {
     /// les gouffres et les eaux d'un raz-de-marée, mais on traverse bâtiments, arbres
     /// et routes. Sans passage, la ligne droite.
     fn land_path(&self, from: (u16, u16), to: (u16, u16)) -> Vec<(u16, u16)> {
-        self.land_route(from, to).unwrap_or_else(|| straight_path(from, to))
+        self.land_route(from, to, false).unwrap_or_else(|| straight_path(from, to))
     }
 
     /// Chemin à pied par la campagne, s'il en existe un.
-    fn land_route(&self, from: (u16, u16), to: (u16, u16)) -> Option<Vec<(u16, u16)>> {
+    /// Mur le plus proche d'une case, s'il y en a.
+    fn nearest_wall(&self, at: (u16, u16)) -> Option<(u16, u16)> {
+        let distance = |index: usize| ((index % GRID) as i32 - at.0 as i32).abs().max(((index / GRID) as i32 - at.1 as i32).abs());
+        (0..self.cells.len()).filter(|&i| matches!(self.cells[i], Cell::Wall(_))).min_by_key(|&i| distance(i)).map(|i| ((i % GRID) as u16, (i / GRID) as u16))
+    }
+
+    /// Avec `walls`, les murs barrent le passage, sauf celui où l'on se rend.
+    fn land_route(&self, from: (u16, u16), to: (u16, u16), walls: bool) -> Option<Vec<(u16, u16)>> {
         const UNSEEN: u32 = u32::MAX;
         let blocked = |x: i32, y: i32| {
             if !self.in_map(x, y) {
+                return true;
+            }
+            if walls && (x as u16, y as u16) != to && matches!(self.cell(x as usize, y as usize), Cell::Wall(_)) {
                 return true;
             }
             let terrain = self.map.terrain(x as usize, y as usize);
@@ -2791,7 +2884,7 @@ impl World {
         // Par la terre : le point de l'événement s'il mène à la cité par la terre, sinon
         // le premier point qui y mène, sinon le premier point de la carte.
         let heart = self.buildings.iter().flatten().next().map(|b| (b.x as u16, b.y as u16));
-        let leads = |w: &World, (x, y): (usize, usize)| w.in_map(x as i32, y as i32) && heart.is_none_or(|c| w.land_route((x as u16, y as u16), c).is_some());
+        let leads = |w: &World, (x, y): (usize, usize)| w.in_map(x as i32, y as i32) && heart.is_none_or(|c| w.land_route((x as u16, y as u16), c, false).is_some());
         let wanted = (1..=8).contains(&point).then(|| self.map.invasion_point(point)).flatten().filter(|&p| leads(self, p));
         let candidates: Vec<(usize, usize)> = self.map.invasion_points().into_iter().chain(self.map.entry_points()).collect();
         let land = wanted.or_else(|| candidates.iter().copied().find(|&p| leads(self, p)));
@@ -3000,13 +3093,21 @@ impl World {
         self.figures.retain(|f| !matches!(f.role, Role::Soldier { health, .. } if health <= 0));
         // Envahisseurs libres : vers le bâtiment le plus proche, qu'ils détruisent. Les
         // bâtiments tombent après la boucle : leur disparition emporte des personnages.
-        let mut burnt = Vec::new();
+        // Un mur sapé perd un point à chaque coup, quel que soit le nombre de sapeurs.
+        let (mut burnt, mut sapped) = (Vec::new(), Vec::new());
         for i in 0..self.figures.len() {
             let Role::Soldier { enemy: true, army, health, target, fighting: false } = self.figures[i].role else { continue };
             if !self.figures[i].path.is_empty() {
                 continue;
             }
             let at = self.figures[i].from;
+            // Arrivé sur un mur : il le sape jusqu'à la brèche (voir `sapped`).
+            if let Cell::Wall(_) = self.cell(at.0 as usize, at.1 as usize) {
+                if strike && !sapped.contains(&at) {
+                    sapped.push(at);
+                }
+                continue;
+            }
             if self.buildings.get(target as usize).is_some_and(|b| b.is_some()) {
                 burnt.push(target);
                 self.figures[i].role = Role::Soldier { enemy: true, army, health, target: NO_TARGET, fighting: false };
@@ -3017,13 +3118,26 @@ impl World {
                 .min_by_key(|&(_, dx, dy)| dx.abs().max(dy.abs()));
             let Some((id, ..)) = nearest else { continue };
             let goal = self.buildings[id].as_ref().map(|b| (b.x as u16, b.y as u16)).unwrap();
-            let path = self.land_path(at, goal);
+            // Les murs barrent la route : sans passage, l'envahisseur va saper le plus proche.
+            let (path, target) = match self.land_route(at, goal, true) {
+                Some(path) => (path, id as u16),
+                None => match self.nearest_wall(at) {
+                    Some(wall) => (self.land_route(at, wall, true).unwrap_or_else(|| straight_path(at, wall)), NO_TARGET),
+                    None => (straight_path(at, goal), id as u16),
+                },
+            };
             let figure = &mut self.figures[i];
             if let Some(&next) = path.last() {
                 figure.direction = direction(at, next);
             }
             figure.path = path;
-            figure.role = Role::Soldier { enemy: true, army, health, target: id as u16, fighting: false };
+            figure.role = Role::Soldier { enemy: true, army, health, target, fighting: false };
+        }
+        for (x, y) in sapped {
+            let index = y as usize * GRID + x as usize;
+            if let Cell::Wall(left) = self.cells[index] {
+                self.cells[index] = if left > 1 { Cell::Wall(left - 1) } else { Cell::Rubble(0) };
+            }
         }
         for target in burnt {
             let Some(building) = self.buildings[target as usize].as_ref() else { continue };
@@ -4851,6 +4965,7 @@ impl World {
             let _ = match *cell {
                 Cell::Road => writeln!(out, "route {} {}", index % GRID, index / GRID),
                 Cell::AgoraRoad => writeln!(out, "dallage {} {}", index % GRID, index / GRID),
+                Cell::Wall(health) => writeln!(out, "mur {} {} {health}", index % GRID, index / GRID),
                 Cell::Rubble(variant) => writeln!(out, "ruine {} {} {variant}", index % GRID, index / GRID),
                 Cell::Chasm(variant) => writeln!(out, "gouffre {} {} {variant}", index % GRID, index / GRID),
                 Cell::Lava(variant) => writeln!(out, "lave {} {} {variant}", index % GRID, index / GRID),
@@ -5036,6 +5151,10 @@ impl World {
                     // Absent des sauvegardes plus anciennes : déjà là.
                     arrives_at: rest.get(4).and_then(|w| w.parse().ok()).unwrap_or(0),
                 }),
+                "mur" => {
+                    let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
+                    *cells.get_mut(y * GRID + x).ok_or_else(bad)? = Cell::Wall(number_at(2)?.clamp(1, WALL_HEALTH as i64) as u8);
+                }
                 "route" | "dallage" => {
                     let (x, y) = (number_at(0)? as usize, number_at(1)? as usize);
                     *cells.get_mut(y * GRID + x).ok_or_else(bad)? = if kind == "route" { Cell::Road } else { Cell::AgoraRoad };
