@@ -28,7 +28,7 @@ use zeus::monument;
 use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
-use zeus::world::{Cause, Need, TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
+use zeus::world::{Cause, Need, TradePolicy, TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
 use zeus::world::{Appeal, Conquest, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
@@ -570,6 +570,8 @@ enum MenuRow {
     Trade(usize),
     /// Satisfait la demande de ce rang.
     Fulfil(usize),
+    /// Change ce que le commerce peut faire de cette ressource.
+    Policy(usize),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -3506,6 +3508,10 @@ fn run(
                                 };
                                 continue;
                             }
+                            Some(MenuRow::Policy(resource)) => {
+                                world.trade_policy[resource] = world.trade_policy[resource].next();
+                                continue;
+                            }
                             Some(MenuRow::Trade(city)) => {
                                 let name = city_name(&text, &world, city);
                                 notice = if world.open_trade(city) {
@@ -4211,7 +4217,7 @@ fn run(
                         let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
                         let trade = match (c.trade, c.status == zeus::map::RIVAL) {
                             (true, _) => format!("  vend {} ; achète {} (ventes {} dr., achats {} dr.)", names(&c.sells), names(&c.buys), c.sold, c.bought),
-                            (false, false) => format!("  [ouvrir le commerce : {} dr.]", zeus::world::TRADE_ROUTE_COST),
+                            (false, false) => format!("  vend {} ; achète {} [ouvrir le commerce : {} dr.]", names(&c.sells), names(&c.buys), zeus::world::TRADE_ROUTE_COST),
                             (false, true) => String::new(),
                         };
                         (i, format!("{} ({status}, faveur {}, force {}{}{action})", city_name(&text, &world, i), c.favor, c.military, if world.army_away(i) { ", armée partie" } else { "" }), trade)
@@ -4244,6 +4250,32 @@ fn run(
                     graphics.panel(px, y, line_width.max(width), row);
                     graphics.draw_text(FONT_TEXT, &line, px + 24.0, y + 4.0);
                     menu_rows.push(((px, y, line_width.max(width), row), MenuRow::Fulfil(i)));
+                }
+                // Réglage du commerce, une ligne par ressource échangée avec une cité
+                // partenaire : un clic passe au réglage suivant.
+                let mut traded: Vec<usize> = world
+                    .cities
+                    .iter()
+                    .filter(|c| c.active && c.trade)
+                    .flat_map(|c| c.sells.iter().chain(&c.buys).map(|&(r, _)| r as usize))
+                    .filter(|&r| r < world.trade_policy.len())
+                    .collect();
+                traded.sort_unstable();
+                traded.dedup();
+                let below = py + height + 8.0 + row * world.requests.len() as f32;
+                for (i, &resource) in traded.iter().enumerate() {
+                    let policy = match world.trade_policy[resource] {
+                        TradePolicy::Both => "vente du surplus et achat",
+                        TradePolicy::SellOnly => "vente du surplus seulement",
+                        TradePolicy::BuyOnly => "achat seulement",
+                        TradePolicy::Neither => "ni vente ni achat",
+                    };
+                    let line = format!("Commerce de {} : {policy} [changer]", text.get(23, resource).to_lowercase());
+                    let y = below + row * i as f32;
+                    let line_width = (graphics.text_width(FONT_TEXT, &line) + 48.0).max(width);
+                    graphics.panel(px, y, line_width, row);
+                    graphics.draw_text(FONT_TEXT, &line, px + 24.0, y + 4.0);
+                    menu_rows.push(((px, y, line_width, row), MenuRow::Policy(resource)));
                 }
                 for (i, (city, line, trade)) in rows.iter().enumerate() {
                     let y = py + title_line + 24.0 + row * i as f32;

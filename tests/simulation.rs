@@ -731,6 +731,17 @@ fn trade_partners_buy_surplus_and_sell_what_is_missing() {
     assert_eq!((world.price(14), world.price(21)), (60, 160));
     assert_eq!((world.cities[0].sold, world.cities[0].bought), (120, 160));
     assert_eq!(world.money - money, 120 - 160 - world.last_month.1 + world.last_month.0);
+    // Le joueur garde sa laine et n'achète plus de vin : plus rien ne change.
+    use zeus::world::TradePolicy;
+    world.trade_policy[14] = TradePolicy::BuyOnly;
+    world.trade_policy[21] = TradePolicy::SellOnly;
+    (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!((world.stored(14), world.stored(21)), (10, 1));
+    // Le réglage passe par la sauvegarde.
+    let (mut other, ..) = self::world(&data);
+    other.kinds = world.kinds.clone();
+    other.load(&world.save()).unwrap();
+    assert_eq!(other.trade_policy[14], TradePolicy::BuyOnly);
 }
 
 #[test]

@@ -91,7 +91,9 @@ Ce qui fonctionne :
   des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
   des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
-  (marchandises, quantités et prix lus dans la carte) ; les vassales
+  (marchandises, quantités et prix lus dans la carte) ; le panneau dit ce que chaque
+  cité vend et achète, et règle par marchandise ce que le commerce peut en faire
+  (vendre le surplus et acheter, l'un des deux, ou rien) ; les vassales
   et les colonies fondées
   paient chaque année le tribut réglé dans l'éditeur ; les cités rivales
   envoient leurs armées à la date prévue : les soldats entrent par le point

@@ -1196,6 +1196,34 @@ pub struct Disaster {
     pub y: usize,
 }
 
+/// Commerce permis pour une ressource : vendre le surplus et acheter ce qui manque,
+/// l'un des deux seulement, ou rien.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TradePolicy {
+    Both,
+    SellOnly,
+    BuyOnly,
+    Neither,
+}
+
+impl TradePolicy {
+    pub const ALL: [TradePolicy; 4] = [TradePolicy::Both, TradePolicy::SellOnly, TradePolicy::BuyOnly, TradePolicy::Neither];
+
+    pub fn sells(self) -> bool {
+        matches!(self, TradePolicy::Both | TradePolicy::SellOnly)
+    }
+
+    pub fn buys(self) -> bool {
+        matches!(self, TradePolicy::Both | TradePolicy::BuyOnly)
+    }
+
+    /// La suivante, pour le panneau du commerce.
+    pub fn next(self) -> TradePolicy {
+        let at = TradePolicy::ALL.iter().position(|&p| p == self).unwrap_or(0);
+        TradePolicy::ALL[(at + 1) % TradePolicy::ALL.len()]
+    }
+}
+
 /// Ce qui a détruit un bâtiment.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Cause {
@@ -1318,6 +1346,8 @@ pub struct World {
     /// Écart de chaque prix à son prix de base, et changements du commerce survenus
     /// depuis la dernière lecture : (cité, changement, ressource).
     pub price_shift: [i32; RESOURCES],
+    /// Ce que le joueur permet de faire de chaque ressource avec les cités partenaires.
+    pub trade_policy: [TradePolicy; RESOURCES],
     /// Prix de base des marchandises, lus dans la carte (0 : pas de prix réglé).
     pub base_prices: [i32; RESOURCES],
     pub trade_news: Vec<(usize, u8, u8)>,
@@ -1404,6 +1434,7 @@ impl World {
             carried: [0; RESOURCES],
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
+            trade_policy: [TradePolicy::Both; RESOURCES],
             base_prices: [0; RESOURCES],
             trade_news: Vec::new(),
             wage_shift: 0,
@@ -2592,7 +2623,7 @@ impl World {
             for (resource, quantity) in buys {
                 let (resource, monthly) = (resource as usize, (quantity / 12).max(1));
                 let spare = (self.stored(resource) - TRADE_RESERVE).min(monthly);
-                if spare > 0 && resource < RESOURCES {
+                if spare > 0 && resource < RESOURCES && self.trade_policy[resource].sells() {
                     let taken = self.take(resource, spare);
                     self.money += taken * self.price(resource);
                     sold += taken * self.price(resource);
@@ -2601,7 +2632,7 @@ impl World {
             for (resource, quantity) in sells {
                 let (resource, monthly) = (resource as usize, (quantity / 12).max(1));
                 let wanted = (TRADE_RESERVE - self.stored(resource)).min(monthly).min(self.money / self.price(resource).max(1));
-                if wanted > 0 && resource < RESOURCES {
+                if wanted > 0 && resource < RESOURCES && self.trade_policy[resource].buys() {
                     let put = self.store(resource, wanted);
                     self.money -= put * self.price(resource);
                     bought += put * self.price(resource);
@@ -4768,6 +4799,8 @@ impl World {
         let _ = writeln!(out, "emporte {}", list(&self.carried));
         let _ = writeln!(out, "prix {}", list(&self.price_shift));
         let _ = writeln!(out, "salaires {}", self.wage_shift);
+        let policies: Vec<String> = self.trade_policy.iter().map(|p| TradePolicy::ALL.iter().position(|q| q == p).unwrap_or(0).to_string()).collect();
+        let _ = writeln!(out, "commerce {}", policies.join(" "));
         let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
         let _ = writeln!(out, "migrants {} {} {} {}", self.migrants.0, self.migrants.1, self.migration_pause.0, self.migration_pause.1);
         let _ = writeln!(out, "sante {} {} {} {} {}", self.health, self.health_target, self.plagues.0, self.plagues.1, self.plague_month as u8);
@@ -4919,6 +4952,8 @@ impl World {
         let mut health = None;
         let mut favors: Vec<i32> = Vec::new();
         let mut traded: Vec<i32> = Vec::new();
+        // Réglages du commerce : absents des sauvegardes plus anciennes.
+        let mut trade_policy = [TradePolicy::Both; RESOURCES];
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -4935,6 +4970,11 @@ impl World {
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
+                }
+                "commerce" => {
+                    for (i, policy) in trade_policy.iter_mut().enumerate() {
+                        *policy = *TradePolicy::ALL.get(number_at(i)? as usize).ok_or_else(bad)?;
+                    }
                 }
                 "production" | "meilleure" | "reserve" | "emporte" | "prix" => {
                     let row = ["production", "meilleure", "reserve", "emporte", "prix"].iter().position(|&k| k == kind).unwrap_or(0);
@@ -5191,6 +5231,7 @@ impl World {
         self.last_month = (taxes as i32, wages as i32);
         (self.year_profit, self.best_year_profit) = profits;
         [self.produced, self.best_produced, self.set_aside, self.carried, self.price_shift] = counters;
+        self.trade_policy = trade_policy;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;
