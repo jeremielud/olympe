@@ -1785,6 +1785,27 @@ fn tile_origin(x: i32, y: i32) -> (f32, f32) {
 }
 
 /// Case située sous un point du monde.
+/// Cases de `from` (exclue) à `to` (incluse), un pas en x ou en y à la fois.
+fn tile_steps(from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let (mut x, mut y) = from;
+    let (dx, dy) = ((to.0 - x).abs(), (to.1 - y).abs());
+    let mut steps = Vec::with_capacity((dx + dy) as usize + 1);
+    let total = dx + dy;
+    for done in 1..=total {
+        // Avance sur l'axe en retard par rapport à la droite.
+        if (x - from.0).abs() * total < dx * done {
+            x += (to.0 - from.0).signum();
+        } else {
+            y += (to.1 - from.1).signum();
+        }
+        steps.push((x, y));
+    }
+    if steps.is_empty() {
+        steps.push(to);
+    }
+    steps
+}
+
 fn tile_at(wx: f32, wy: f32) -> (i32, i32) {
     let u = (wx - HALF_WIDTH) / HALF_WIDTH;
     let v = (wy - HALF_HEIGHT) / HALF_HEIGHT;
@@ -2595,6 +2616,8 @@ fn run(
         let mut fullscreen = false;
         let mut pointer = (0.0f32, 0.0f32);
         let mut hovered = (-1, -1);
+        // Dernière case d'un glissement en cours (route ou démolition).
+        let mut drag_from: Option<(i32, i32)> = None;
         let mut event = sdl::Event::new();
         let mut running = true;
         // (profondeur, couche, coin haut-gauche en pixels de monde, catalogue, image)
@@ -3128,14 +3151,21 @@ fn run(
                         } else if buttons & sdl::BUTTON_LEFT_MASK != 0 {
                             let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
                             let (x, y) = tile_at(wx, wy);
-                            match tool {
-                                Tool::Road => drop(world.place_road(x, y, road_cost)),
-                                Tool::Demolish => drop(world.demolish(x, y)),
-                                _ => {}
+                            // Toutes les cases depuis la précédente, de proche en proche, pour
+                            // que la route reste continue quel que soit le geste.
+                            let path = tile_steps(drag_from.unwrap_or((x, y)), (x, y));
+                            for &(tx, ty) in &path {
+                                match tool {
+                                    Tool::Road => drop(world.place_road(tx, ty, road_cost)),
+                                    Tool::Demolish => drop(world.demolish(tx, ty)),
+                                    _ => {}
+                                }
                             }
+                            drag_from = Some((x, y));
                             hovered = (-1, -1);
                         }
                     }
+                    sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => drag_from = None,
                     sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_LEFT => {
                         let (mx, my) = event.position();
                         // Un clic sur la mini-carte y transporte la vue.
@@ -3218,8 +3248,14 @@ fn run(
                                     }
                                 }
                             }
-                            Tool::Road => drop(world.place_road(x, y, road_cost)),
-                            Tool::Demolish => drop(world.demolish(x, y)),
+                            Tool::Road => {
+                                world.place_road(x, y, road_cost);
+                                drag_from = Some((x, y));
+                            }
+                            Tool::Demolish => {
+                                world.demolish(x, y);
+                                drag_from = Some((x, y));
+                            }
                             Tool::Build(kind) => {
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
@@ -3943,8 +3979,10 @@ fn run(
             }
             sdl::SDL_RenderPresent(renderer);
         }
+        // Les flux audio se ferment avant SDL, qui les détruirait sous eux.
         drop(music);
         drop(ambience);
+        drop(voice);
         sdl::SDL_Quit();
     }
     Ok(())
@@ -3996,6 +4034,20 @@ unsafe fn save_frame(renderer: sdl::Renderer, file: &Path) -> Result<(), String>
 #[cfg(test)]
 mod narration_tests {
     use super::*;
+
+    #[test]
+    fn a_drag_fills_every_tile_on_the_way() {
+        let steps = tile_steps((0, 0), (3, 2));
+        assert_eq!(steps.len(), 5);
+        assert_eq!(steps.last(), Some(&(3, 2)));
+        // Chaque pas touche le précédent par un côté.
+        let mut previous = (0, 0);
+        for &(x, y) in &steps {
+            assert_eq!((x - previous.0).abs() + (y - previous.1).abs(), 1);
+            previous = (x, y);
+        }
+        assert_eq!(tile_steps((4, 4), (4, 4)), vec![(4, 4)]);
+    }
 
     #[test]
     fn each_story_finds_its_voice() {
