@@ -120,6 +120,12 @@ impl Requirement {
             }
             5 => against(coverage(Service::Athletics), a),
             7 => against(world.population(), a),
+            // Aucun trouble : le jeu appelle « trouble » la criminalité des maisons (textes
+            // 65:61 à 66). Lecture d'Olympe : aucune maison n'atteint le seuil `a`.
+            4 => {
+                let worst = houses().map(|h| h.crime).max().unwrap_or(0);
+                if worst < a { Check::Met } else { Check::Missing { current: worst, wanted: a } }
+            }
             // Popularité et santé générale : humeur et santé de la cité, sur 100.
             8 => against(world.sentiment, a),
             9 => against(world.health, a),
@@ -137,7 +143,7 @@ impl Requirement {
             }
             // Attrait autour du temple.
             13 => against(world.appeal(hall.0 as i32, hall.1 as i32), a),
-            // Troubles, jeux panhelléniques, murs…
+            // Jeux panhelléniques, murs…
             _ => Check::Unsimulated,
         }
     }

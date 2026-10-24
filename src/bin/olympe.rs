@@ -1609,6 +1609,7 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check) -> Stri
     let state = match check {
         Check::Met => "rempli".to_string(),
         Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 8 | 9 | 17) => format!("{current} % sur {wanted} %"),
+        Check::Missing { current, wanted } if requirement.kind == 4 => format!("criminalité {current}, sous {wanted} demandé"),
         Check::Missing { current, wanted } if wanted > 1 => format!("{current} sur {wanted}"),
         Check::Missing { .. } => "pas encore".to_string(),
         Check::Unsimulated => "non simulé, tenu pour rempli".to_string(),
