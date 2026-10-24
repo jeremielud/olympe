@@ -2998,8 +2998,9 @@ fn run(
                         None
                     }
                     ("types", _) => {
-                        for kind in &world.kinds {
-                            println!("{} ({}×{}, {} dr., {} employés)", kind.name, kind.size, kind.depth, kind.cost, kind.employees);
+                        for (i, kind) in world.kinds.iter().enumerate() {
+                            let locked = if world.locked.get(i) == Some(&true) { ", interdit" } else { "" };
+                            println!("{} ({}×{}, {} dr., {} employés{locked})", kind.name, kind.size, kind.depth, kind.cost, kind.employees);
                         }
                         None
                     }
