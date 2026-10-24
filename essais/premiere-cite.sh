@@ -15,4 +15,4 @@ for x in 111 113 115 117 119 121 123 125 127 129 131 133; do B="$B b:$x,113,Loge
 B="$B b:111,116,Grenier b:115,118,Maintenance b:117,117,Collège b:127,118,Pressoir_à_olives b:129,118,Maintenance b:125,118,Pressoir_à_olives"
 B="$B b:111,121,Entrepôt b:114,121,Bergerie b:116,121,Métairie b:119,121,Pêcherie b:123,121,Pêcherie"
 cd "$(dirname "$0")/.."
-OLYMPE_MUET=1 ./target/release/olympe --sans-intro --ticks 0 --capture "$1" --script "$B $2" donnees/adventures/firstcity.pak 2>&1 | grep -v "^sauvegarde\|^après 0\|^script terminé" 
+OLYMPE_MUET=1 ./target/release/olympe --donnees donnees --sans-intro --ticks 0 --capture "$1" --script "$B $2" donnees/adventures/firstcity.pak 2>&1 | grep -v "^sauvegarde\|^après 0\|^script terminé" 
