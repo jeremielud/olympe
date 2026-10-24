@@ -55,7 +55,9 @@ def choose_site(grid, want_water, want_meadow=False):
     best = None
     for y in range(1, GRID - HEIGHT - 1):
         for x in range(1, GRID - WIDTH - 1):
-            if acc[y + HEIGHT][x + WIDTH] - acc[y][x + WIDTH] - acc[y + HEIGHT][x] + acc[y][x] != WIDTH * HEIGHT:
+            free = acc[y + HEIGHT][x + WIDTH] - acc[y][x + WIDTH] - acc[y + HEIGHT][x] + acc[y][x]
+            # Un terrain libre à 90 % suffit : ce qui ne tient pas est refusé.
+            if free * 10 < WIDTH * HEIGHT * 9:
                 continue
             cx, cy = x + WIDTH // 2, y + HEIGHT // 2
             if want_water:
@@ -65,6 +67,7 @@ def choose_site(grid, want_water, want_meadow=False):
             if want_meadow:
                 # Fermes au sud de la dernière rue : autant de prés que possible.
                 score -= 1000 * len(meadow_slots(grid, x, y))
+            score += 20 * (WIDTH * HEIGHT - free)
             if best is None or score < best[0]:
                 best = (score, x, y)
     return best and best[1:]
@@ -120,7 +123,7 @@ def plan(grid, allowed):
         food = 'Pêcherie'
     site = choose_site(grid, food == 'Pêcherie', bool(food) and food.startswith('Exploitation'))
     if site is None:
-        sys.exit('aucun terrain libre de 34 × 24 cases')
+        sys.exit('aucun terrain de 34 × 24 cases libre à 90 %')
     x0, y0 = site
     steps = []
 
