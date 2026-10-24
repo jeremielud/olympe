@@ -2009,10 +2009,8 @@ fn overlay_tint(world: &World, overlay: Overlay, building: &zeus::world::Buildin
         // Attrait de -20 (rouge) à +40 (vert).
         Overlay::Appeal => house.map(|_| ((world.appeal(building.x as i32, building.y as i32) + 20) * 100 / 60).clamp(0, 100)),
         Overlay::Crime => house.map(|h| 100 - h.crime.clamp(0, 100)),
-        Overlay::Culture => house.map(|h| {
-            let disciplines = [Service::Philosophy, Service::Athletics, Service::Drama].iter().filter(|&&s| h.has(s, world.ticks)).count() as i32;
-            disciplines * 100 / 3
-        }),
+        // Note de culture, jusqu'à 90 (les trois disciplines et un stade).
+        Overlay::Culture => house.map(|h| world.house_culture(h) * 100 / 90),
     };
     Some(score.map_or(NEUTRAL, |score| {
         // Rouge, jaune, vert.
@@ -4149,6 +4147,7 @@ fn run(
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
                     lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
                     lines.push(format!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
+                    lines.push(format!("Culture : {}", world.house_culture(house)));
                     // Les marchandises en réserve ; ce qui manque est dit plus bas.
                     for good in GOODS.into_iter().filter(|&good| for_houses(good) && (good == Good::Food || house.goods[good as usize] > 0)) {
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
@@ -4165,7 +4164,7 @@ fn run(
                             Need::Water => service_name(&text, Service::Water).to_lowercase(),
                             Need::Goods(good) => good_names[good as usize].to_lowercase(),
                             Need::Stadium => "un stade".to_string(),
-                            Need::Culture(n) => format!("{n} sortes de culture"),
+                            Need::Culture(n) => format!("culture {n}"),
                             Need::Appeal(n) => format!("attrait {n}"),
                             Need::Top => String::new(),
                         })

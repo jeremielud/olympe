@@ -3255,7 +3255,7 @@ impl World {
             fed: house.goods[Good::Food as usize] >= house.population.max(1),
             had: house.goods.map(|amount| amount > 0),
             water: house.has(Service::Water, self.ticks),
-            culture: culture_of(house, self.ticks),
+            culture: culture_of(house, self.ticks, stadium_open),
             stadium_open,
         };
         let mut needs = state.missing(wanted);
@@ -3275,6 +3275,12 @@ impl World {
             Function::Service(service @ (Service::Philosophy | Service::Drama)) if !has(Function::School(service)) => Some(Function::School(service)),
             _ => None,
         }
+    }
+
+    /// Note de culture d'une maison (philosophie, athlétisme, théâtre, stade).
+    pub fn house_culture(&self, house: &House) -> i32 {
+        let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        culture_of(house, self.ticks, stadium_open)
     }
 
     /// Capacité d'accueil d'une maison à son niveau actuel.
@@ -4477,7 +4483,7 @@ impl World {
                     house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
-            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now), stadium_open };
+            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open), stadium_open };
             let meets = |level: &HouseModel| state.missing(level).is_empty();
             let Some(current) = self.house_levels.get(house.level) else { continue };
             let (floor, next) = house_steps(house.level);
@@ -4697,7 +4703,7 @@ pub enum Need {
     /// Laine, huile, vin, armement ou chevaux.
     Goods(Good),
     Stadium,
-    /// Nombre de disciplines culturelles (philosophie, sport, théâtre) exigées.
+    /// Note de culture exigée.
     Culture(i32),
     /// Attrait exigé.
     Appeal(i32),
@@ -4717,12 +4723,11 @@ struct HouseState {
 impl HouseState {
     /// Exigences d'un niveau qui ne sont pas remplies.
     fn missing(&self, level: &HouseModel) -> Vec<Need> {
-        let disciplines = disciplines_for(level.culture);
         [
             (level.food_types > 0 && !self.fed, Need::Food),
             (level.water > 0 && !self.water, Need::Water),
             (level.stadium > 0 && !self.stadium_open, Need::Stadium),
-            (self.culture < disciplines, Need::Culture(disciplines)),
+            (self.culture < level.culture, Need::Culture(level.culture)),
             (level.fleece > 0 && !self.had[Good::Fleece as usize], Need::Goods(Good::Fleece)),
             (level.olive_oil > 0 && !self.had[Good::Oil as usize], Need::Goods(Good::Oil)),
             (level.wine > 0 && !self.had[Good::Wine as usize], Need::Goods(Good::Wine)),
@@ -4735,9 +4740,18 @@ impl HouseState {
     }
 }
 
-/// Disciplines culturelles dont profite une maison.
-fn culture_of(house: &House, now: u64) -> i32 {
-    CULTURE.iter().filter(|&&service| house.has(service, now)).count() as i32
+/// Note de culture d'une maison, comparée aux exigences des niveaux (colonne 2 des
+/// règles). Relevée sur les maisons des sauvegardes des tutoriels du jeu : 15 pour la
+/// philosophie, 20 pour l'athlétisme, 25 pour le théâtre ; l'athlétisme vaut 30 de
+/// plus quand la cité a un stade. Les autres combinaisons s'en déduisent (35, 60, 75,
+/// 90 relevés).
+const CULTURE_POINTS: [(Service, i32); 3] = [(Service::Philosophy, 15), (Service::Athletics, 20), (Service::Drama, 25)];
+const STADIUM_ATHLETICS_POINTS: i32 = 30;
+
+fn culture_of(house: &House, now: u64, stadium_open: bool) -> i32 {
+    let points: i32 = CULTURE_POINTS.iter().filter(|&&(service, _)| house.has(service, now)).map(|&(_, points)| points).sum();
+    let stadium = if stadium_open && house.has(Service::Athletics, now) { STADIUM_ATHLETICS_POINTS } else { 0 };
+    points + stadium
 }
 
 /// Niveau le plus bas où une maison peut retomber, et niveau suivant s'il y en a un. Un
@@ -4748,17 +4762,6 @@ fn house_steps(level: usize) -> (usize, Option<usize>) {
     let (floor, top) = if elite { (ELITE_DEVOLVED, ELITE_FIRST_LEVEL + ELITE_LEVELS - 1) } else { (0, HOUSE_IMAGES.len() - 1) };
     let next = if level == ELITE_FIRST_LEVEL { level + 2 } else { level + 1 };
     (floor, (next <= top).then_some(next))
-}
-
-/// Nombre de disciplines (philosophie, sport, théâtre) qu'exige un seuil de culture
-/// des règles. Interprétation provisoire des seuils 15, 35 et 45.
-fn disciplines_for(culture: i32) -> i32 {
-    match culture {
-        ..=0 => 0,
-        1..=15 => 1,
-        16..=35 => 2,
-        _ => 3,
-    }
 }
 
 /// Direction de marche (rang dans `DIRECTIONS`) pour aller d'une case à sa voisine.
