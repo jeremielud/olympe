@@ -29,6 +29,12 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde ; batailles au loin simplifiées) | 55 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
+Manque encore notamment : la science de Poséidon (bibliothèque, observatoire,
+université, laboratoire, atelier d'inventeurs, musée) ; les cités atlantes se
+cultivent pour l'instant comme les cités grecques. Les jeux panhelléniques, les
+batailles menées au loin (une cité se soumet par simple comparaison des forces) et
+les rotations de la vue manquent aussi.
+
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
 
