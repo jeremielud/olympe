@@ -1362,6 +1362,8 @@ pub struct World {
     pub set_aside: [i32; RESOURCES],
     /// Nombre de sanctuaires que l'épisode permet d'avoir à la fois (quatre au plus).
     pub max_sanctuaries: usize,
+    /// Cité atlante : la science y remplace la culture, avec ses propres points.
+    pub atlantean: bool,
     /// Quêtes et monstres de l'épisode, héros présents dans la cité, et nouvelles.
     pub quests: Vec<Quest>,
     pub monsters: Vec<Monster>,
@@ -1474,6 +1476,7 @@ impl World {
             best_produced: [0; RESOURCES],
             set_aside: [0; RESOURCES],
             max_sanctuaries: MAX_SANCTUARIES,
+            atlantean: false,
             quests: Vec::new(),
             monsters: Vec::new(),
             heroes: [false; crate::heroes::HEROES],
@@ -3444,7 +3447,7 @@ impl World {
             fed: house.goods[Good::Food as usize] >= house.population.max(1),
             had: house.goods.map(|amount| amount > 0),
             water: house.has(Service::Water, self.ticks),
-            culture: culture_of(house, self.ticks, stadium_open),
+            culture: culture_of(house, self.ticks, stadium_open, self.atlantean),
             stadium_open,
         };
         let mut needs = state.missing(wanted);
@@ -3479,7 +3482,7 @@ impl World {
     /// Note de culture d'une maison (philosophie, athlétisme, théâtre, stade).
     pub fn house_culture(&self, house: &House) -> i32 {
         let stadium_open = self.stadium_open();
-        culture_of(house, self.ticks, stadium_open)
+        culture_of(house, self.ticks, stadium_open, self.atlantean)
     }
 
     /// Capacité d'accueil d'une maison à son niveau actuel.
@@ -4682,7 +4685,7 @@ impl World {
                     house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
-            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open), stadium_open };
+            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open, self.atlantean), stadium_open };
             let meets = |level: &HouseModel| state.missing(level).is_empty();
             let Some(current) = self.house_levels.get(house.level) else { continue };
             let (floor, next) = house_steps(house.level);
@@ -4945,10 +4948,17 @@ impl HouseState {
 /// plus quand la cité a un stade. Les autres combinaisons s'en déduisent (35, 60, 75,
 /// 90 relevés).
 const CULTURE_POINTS: [(Service, i32); 3] = [(Service::Philosophy, 15), (Service::Athletics, 20), (Service::Drama, 25)];
+/// Science des cités atlantes, mesurée dans Poséidon (compteurs de passage écrits dans
+/// la mémoire du jeu, note lue en +0x80) : astronomie (université, observatoire) 20,
+/// apprentissage (bibliothèque) 15, recherche (atelier d'inventeurs, laboratoire) 25.
+/// Olympe range ces disciplines sous philosophie, athlétisme et théâtre. Le musée n'a
+/// pas pu être mesuré : il compte comme le stade (hypothèse).
+const SCIENCE_POINTS: [(Service, i32); 3] = [(Service::Philosophy, 20), (Service::Athletics, 15), (Service::Drama, 25)];
 const STADIUM_ATHLETICS_POINTS: i32 = 30;
 
-fn culture_of(house: &House, now: u64, stadium_open: bool) -> i32 {
-    let points: i32 = CULTURE_POINTS.iter().filter(|&&(service, _)| house.has(service, now)).map(|&(_, points)| points).sum();
+fn culture_of(house: &House, now: u64, stadium_open: bool, atlantean: bool) -> i32 {
+    let table = if atlantean { &SCIENCE_POINTS } else { &CULTURE_POINTS };
+    let points: i32 = table.iter().filter(|&&(service, _)| house.has(service, now)).map(|&(_, points)| points).sum();
     let stadium = if stadium_open && house.has(Service::Athletics, now) { STADIUM_ATHLETICS_POINTS } else { 0 };
     points + stadium
 }

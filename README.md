@@ -76,9 +76,9 @@ Ce qui fonctionne :
 - cités atlantes (drapeau à l'octet 648 de chaque épisode, lu en 0x902bb0 dans
   `Zeus.exe` et vérifié dans le jeu : les quatre aventures atlantes de Poséidon) : la
   science y remplace la culture grecque — bibliothèque, université et observatoire,
-  atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; ils rendent
-  les mêmes points de culture que gymnase, podium, théâtre et stade (hypothèse
-  d'Olympe : la même colonne des règles sert la culture et la science) ;
+  atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; points de
+  science mesurés dans le jeu : astronomie 20, apprentissage 15, recherche 25 (le
+  musée compte comme le stade, non mesuré) ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
   objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
   pour ce qu'il faut produire, et assez de culture permise pour les logements

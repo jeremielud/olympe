@@ -1025,7 +1025,8 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
                 let athletics = open(&|f| *f == Function::Service(Service::Athletics));
                 let drama = open(&|f| *f == Function::Service(Service::Drama)) && open(&|f| *f == Function::School(Service::Drama));
                 let stadium = athletics && open(&|f| matches!(f, Function::Stadium | Function::Museum));
-                15 * philosophy as i32 + 20 * athletics as i32 + 25 * drama as i32 + 30 * stadium as i32
+                let (p, a) = if episode.atlantean { (20, 15) } else { (15, 20) };
+                p * philosophy as i32 + a * athletics as i32 + 25 * drama as i32 + 30 * stadium as i32
             };
             let mut problems = Vec::new();
             for goal in &episode.goals {
@@ -1166,6 +1167,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
     }
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
+    world.atlantean = episode.atlantean;
     // Ce que la liste des bâtiments autorisés de l'épisode interdit.
     let slots = ALLOWED_SLOT.get();
     let wrong_nation = |kind: usize| NATION.get().and_then(|n| n.get(kind)).is_some_and(|&n| n == if episode.atlantean { 1 } else { 2 });
