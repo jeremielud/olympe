@@ -2570,7 +2570,10 @@ fn run(
             .find_map(|file| text_entry(&adventure_texts(&file)?, "Adventure_Title"));
         let cleaned = name.trim_start_matches(|c: char| !c.is_alphanumeric());
         let mut letters = cleaned.chars();
-        titled.unwrap_or_else(|| letters.next().map(|first| first.to_uppercase().chain(letters).collect()).unwrap_or_default())
+        // Le nom de l'écran des aventures (titre des leçons du tutoriel compris).
+        let canonical = |path: &Path| fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let listed = adventures(data).into_iter().find(|(_, pak)| canonical(pak) == canonical(map_path)).map(|(name, _)| name);
+        listed.or(titled).unwrap_or_else(|| letters.next().map(|first| first.to_uppercase().chain(letters).collect()).unwrap_or_default())
     };
     let title = |extra: &str| CString::new(format!("Zeus — {display_name}{extra}")).unwrap_or_default();
 
