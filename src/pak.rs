@@ -34,6 +34,9 @@ const RESOURCES: usize = 1960;
 /// de textes 67 de `zeus_editor_text.eng`), 1 si l'épisode permet le bâtiment ; le jeu
 /// copie la fiche de l'épisode en 0x902928 et lit ce tableau en 0x902d30.
 const ALLOWED: usize = 1032;
+/// Aventure atlante : la science y remplace la culture (mesuré dans le jeu, lu en
+/// 0x902bb0 ; 1 pour les quatre aventures atlantes de Poséidon).
+const ATLANTEAN: usize = 648;
 pub const ALLOWED_SLOTS: usize = 58;
 const MAX_RESOURCES: usize = 16;
 /// Mythologie de chaque épisode (dix de la cité mère, puis quatre de colonie), une
@@ -153,6 +156,8 @@ pub struct Episode {
     /// Bâtiments que l'épisode permet, par rang de la liste de l'éditeur ; vide si la
     /// fiche n'en déclare aucun.
     pub allowed: Vec<bool>,
+    /// Épisode atlante : science, hippodrome et pyramides au lieu de la culture grecque.
+    pub atlantean: bool,
     /// Événements, par rang (les objectifs de quête et de monstre y renvoient).
     pub events: Vec<Event>,
 }
@@ -388,6 +393,7 @@ impl Settings {
                             let flags: Vec<bool> = (0..ALLOWED_SLOTS).map(|slot| file.get(record + ALLOWED + 2 * slot).is_some_and(|&b| b != 0)).collect();
                             if flags.iter().any(|&f| f) { flags } else { Vec::new() }
                         },
+                        atlantean: int(record + ATLANTEAN).is_some_and(|flag| flag != 0),
                     })
                 })
                 .collect()

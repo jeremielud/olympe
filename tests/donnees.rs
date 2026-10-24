@@ -291,3 +291,15 @@ fn episodes_list_their_allowed_buildings() {
     assert!(!first[12], "mais pas le théâtre");
     assert!(allowed("}jeu ouvert - bac à sable.pak")[1..58].iter().all(|&a| a));
 }
+
+#[test]
+fn atlantean_adventures_are_flagged() {
+    let Some(data) = data() else { return };
+    let atlantean = |pak: &str| Settings::parse(&fs::read(data.join("adventures").join(pak)).unwrap()).unwrap().parent.iter().all(|e| e.atlantean);
+    for pak in ["#la naissance de l'atlantide.pak", "[la renaissance de l'atlantide.pak", "&la conquête de l'ouest.pak", "@la vie en méditerranée.pak"] {
+        assert!(atlantean(pak), "{pak}");
+    }
+    for pak in ["]proétos et bellérophon.pak", "^deux mondes s'affrontent.pak", "#zeus et europe.pak", "firstcity.pak"] {
+        assert!(!atlantean(pak), "{pak}");
+    }
+}

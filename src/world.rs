@@ -930,6 +930,8 @@ pub enum Function {
     Wharf,
     /// Tour : ses sentinelles tirent sur les envahisseurs à portée.
     Tower,
+    /// Musée des cités atlantes : il tient lieu de stade pour les logements.
+    Museum,
     /// Corps de garde : posé sur une route, il laisse passer les citoyens à travers les
     /// murs et barre la route aux envahisseurs.
     Gatehouse,
@@ -3437,7 +3439,7 @@ impl World {
         let Some(house) = &building.house else { return Vec::new() };
         let (Some(current), (_, Some(next))) = (self.house_levels.get(house.level), house_steps(house.level)) else { return vec![Need::Top] };
         let Some(wanted) = self.house_levels.get(next) else { return vec![Need::Top] };
-        let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        let stadium_open = self.stadium_open();
         let state = HouseState {
             fed: house.goods[Good::Food as usize] >= house.population.max(1),
             had: house.goods.map(|amount| amount > 0),
@@ -3464,6 +3466,11 @@ impl World {
         }
     }
 
+    /// Un stade, ou dans une cité atlante un musée, a son personnel.
+    pub fn stadium_open(&self) -> bool {
+        self.buildings.iter().flatten().any(|b| b.staffed && matches!(self.kinds[b.kind].function, Function::Stadium | Function::Museum))
+    }
+
     /// Note de culture qu'exige un niveau de logement.
     pub fn level_culture(&self, level: usize) -> i32 {
         self.house_levels.get(level).map_or(0, |l| l.culture)
@@ -3471,7 +3478,7 @@ impl World {
 
     /// Note de culture d'une maison (philosophie, athlétisme, théâtre, stade).
     pub fn house_culture(&self, house: &House) -> i32 {
-        let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        let stadium_open = self.stadium_open();
         culture_of(house, self.ticks, stadium_open)
     }
 
@@ -4651,7 +4658,7 @@ impl World {
         let goods_month = (now / TICKS_PER_MONTH) % GOODS_MONTHS == 0;
         // Le stade profite à toute la cité dès qu'il a son personnel (lecture provisoire
         // de l'exigence « stade » des règles).
-        let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);
+        let stadium_open = self.stadium_open();
         let appeal_relief = if self.has_sanctuary(APHRODITE) { APHRODITE_APPEAL } else { 0 };
         for id in 0..self.buildings.len() {
             let Some(building) = self.buildings[id].as_ref() else { continue };

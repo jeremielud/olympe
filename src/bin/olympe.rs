@@ -128,6 +128,23 @@ const TYPE_ORICHALC_REFINERY: usize = 211;
 const TYPE_BLACK_MARBLE_SHOP: usize = 213;
 const RACETRACK_IMAGE: usize = 426;
 const WHARF_IMAGE: usize = 721;
+/// Science atlante : bibliothèque (comme le gymnase), université et observatoire
+/// (comme collège et podium), atelier d'inventeurs et laboratoire (comme école de
+/// théâtre et théâtre), musée (comme le stade).
+const SCIENCE_KINDS: [(usize, usize, usize, Function, usize); 6] = [
+    (202, 540, 2, Function::Service(Service::Athletics), GROUP_ATHLETE),
+    (204, 436, 3, Function::School(Service::Philosophy), 0),
+    (203, 576, 5, Function::Service(Service::Philosophy), GROUP_PHILOSOPHER),
+    (206, 502, 3, Function::School(Service::Drama), 0),
+    (205, 461, 4, Function::Service(Service::Drama), GROUP_ACTOR),
+    (207, 597, 6, Function::Museum, 0),
+];
+/// Types que seule une cité grecque peut bâtir, et que seule une cité atlante peut
+/// bâtir (guide de l'éditeur de Poséidon, annexe 7). Le quai des trières et le
+/// dresseur de chevaux restent ouverts aux cités atlantes : ils y tiennent lieu du
+/// quai à frégates et du marchand de chars, qu'Olympe n'a pas.
+const GREEK_ONLY: [usize; 6] = [77, 78, 79, 80, 81, 82];
+const ATLANTEAN_ONLY: [usize; 6] = [202, 203, 204, 205, 206, 207];
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
@@ -314,7 +331,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Wine) => "AGORA_WINE",
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture | Good::BlackMarble | Good::Orichalc) => "AGORA_ARMS",
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
-        Function::Stadium | Function::Annex | Function::Racetrack => "STADIUM",
+        Function::Stadium | Function::Annex | Function::Racetrack | Function::Museum => "STADIUM",
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
         Function::None => "BEAUTIFICATION",
     }
@@ -432,7 +449,7 @@ fn category_of(function: Function) -> usize {
         Function::Plot => usize::MAX,
         Function::Service(Service::Water | Service::Maintenance | Service::Security | Service::Health) => 4,
         Function::Service(Service::Tax) | Function::Palace => 5,
-        Function::Service(Service::Philosophy | Service::Athletics | Service::Drama) | Function::School(_) | Function::Stadium => 6,
+        Function::Service(Service::Philosophy | Service::Athletics | Service::Drama) | Function::School(_) | Function::Stadium | Function::Museum => 6,
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
@@ -1007,7 +1024,7 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
                 let philosophy = open(&|f| *f == Function::Service(Service::Philosophy)) && open(&|f| *f == Function::School(Service::Philosophy));
                 let athletics = open(&|f| *f == Function::Service(Service::Athletics));
                 let drama = open(&|f| *f == Function::Service(Service::Drama)) && open(&|f| *f == Function::School(Service::Drama));
-                let stadium = athletics && open(&|f| *f == Function::Stadium);
+                let stadium = athletics && open(&|f| matches!(f, Function::Stadium | Function::Museum));
                 15 * philosophy as i32 + 20 * athletics as i32 + 25 * drama as i32 + 30 * stadium as i32
             };
             let mut problems = Vec::new();
@@ -1108,6 +1125,13 @@ const ALLOWED_TYPES: [(usize, &[usize]); 48] = [
 /// Rang de chaque type de bâtiment d'Olympe dans la liste des bâtiments autorisés,
 /// retrouvé par le nom du type dans les textes du jeu ; fixé au chargement.
 static ALLOWED_SLOT: std::sync::OnceLock<Vec<Option<usize>>> = std::sync::OnceLock::new();
+/// Nation qui peut bâtir chaque type d'Olympe : 0 toutes, 1 grecque, 2 atlante.
+static NATION: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+
+fn nations(kinds: &[Kind], text: &Text) -> Vec<u8> {
+    let named = |types: &[usize], kind: &Kind| types.iter().any(|&t| text.get(TEXT_BUILDINGS, t) == kind.name);
+    kinds.iter().map(|kind| if named(&GREEK_ONLY, kind) { 1 } else if named(&ATLANTEAN_ONLY, kind) || kind.function == Function::Museum { 2 } else { 0 }).collect()
+}
 
 fn allowed_slots(kinds: &[Kind], text: &Text) -> Vec<Option<usize>> {
     kinds
@@ -1144,7 +1168,11 @@ fn lock_resources(world: &mut World, episode: &Episode) {
     world.max_sanctuaries = episode.max_sanctuaries;
     // Ce que la liste des bâtiments autorisés de l'épisode interdit.
     let slots = ALLOWED_SLOT.get();
+    let wrong_nation = |kind: usize| NATION.get().and_then(|n| n.get(kind)).is_some_and(|&n| n == if episode.atlantean { 1 } else { 2 });
     let forbidden = |kind: usize| -> bool {
+        if wrong_nation(kind) {
+            return true;
+        }
         let slot = slots.and_then(|slots| slots.get(kind).copied().flatten());
         slot.is_some_and(|slot| !episode.allowed.is_empty() && !episode.allowed.get(slot).copied().unwrap_or(true))
     };
@@ -1385,6 +1413,13 @@ fn service_name(text: &Text, service: Service) -> String {
     text.get(TEXT_BUILDINGS, kind)
 }
 
+/// Nom d'un service d'après le bâtiment qui le rend dans l'épisode : dans une cité
+/// atlante, l'observatoire plutôt que le podium.
+fn service_label(world: &World, text: &Text, service: Service) -> String {
+    let open = |k: &usize| world.locked.get(*k) != Some(&true);
+    (0..world.kinds.len()).filter(open).find(|&k| world.kinds[k].function == Function::Service(service)).map_or_else(|| service_name(text, service), |k| world.kinds[k].name.clone())
+}
+
 /// Conseillers, comme les écrans du jeu : population, emploi, finances, services,
 /// mythologie, armée et commerce ; chaque page a son titre et ses lignes.
 /// Niveaux d'imposition du jeu, et leur taux.
@@ -1465,7 +1500,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         .map(|&service| {
             let served = houses.iter().filter(|h| h.has(service, world.ticks)).count();
             let percent = if houses.is_empty() { 0 } else { served * 100 / houses.len() };
-            format!("{} : {served} maisons sur {} ({percent} %)", service_name(text, service), houses.len())
+            format!("{} : {served} maisons sur {} ({percent} %)", service_label(world, text, service), houses.len())
         })
         .collect();
     services.push(format!("Santé de la cité : {} sur 100", world.health));
@@ -2839,7 +2874,19 @@ fn run(
     let mut gatehouse = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_GATEHOUSE), rules(TYPE_GATEHOUSE)?.cost, size_of(GATEHOUSE_IMAGE)?, GATEHOUSE_IMAGE, Function::Gatehouse, 0);
     gatehouse.appeal = appeal_of(TYPE_GATEHOUSE)?;
     kinds.push(gatehouse);
+    // Science des cités atlantes (Poséidon) : chaque bâtiment tient le rôle d'un lieu
+    // de culture grecque et sert la même discipline (images de `poseidon_loaded.sg3`
+    // attribuées à l'œil, tailles d'après leur largeur).
+    for (kind, image, size, function, walker) in SCIENCE_KINDS {
+        let mut entry = Kind::simple(text.get(TEXT_BUILDINGS, kind), rules(kind)?.cost, size, image, function, group(walker));
+        entry.parts[0].source = Source::Poseidon;
+        entry.employees = rules(kind)?.employees;
+        entry.appeal = appeal_of(kind)?;
+        (entry.fire_risk, entry.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
+        kinds.push(entry);
+    }
     let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
+    let _ = NATION.set(nations(&kinds, &text));
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
@@ -4290,7 +4337,7 @@ fn run(
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
                     }
                     for service in SERVICES {
-                        let label = service_name(&text, service);
+                        let label = service_label(&world, &text, service);
                         lines.push(format!("{label} : {}", text.get(18, if house.has(service, world.ticks) { 1 } else { 0 })));
                     }
                     let needs: Vec<String> = world

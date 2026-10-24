@@ -29,11 +29,10 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde ; batailles au loin simplifiées) | 55 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : la science de Poséidon (bibliothèque, observatoire,
-université, laboratoire, atelier d'inventeurs, musée) ; les cités atlantes se
-cultivent pour l'instant comme les cités grecques. Les jeux panhelléniques, les
-batailles menées au loin (une cité se soumet par simple comparaison des forces) et
-les rotations de la vue manquent aussi.
+Manque encore notamment : les jeux panhelléniques, les batailles menées au loin (une
+cité se soumet par simple comparaison des forces), les rotations de la vue, et dans
+les cités atlantes les frégates, les chars et les soldats propres à l'Atlantide
+(trières, chevaux et soldats grecs en tiennent lieu).
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -74,6 +73,12 @@ Ce qui fonctionne :
   « Bâtiments autorisés » de l'éditeur, en 0x902d30 dans `Zeus.exe`) : ce qu'un épisode
   ne permet pas n'apparaît pas dans les menus ; fermes, élevage et matières premières
   restent réglés par les ressources ;
+- cités atlantes (drapeau à l'octet 648 de chaque épisode, lu en 0x902bb0 dans
+  `Zeus.exe` et vérifié dans le jeu : les quatre aventures atlantes de Poséidon) : la
+  science y remplace la culture grecque — bibliothèque, université et observatoire,
+  atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; ils rendent
+  les mêmes points de culture que gymnase, podium, théâtre et stade (hypothèse
+  d'Olympe : la même colonne des règles sert la culture et la science) ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
   objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
   pour ce qu'il faut produire, et assez de culture permise pour les logements
