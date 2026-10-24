@@ -108,6 +108,15 @@ pub fn modern_resource(old: u8) -> u8 {
     }
 }
 
+/// Un objectif de logement désigne son niveau par le type de bâtiment du jeu (7 pour
+/// les appartements, 11 pour les résidences…) : les logements commencent au type 2,
+/// la hutte, niveau 0 d'Olympe.
+const FIRST_HOUSE_TYPE: i32 = 2;
+
+fn housing_level(building_type: i32) -> usize {
+    (building_type - FIRST_HOUSE_TYPE).max(0) as usize
+}
+
 impl Goals {
     /// Lit la table des objectifs d'un `.pak` ou d'un `.set` ; `version` est celle de
     /// l'en-tête. Rien quand la table n'est pas là où on l'attend.
@@ -174,7 +183,7 @@ impl Goal {
         match self.kind {
             Kind::Population => against(world.population(), first),
             Kind::Treasury => against(world.money, first),
-            Kind::Housing => against(world.people_housed_from(first.max(0) as usize), second),
+            Kind::Housing => against(world.people_housed_from(housing_level(first)), second),
             // Une fois atteint, l'objectif le reste : on compare la meilleure année.
             Kind::Profit => match world.best_year_profit {
                 Some(best) => against(best, first),
@@ -263,7 +272,7 @@ impl Goal {
             Kind::Profit => amount(line(32), first),
             Kind::Production => amount(line(30), second).replace("[item]", &resource(first)),
             Kind::Housing => {
-                let level = usize::try_from(first).ok().and_then(|l| levels.get(l)).cloned().unwrap_or_default();
+                let level = levels.get(housing_level(first)).cloned().unwrap_or_default();
                 amount(line(33), second).replace("[house_level]", &level.to_lowercase())
             }
             Kind::Partners => amount(line(34), first),

@@ -171,7 +171,7 @@ fn goals_follow_the_city() {
     let population = goal(GoalKind::Population, [32, 0, 0]);
     let treasury = goal(GoalKind::Treasury, [20_000, 0, 0]);
     // Huit personnes en masure ou mieux : les huttes, sans vivres, ne comptent pas.
-    let housing = goal(GoalKind::Housing, [1, 8, 0]);
+    let housing = goal(GoalKind::Housing, [3, 8, 0]);
     let profit = goal(GoalKind::Profit, [0, 0, 0]);
     assert_eq!(population.status(&world), Status::Pending(Some(0)));
     // Aucune année n'est encore close.
