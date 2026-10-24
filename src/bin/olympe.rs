@@ -338,7 +338,7 @@ const HELP: [&str; 18] = [
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
     "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
-    "Clic gauche : bâtir ; glisser pour tracer une route",
+    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets)",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
     "Espace : pause",
@@ -372,6 +372,8 @@ const CLEAR_TAB: usize = 1753;
 /// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
 /// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
 const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+/// Tuile de route droite (catalogue du terrain), qui sert d'icône au bouton des routes.
+const ROAD_ICON_IMAGE: usize = 897;
 const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
     (85.0, 435.0, 32.0, 37.0, Some(1279), Some(sdl::KEY_H)),
     (118.0, 435.0, 32.0, 37.0, Some(1283), Some(sdl::KEY_R)),
@@ -3947,10 +3949,26 @@ fn run(
                     menu_rows.push((slot, MenuRow::Key(key)));
                 }
             }
-            // « Dégager » : la pioche, dans la grande réserve sous les onglets.
-            let clear_slot = (side + CLEAR_SLOT.0, CLEAR_SLOT.1, CLEAR_SLOT.2, CLEAR_SLOT.3);
+            // Grande réserve sous les onglets : la route (une tuile de route du jeu, le jeu
+            // n'ayant pas d'icône à part) puis « Dégager » (la pioche).
+            let half = CLEAR_SLOT.2 / 2.0;
+            let road_slot = (side + CLEAR_SLOT.0, CLEAR_SLOT.1, half, CLEAR_SLOT.3);
+            let clear_slot = (side + CLEAR_SLOT.0 + half, CLEAR_SLOT.1, half, CLEAR_SLOT.3);
             sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
-            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: clear_slot.0, y: clear_slot.1, w: clear_slot.2, h: clear_slot.3 });
+            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: road_slot.0, y: road_slot.1, w: CLEAR_SLOT.2, h: CLEAR_SLOT.3 });
+            if tool == Tool::Road || inside(road_slot) {
+                let shade = if tool == Tool::Road { 120 } else { 60 };
+                sdl::SDL_SetRenderDrawColor(renderer, shade / 2, shade, shade + 60, 255);
+                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: road_slot.0 + 2.0, y: road_slot.1 + 2.0, w: half - 4.0, h: CLEAR_SLOT.3 - 4.0 });
+            }
+            if let Some(sprite) = graphics.sprite(Source::Terrain, ROAD_ICON_IMAGE) {
+                let scale = (half - 6.0) / sprite.width;
+                let (iw, ih) = (sprite.width * scale, sprite.height * scale);
+                let target = sdl::FRect { x: road_slot.0 + (half - iw) / 2.0, y: road_slot.1 + (CLEAR_SLOT.3 - ih) / 2.0, w: iw, h: ih };
+                sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_LINEAR);
+                sdl::SDL_RenderTexture(renderer, sprite.texture, null(), &target);
+            }
+            menu_rows.push((road_slot, MenuRow::Pick(Tool::Road)));
             let state = if tool == Tool::Demolish { 2 } else if inside(clear_slot) { 1 } else { 0 };
             graphics.blit(CLEAR_TAB + state, clear_slot.0 + (clear_slot.2 - TAB_WIDTH) / 2.0, clear_slot.1);
             menu_rows.push((clear_slot, MenuRow::Pick(Tool::Demolish)));
