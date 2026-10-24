@@ -930,6 +930,9 @@ pub enum Function {
     Wharf,
     /// Tour : ses sentinelles tirent sur les envahisseurs à portée.
     Tower,
+    /// Corps de garde : posé sur une route, il laisse passer les citoyens à travers les
+    /// murs et barre la route aux envahisseurs.
+    Gatehouse,
     /// Monument de Poséidon (rang 0 à 14, type de bâtiment 100 + rang), et ce qu'il
     /// faut y livrer : marbre, bois, sculptures.
     Monument { model: u8, needs: [u16; 3] },
@@ -1588,6 +1591,7 @@ impl World {
     pub fn is_road(&self, x: i32, y: i32) -> bool {
         Self::in_grid(x, y)
             && (matches!(self.cell(x as usize, y as usize), Cell::Road | Cell::AgoraRoad)
+                || self.is_gate(x, y)
                 || (self.cell(x as usize, y as usize) == Cell::Terrain
                     && self.map.terrain(x as usize, y as usize) & TERRAIN_ROAD != 0))
     }
@@ -1603,8 +1607,16 @@ impl World {
             && self.map.terrain(x, y) & BLOCKED == 0
     }
 
+    /// La case appartient à un corps de garde.
+    fn is_gate(&self, x: i32, y: i32) -> bool {
+        Self::in_grid(x, y) && matches!(self.cell(x as usize, y as usize), Cell::Building(id) if self.function(id as usize) == Function::Gatehouse)
+    }
+
     fn is_walkable(&self, x: i32, y: i32) -> bool {
-        if !self.in_map(x, y) || matches!(self.cell(x as usize, y as usize), Cell::Building(_) | Cell::Chasm(_) | Cell::Flood) {
+        if self.is_gate(x, y) {
+            return true;
+        }
+        if !self.in_map(x, y) || matches!(self.cell(x as usize, y as usize), Cell::Building(_) | Cell::Chasm(_) | Cell::Flood | Cell::Wall(_)) {
             return false;
         }
         let terrain = self.map.terrain(x as usize, y as usize);
@@ -1697,6 +1709,12 @@ impl World {
             Function::Racetrack => {
                 let any = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Racetrack);
                 self.can_build(x, y, k.size) && (!any || self.racetrack_links(x, y) != 0)
+            }
+            // Sur une route, qu'il recouvre : chaque case est libre ou de la route.
+            Function::Gatehouse => {
+                let tiles: Vec<(i32, i32)> = (0..size).flat_map(|dy| (0..size).map(move |dx| (x + dx, y + dy))).collect();
+                tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || (matches!(self.cell(tx as usize, ty as usize), Cell::Road) && Self::in_grid(tx, ty)))
+                    && tiles.iter().any(|&(tx, ty)| Self::in_grid(tx, ty) && self.cell(tx as usize, ty as usize) == Cell::Road)
             }
             Function::Fishery | Function::Wharf => {
                 let near_water = (y - 1..=y + size).any(|ty| (x - 1..=x + size).any(|tx| Self::in_grid(tx, ty) && self.map.terrain(tx as usize, ty as usize) & TERRAIN_WATER != 0));
@@ -2039,6 +2057,17 @@ impl World {
                         None => RACETRACK_ALONG_X[variant],
                     };
                     return Some(Draw { source: Source::Poseidon, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
+                }
+                // Corps de garde : la seconde image quand la route le traverse le long de x.
+                if kind.function == Function::Gatehouse {
+                    let part = kind.parts.first()?;
+                    if (x, y) != (building.x, building.y + part.size - 1) {
+                        return None;
+                    }
+                    let (bx, by, size) = (building.x as i32, building.y as i32, kind.size as i32);
+                    let along_x = (0..size).any(|dy| self.is_road(bx - 1, by + dy) || self.is_road(bx + size, by + dy));
+                    let image = part.image + along_x as usize;
+                    return Some(Draw { source: part.source, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
                 }
                 if let Function::Monument { model, needs } = kind.function {
                     let layout = self.monument_layouts.get(model as usize)?;
@@ -2832,7 +2861,7 @@ impl World {
             if !self.in_map(x, y) {
                 return true;
             }
-            if walls && (x as u16, y as u16) != to && matches!(self.cell(x as usize, y as usize), Cell::Wall(_)) {
+            if walls && (x as u16, y as u16) != to && (matches!(self.cell(x as usize, y as usize), Cell::Wall(_)) || self.is_gate(x, y)) {
                 return true;
             }
             let terrain = self.map.terrain(x as usize, y as usize);
@@ -3148,7 +3177,9 @@ impl World {
                 self.figures[i].role = Role::Soldier { enemy: true, army, health, target: NO_TARGET, fighting: false };
                 continue;
             }
+            // Le corps de garde fait partie de l'enceinte : on le contourne comme un mur.
             let nearest = (0..self.buildings.len())
+                .filter(|&id| self.function(id) != Function::Gatehouse)
                 .filter_map(|id| self.buildings[id].as_ref().map(|b| (id, b.x as i32 - at.0 as i32, b.y as i32 - at.1 as i32)))
                 .min_by_key(|&(_, dx, dy)| dx.abs().max(dy.abs()));
             let Some((id, ..)) = nearest else { continue };

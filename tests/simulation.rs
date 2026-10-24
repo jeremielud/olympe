@@ -1197,3 +1197,38 @@ fn a_staffed_tower_shoots_invaders_down() {
     assert!(raid(false).is_some_and(|b| !b.repelled));
     assert!(raid(true).is_some_and(|b| b.repelled), "{:?}", raid(true));
 }
+
+#[test]
+fn citizens_cross_walls_only_through_a_gatehouse() {
+    let Some(data) = data() else { return };
+    let settle = |with_gate: bool| {
+        let (mut world, x, y) = world(&data);
+        // Quatre maisons dans une enceinte ; une route sort par le côté est, où se pose le
+        // corps de garde, ou bien le mur reste continu.
+        for i in 0..4 {
+            assert!(world.place_building(HOUSE, x + 2 + 2 * i, y + 2));
+        }
+        for i in 1..=11 {
+            assert!(world.place_road(x + i, y + 4, 0));
+        }
+        let gate = world.kinds.len();
+        world.kinds.push(Kind::simple("corps de garde".into(), 80, 2, 768, Function::Gatehouse, 0));
+        if with_gate {
+            assert!(world.place_building(gate, x + 10, y + 3));
+        } else {
+            world.demolish(x + 11, y + 4);
+        }
+        for i in 0..=11 {
+            for (wx, wy) in [(x + i, y), (x + i, y + 6), (x, y + i.min(6)), (x + 11, y + i.min(6))] {
+                if !world.is_wall(wx, wy) && !world.is_road(wx, wy) {
+                    assert!(world.place_wall(wx, wy, 0), "mur refusé en {},{}", wx - x, wy - y);
+                }
+            }
+        }
+        (0..4 * TICKS_PER_MONTH).for_each(|_| world.tick());
+        world.population()
+    };
+    // Sans corps de garde, personne n'entre ; avec, les maisons se remplissent.
+    let (closed, open) = (settle(false), settle(true));
+    assert!(open > closed, "fermée {closed}, ouverte {open}");
+}

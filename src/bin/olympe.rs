@@ -84,6 +84,9 @@ const TYPE_ROAD: usize = 28;
 const TYPE_WALL: usize = 130;
 /// Tour (règles : type 132) et son image dans le catalogue général.
 const TYPE_TOWER: usize = 132;
+/// Corps de garde (type 131), deux images : la route le traverse dans un sens ou l'autre.
+const TYPE_GATEHOUSE: usize = 131;
+const GATEHOUSE_IMAGE: usize = 768;
 const TOWER_IMAGE: usize = 774;
 const MILITARY_CATEGORY: usize = 9;
 /// Groupes de personnages dans `sprmain.sg3`. Le catalogue nomme ses planches
@@ -287,7 +290,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::House => "COMMON_HOUSING",
         Function::Service(Service::Water) => "FOUNTAIN",
         Function::Service(Service::Maintenance) => "MAINTENANCE_OFFICE",
-        Function::Service(Service::Security) | Function::Tower => "DEFENSIVE",
+        Function::Service(Service::Security) | Function::Tower | Function::Gatehouse => "DEFENSIVE",
         Function::Service(Service::Health) => "INFIRMARY",
         Function::Service(Service::Tax) => "MUNICIPAL",
         Function::Palace => "PALACE",
@@ -433,7 +436,7 @@ fn category_of(function: Function) -> usize {
         // L'annexe du stade ne se bâtit qu'avec lui.
         Function::Annex => usize::MAX,
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
-        Function::Wharf | Function::Tower => 9,
+        Function::Wharf | Function::Tower | Function::Gatehouse => 9,
         Function::Racetrack => 5,
         Function::None => 8,
     }
@@ -2741,8 +2744,11 @@ fn run(
         entry.product = zeus::world::resource_of(good).unwrap_or(0);
         kinds.push(entry);
     }
-    // Ajoutée en dernier : les sauvegardes antérieures gardent leurs numéros de types.
+    // Ajoutés en dernier : les sauvegardes antérieures gardent leurs numéros de types.
     kinds.push(tower);
+    let mut gatehouse = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_GATEHOUSE), rules(TYPE_GATEHOUSE)?.cost, size_of(GATEHOUSE_IMAGE)?, GATEHOUSE_IMAGE, Function::Gatehouse, 0);
+    gatehouse.appeal = appeal_of(TYPE_GATEHOUSE)?;
+    kinds.push(gatehouse);
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
