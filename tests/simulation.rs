@@ -355,12 +355,16 @@ fn a_wharf_builds_a_trireme_from_wood() {
     world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Wood as usize] = 6;
     let goal = Goal { kind: GoalKind::Support, values: [57, 1, 0] };
     assert_eq!(goal.status(&world), Status::Pending(Some(0)));
-    // Sans armement, la trière attend à quai.
+    // Sans armement, le chantier ne commence pas.
     (0..5 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(world.triremes(), 0);
-    world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Arms as usize] = 1;
+    // Deux charges d'armement : le chantier dure 32 jours (deux mois), puis la trière
+    // part ; deux des six charges de bois ont servi.
+    world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Arms as usize] = 2;
     (0..TICKS_PER_MONTH).for_each(|_| world.tick());
-    assert_eq!((world.triremes(), world.stored(9)), (1, 2));
+    assert_eq!(world.triremes(), 0);
+    (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert_eq!((world.triremes(), world.stored(9)), (1, 4));
     assert_eq!(goal.status(&world), Status::Met);
 }
 

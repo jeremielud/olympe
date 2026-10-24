@@ -560,10 +560,12 @@ const BOAT_TILES: u64 = 33;
 const BOAT_DAYS: u64 = 9;
 const FISHING_TICKS: u64 = 8 * TICKS_PER_DAY;
 const UNLOADING_TICKS: u64 = 4 * TICKS_PER_DAY;
-/// Une trière demande quatre charges de bois et trois mois de chantier (barème
-/// d'Olympe), puis une charge d'armement pour être opérationnelle (aide du jeu).
-const TRIREME_WOOD: i32 = 4;
-const TRIREME_ARMS: i32 = 1;
+/// Quai des trières (`Zeus.exe`, 0x4901ea) : le chantier commence quand le quai a 200
+/// unités de bois et 200 d'armement (deux charges de chaque) ; sa progression gagne 10
+/// par jour à effectif complet et la trière est lancée à 320, soit au bout de 32 jours,
+/// en consommant ces matériaux.
+const TRIREME_WOOD: i32 = 2;
+const TRIREME_ARMS: i32 = 2;
 /// Sections de l'hippodrome (`poseidon_loaded.sg3`) selon les côtés où la piste se
 /// prolonge (bits de `NEIGHBOURS`) : droites le long de x et de y (deux variantes,
 /// stalles de départ ou tribunes), virages ; relevées sur les images 422 à 429.
@@ -573,7 +575,7 @@ const RACETRACK_ALONG_Y: [usize; 2] = [424, 428];
 const RACETRACK_CURVES: [(u8, usize); 4] = [(0b1100, 423), (0b1001, 425), (0b0011, 427), (0b0110, 429)];
 /// Recette mensuelle d'un hippodrome achevé, par section (barème d'Olympe).
 const RACETRACK_INCOME: i32 = 10;
-const TRIREME_TICKS: u64 = 3 * TICKS_PER_MONTH;
+const TRIREME_TICKS: u64 = 32 * TICKS_PER_DAY;
 /// Laiterie et pavillon de chasse, mesurés dans le jeu (troupeau d'une quinzaine de
 /// chèvres, sangliers à proximité) : 100 unités, soit une charrette de six chargements,
 /// environ tous les 10 jours (9 pour la chasse). Olympe ne fait pas paraître les bêtes.
@@ -3759,16 +3761,15 @@ impl World {
                         self.start_rounds(id, walker, Rounds::Service(service));
                     }
                 }
-                // Quai sans trière : il réunit son bois, puis la trière est lancée au
-                // bout du chantier ; elle reste à quai, comptée dans la flotte.
-                // Quai sans trière : ses porteurs lui apportent le bois ; le chantier dure
-                // trois mois une fois le bois réuni, et la trière part armée.
+                // Quai sans trière : ses porteurs lui apportent bois et armement ; le
+                // chantier commence quand les deux sont réunis et la trière est lancée au
+                // bout de 32 jours. Elle reste à quai, comptée dans la flotte.
                 Function::Wharf if stock == 0 => {
                     let goods = building.goods;
                     let building = self.buildings[id].as_mut().unwrap();
-                    if goods[Good::Wood as usize] < TRIREME_WOOD {
+                    if goods[Good::Wood as usize] < TRIREME_WOOD || goods[Good::Arms as usize] < TRIREME_ARMS {
                         building.sown_at = self.ticks;
-                    } else if self.ticks - building.sown_at >= TRIREME_TICKS && goods[Good::Arms as usize] >= TRIREME_ARMS {
+                    } else if self.ticks - building.sown_at >= TRIREME_TICKS {
                         building.goods[Good::Wood as usize] = 0;
                         building.goods[Good::Arms as usize] = 0;
                         building.stock = 1;

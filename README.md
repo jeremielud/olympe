@@ -47,7 +47,7 @@ Ce qui fonctionne :
   les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade
   par section (hypothèse d'Olympe) ;
 - quai des trières (onglet Armée), au bord de l'eau : il prend quatre charges de
-  bois et une d'armement à l'entrepôt et lance une trière trois mois plus tard (barème d'Olympe ; le jeu
+  bois et deux d'armement à l'entrepôt et lance une trière 32 jours plus tard (comme le jeu ; celui-ci
   n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
   d'entretien de trières sont suivis ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
