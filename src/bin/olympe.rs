@@ -1002,6 +1002,14 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
                     (0..GRID as i32 * GRID as i32).any(|t| world.can_place(i, t % GRID as i32, t / GRID as i32))
                 })
             };
+            // Note de culture la plus haute que permettent les bâtiments autorisés.
+            let culture_allowed = {
+                let philosophy = open(&|f| *f == Function::Service(Service::Philosophy)) && open(&|f| *f == Function::School(Service::Philosophy));
+                let athletics = open(&|f| *f == Function::Service(Service::Athletics));
+                let drama = open(&|f| *f == Function::Service(Service::Drama)) && open(&|f| *f == Function::School(Service::Drama));
+                let stadium = athletics && open(&|f| *f == Function::Stadium);
+                15 * philosophy as i32 + 20 * athletics as i32 + 25 * drama as i32 + 30 * stadium as i32
+            };
             let mut problems = Vec::new();
             for goal in &episode.goals {
                 let [first, second, _] = goal.values;
@@ -1017,6 +1025,7 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
                     (_, GoalKind::Hippodrome) if !open(&|f| *f == Function::Racetrack) => Some("hippodrome non permis"),
                     (_, GoalKind::Support) if second > 0 && first == 57 && !open(&|f| *f == Function::Wharf) => Some("quai non permis"),
                     (_, GoalKind::Quest | GoalKind::Slay) if !open(&|f| matches!(f, Function::HeroHall(_))) => Some("aucun temple de héros permis"),
+                    (_, GoalKind::Housing) if culture_allowed < world.level_culture(zeus::goals::housing_level(first)) => Some("culture permise insuffisante"),
                     _ => None,
                 };
                 if let Some(problem) = problem {
@@ -1040,6 +1049,80 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
 /// que par ses exploitations et ses laiteries, ses pavillons de chasse et ses
 /// pêcheries, la restriction ne s'applique qu'aux épisodes qui en permettent au moins
 /// une : les autres resteraient sans vivres.
+/// Rangs de la liste « Bâtiments autorisés » de l'éditeur (groupe de textes 67 de
+/// `zeus_editor_text.eng`) et types de bâtiments qu'ils couvrent. Les fermes, l'élevage
+/// (pêcherie, pavillon de chasse, enclos compris, bien que la liste leur garde un rang)
+/// et les matières premières n'en dépendent pas : seules les ressources en décident
+/// (guide de l'éditeur de Poséidon).
+const ALLOWED_TYPES: [(usize, &[usize]); 48] = [
+    (1, &[48]),
+    (3, &[54]),
+    (4, &[64]),
+    (7, &[57]),
+    (8, &[63]),
+    (9, &[58, 59]),
+    (10, &[60, 62]),
+    (11, &[80]),
+    (12, &[82]),
+    (13, &[79]),
+    (14, &[53]),
+    (15, &[55]),
+    (16, &[81]),
+    (17, &[77]),
+    (18, &[74]),
+    (19, &[133]),
+    (20, &[78]),
+    (21, &[121]),
+    (22, &[76]),
+    (23, &[122]),
+    (24, &[124]),
+    (25, &[117]),
+    (26, &[125]),
+    (27, &[123]),
+    (28, &[120]),
+    (29, &[129, 145, 146]),
+    (30, &[128]),
+    (31, &[118]),
+    (32, &[126]),
+    (33, &[130]),
+    (34, &[132]),
+    (35, &[131]),
+    (36, &[127]),
+    (37, &[16]),
+    (38, &[15]),
+    (39, &[17]),
+    (40, &[18]),
+    (41, &[135]),
+    (42, &[136]),
+    (43, &[9, 10, 11, 12, 13, 14]),
+    (44, &[199]),
+    (45, &[212]),
+    (46, &[19]),
+    (47, &[20]),
+    (48, &[21]),
+    (49, &[22]),
+    (50, &[23]),
+    (51, &[24]),
+];
+
+/// Rang de chaque type de bâtiment d'Olympe dans la liste des bâtiments autorisés,
+/// retrouvé par le nom du type dans les textes du jeu ; fixé au chargement.
+static ALLOWED_SLOT: std::sync::OnceLock<Vec<Option<usize>>> = std::sync::OnceLock::new();
+
+fn allowed_slots(kinds: &[Kind], text: &Text) -> Vec<Option<usize>> {
+    kinds
+        .iter()
+        .map(|kind| match kind.function {
+            // Échoppes et emplacements suivent l'agora ; le mur, la tour et le corps de
+            // garde ont leur rang propre (leurs noms sont partagés par d'autres textes).
+            Function::Plot | Function::Vendor(_) => Some(8),
+            Function::Gatehouse => Some(35),
+            Function::Tower => Some(34),
+            _ => ALLOWED_TYPES.iter().find(|(_, types)| types.iter().any(|&t| text.get(TEXT_BUILDINGS, t) == kind.name)).map(|&(slot, _)| slot),
+        })
+        .collect()
+}
+
 fn lock_resources(world: &mut World, episode: &Episode) {
     // Un sanctuaire achevé apporte sa ressource (éditeur d'aventures, annexe 2).
     let granted: Vec<u8> = world.sanctuaries().iter().filter_map(|&god| SANCTUARY_RESOURCES.iter().find(|&&(g, _)| g == god).map(|&(_, r)| r)).collect();
@@ -1059,10 +1142,17 @@ fn lock_resources(world: &mut World, episode: &Episode) {
     }
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
+    // Ce que la liste des bâtiments autorisés de l'épisode interdit.
+    let slots = ALLOWED_SLOT.get();
+    let forbidden = |kind: usize| -> bool {
+        let slot = slots.and_then(|slots| slots.get(kind).copied().flatten());
+        slot.is_some_and(|slot| !episode.allowed.is_empty() && !episode.allowed.get(slot).copied().unwrap_or(true))
+    };
     world.locked = world
         .kinds
         .iter()
-        .map(|kind| match kind.function {
+        .enumerate()
+        .map(|(index, kind)| forbidden(index) || match kind.function {
             // Seuls les dieux favorables que l'épisode désigne reçoivent un sanctuaire.
             Function::Sanctuary { god, .. } => !episode.sanctuaries.contains(&god),
             Function::Racetrack => !episode.goals.iter().any(|goal| goal.kind == GoalKind::Hippodrome),
@@ -1097,7 +1187,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
             Function::Workshop(Good::Sculpture) => !has(RESOURCE_BRONZE),
             _ => false,
         })
-        .collect();
+        .collect::<Vec<bool>>();
 }
 
 /// Où en est l'aventure : l'ordre de ses épisodes, celui que l'on joue, et la cité
@@ -2749,6 +2839,7 @@ fn run(
     let mut gatehouse = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_GATEHOUSE), rules(TYPE_GATEHOUSE)?.cost, size_of(GATEHOUSE_IMAGE)?, GATEHOUSE_IMAGE, Function::Gatehouse, 0);
     gatehouse.appeal = appeal_of(TYPE_GATEHOUSE)?;
     kinds.push(gatehouse);
+    let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();

@@ -30,6 +30,11 @@ const RECORD_SIZE: usize = 2032;
 const START_YEAR: usize = 0;
 const FUNDS: usize = 32;
 const RESOURCES: usize = 1960;
+/// Bâtiments autorisés : un mot de 16 bits par rang de la liste de l'éditeur (groupe
+/// de textes 67 de `zeus_editor_text.eng`), 1 si l'épisode permet le bâtiment ; le jeu
+/// copie la fiche de l'épisode en 0x902928 et lit ce tableau en 0x902d30.
+const ALLOWED: usize = 1032;
+pub const ALLOWED_SLOTS: usize = 58;
 const MAX_RESOURCES: usize = 16;
 /// Mythologie de chaque épisode (dix de la cité mère, puis quatre de colonie), une
 /// table par épisode : 224 octets dans Zeus, 300 dans Poséidon. On y lit les six dieux
@@ -145,6 +150,9 @@ pub struct Episode {
     /// sanctuaires la cité peut avoir à la fois.
     pub sanctuaries: Vec<u8>,
     pub max_sanctuaries: usize,
+    /// Bâtiments que l'épisode permet, par rang de la liste de l'éditeur ; vide si la
+    /// fiche n'en déclare aucun.
+    pub allowed: Vec<bool>,
     /// Événements, par rang (les objectifs de quête et de monstre y renvoient).
     pub events: Vec<Event>,
 }
@@ -376,6 +384,10 @@ impl Settings {
                         sanctuaries,
                         events: events_of(first_table + i),
                         max_sanctuaries: int(table + MAX_SANCTUARIES).map_or(0, |n| n.clamp(0, 4) as usize),
+                        allowed: {
+                            let flags: Vec<bool> = (0..ALLOWED_SLOTS).map(|slot| file.get(record + ALLOWED + 2 * slot).is_some_and(|&b| b != 0)).collect();
+                            if flags.iter().any(|&f| f) { flags } else { Vec::new() }
+                        },
                     })
                 })
                 .collect()

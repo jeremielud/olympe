@@ -3464,6 +3464,11 @@ impl World {
         }
     }
 
+    /// Note de culture qu'exige un niveau de logement.
+    pub fn level_culture(&self, level: usize) -> i32 {
+        self.house_levels.get(level).map_or(0, |l| l.culture)
+    }
+
     /// Note de culture d'une maison (philosophie, athlétisme, théâtre, stade).
     pub fn house_culture(&self, house: &House) -> i32 {
         let stadium_open = self.buildings.iter().flatten().any(|b| b.staffed && self.kinds[b.kind].function == Function::Stadium);

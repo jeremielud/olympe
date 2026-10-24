@@ -113,7 +113,7 @@ pub fn modern_resource(old: u8) -> u8 {
 /// la hutte, niveau 0 d'Olympe.
 const FIRST_HOUSE_TYPE: i32 = 2;
 
-fn housing_level(building_type: i32) -> usize {
+pub fn housing_level(building_type: i32) -> usize {
     (building_type - FIRST_HOUSE_TYPE).max(0) as usize
 }
 

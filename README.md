@@ -70,9 +70,14 @@ Ce qui fonctionne :
   décors de marbre comme dans le jeu, statues, autel et temple des sanctuaires ;
 - marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
   (raccourci), marchandises rangées à l'entrepôt ;
+- bâtiments autorisés de chaque épisode, lus dans l'aventure (le tableau du panneau
+  « Bâtiments autorisés » de l'éditeur, en 0x902d30 dans `Zeus.exe`) : ce qu'un épisode
+  ne permet pas n'apparaît pas dans les menus ; fermes, élevage et matières premières
+  restent réglés par les ressources ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
   objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
-  pour ce qu'il faut produire (152 sur 152) ;
+  pour ce qu'il faut produire, et assez de culture permise pour les logements
+  demandés (152 sur 152) ;
 - hippodrome (Administration, aventures de l'Atlantide) : sections de piste posées
   bout à bout, droites ou virages selon leurs voisines ; une boucle fermée accueille
   les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade
