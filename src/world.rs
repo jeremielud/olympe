@@ -1189,12 +1189,23 @@ enum Cell {
 /// Sinistre qui a détruit un bâtiment.
 #[derive(Clone, Copy, Debug)]
 pub struct Disaster {
-    /// Incendie, sinon effondrement.
-    pub fire: bool,
+    pub cause: Cause,
     /// Type du bâtiment détruit.
     pub kind: usize,
     pub x: usize,
     pub y: usize,
+}
+
+/// Ce qui a détruit un bâtiment.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Cause {
+    Fire,
+    Collapse,
+    /// Envahisseurs qui l'ont incendié.
+    Raid,
+    /// Monstre (numéro du groupe de textes 87) ou dieu hostile (numéro du jeu).
+    Monster(u8),
+    God(u8),
 }
 
 /// Méfait ou épidémie dans une maison.
@@ -2653,8 +2664,13 @@ impl World {
         if target != NO_TARGET {
             if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
                 let (kind, x, y) = (building.kind, building.x, building.y);
+                let cause = match self.figures[index].role {
+                    Role::God { god, .. } => Cause::God(god),
+                    Role::Monster { monster, .. } => Cause::Monster(monster),
+                    _ => Cause::Collapse,
+                };
                 self.remove_building(target, Cell::Rubble(0));
-                self.disasters.push(Disaster { fire: false, kind, x, y });
+                self.disasters.push(Disaster { cause, kind, x, y });
             }
             return (NO_TARGET, now + rest);
         }
@@ -2980,7 +2996,7 @@ impl World {
             let Some(building) = self.buildings[target as usize].as_ref() else { continue };
             let (kind, x, y) = (building.kind, building.x, building.y);
             self.remove_building(target, Cell::Fire(0));
-            self.disasters.push(Disaster { fire: true, kind, x, y });
+            self.disasters.push(Disaster { cause: Cause::Raid, kind, x, y });
             raid.buildings += 1;
         }
         let invaders = self.figures.iter().filter(|f| f.soldier() == Some(true)).count();
@@ -3439,7 +3455,7 @@ impl World {
             let (kind, x, y) = (building.kind, building.x, building.y);
             if burns || collapses {
                 self.remove_building(id as u16, if burns { Cell::Fire(0) } else { Cell::Rubble(0) });
-                self.disasters.push(Disaster { fire: burns, kind, x, y });
+                self.disasters.push(Disaster { cause: if burns { Cause::Fire } else { Cause::Collapse }, kind, x, y });
             }
         }
     }

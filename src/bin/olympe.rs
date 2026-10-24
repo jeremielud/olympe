@@ -28,7 +28,7 @@ use zeus::monument;
 use zeus::sanctuary::{self, Layout, Piece};
 use zeus::sg::Catalog;
 use zeus::text::Text;
-use zeus::world::{Need, TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
+use zeus::world::{Cause, Need, TERRAIN_BEACH, TERRAIN_MEADOW, TERRAIN_ROCK, TERRAIN_TREE, TERRAIN_WATER};
 use zeus::world::{Appeal, Conquest, Function, HeroNews, Monster, Quest, QuestState, Raw, GOODS, Good, Kind, Part, SERVICES, Service, WalkerImages, World, for_houses};
 
 const USAGE: &str = "usage :
@@ -2915,10 +2915,22 @@ fn run(
                         None
                     }
                     ("t", &[ticks]) => {
+                        // Journal des sinistres et des événements survenus pendant ces pas.
+                        let standing = world.buildings.iter().flatten().count();
+                        let mut journal = Vec::new();
                         for _ in 0..ticks as u32 {
                             world.tick();
                             advance_demo(&mut world, &mut demo_plan);
+                            let day = world.ticks / 50;
+                            journal.extend(world.disasters.drain(..).map(|d| format!("jour {day} : {} {} en {},{}", format!("{:?}", d.cause), world.kinds[d.kind].name, d.x, d.y)));
+                            journal.extend(world.incidents.drain(..).map(|i| format!("jour {day} : {i:?}")));
+                            journal.extend(world.battles.drain(..).map(|b| format!("jour {day} : {b:?}")));
+                            journal.extend(world.god_news.drain(..).map(|g| format!("jour {day} : dieu {g:?}")));
                         }
+                        for line in &journal {
+                            eprintln!("{line}");
+                        }
+                        eprintln!("{} bâtiments debout, {} au départ de ces {ticks} pas", world.buildings.iter().flatten().count(), standing);
                         None
                     }
                     // Route en équerre d'une case à l'autre : d'abord en x, puis en y.
@@ -3171,8 +3183,15 @@ fn run(
                 world.incidents.clear();
             }
             if let Some(disaster) = world.disasters.pop() {
-                let what = if disaster.fire { "Incendie" } else { "Effondrement" };
-                notice = (format!("{what} : {}", world.kinds[disaster.kind].name), now);
+                let name = &world.kinds[disaster.kind].name;
+                let line = match disaster.cause {
+                    Cause::Fire => format!("Incendie : {name}"),
+                    Cause::Collapse => format!("Effondrement : {name}"),
+                    Cause::Raid => format!("Les envahisseurs incendient : {name}"),
+                    Cause::Monster(monster) => format!("{} détruit : {name}", text.get(heroes::TEXT_MONSTERS, monster as usize)),
+                    Cause::God(god) => format!("{} détruit : {name}", text.get(sanctuary::TEXT_GODS, god as usize)),
+                };
+                notice = (line, now);
                 world.disasters.clear();
             }
 
