@@ -12,7 +12,7 @@ un jeu déjà installé, les CD, ou leurs images.
 
 Olympe est une réécriture en cours, pas encore un remplaçant complet du jeu.
 
-### Avancement : environ 70 %
+### Avancement : environ 75 %
 
 Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre :
 
@@ -22,11 +22,11 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Affichage de la cité (terrain, bâtiments, personnages, mini-carte, zoom) | 90 % |
 | Aventures, épisodes, colonies et objectifs (152 épisodes sur 152 suivis) | 85 % |
 | Musique, bruitages, voix et récits narrés | 85 % |
-| Économie et logements (emploi, vivres, marchandises, évolution, impôts, risques) | 80 % |
-| Interface (menus, fiches, superviseurs, panneaux) | 70 % |
-| Commerce et cités du monde | 60 % |
-| Mythologie (dieux, héros, monstres, quêtes) | 60 % |
-| Armée et combats (simulés de façon abstraite) | 40 % |
+| Économie et logements (emploi, vivres, marchandises, évolution, impôts, risques) | 85 % |
+| Interface (menus, fiches, vues, journal, superviseurs, panneaux) | 80 % |
+| Commerce et cités du monde | 70 % |
+| Mythologie (dieux, héros, monstres, quêtes) | 65 % |
+| Armée et combats (simulés de façon abstraite ; ni murs ni tours) | 40 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
