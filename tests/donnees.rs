@@ -280,3 +280,14 @@ fn fish_points_lie_in_the_water() {
     assert_eq!(fish[0], (99, 69));
     assert!(fish.iter().all(|&(x, y)| map.terrain(x, y) & 0x4 != 0), "{fish:?}");
 }
+
+#[test]
+fn episodes_list_their_allowed_buildings() {
+    let Some(data) = data() else { return };
+    let allowed = |pak: &str| Settings::parse(&fs::read(data.join("adventures").join(pak)).unwrap()).unwrap().parent[0].allowed.clone();
+    // Rangs de la liste de l'éditeur : 12 théâtre, 16 podium, 18 fontaine, 21 maintenance.
+    let first = allowed("firstcity.pak");
+    assert!(first[18] && first[21] && first[16], "le premier tutoriel permet fontaine, maintenance et podium");
+    assert!(!first[12], "mais pas le théâtre");
+    assert!(allowed("}jeu ouvert - bac à sable.pak")[1..58].iter().all(|&a| a));
+}
