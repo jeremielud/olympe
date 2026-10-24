@@ -3685,7 +3685,7 @@ fn run(
                 let mut lines = vec![world.kinds[building.kind].name.clone()];
                 let employees = world.kinds[building.kind].employees;
                 if employees > 0 {
-                    lines.push(format!("{} : {}", text.get(8, 13), if building.staffed { employees } else { 0 }));
+                    lines.push(format!("{} : {} / {}", text.get(8, 13), building.workers, employees));
                 }
                 let stocked = match world.kinds[building.kind].function {
                     Function::Farm | Function::Granary | Function::Fishery => Some(Good::Food),

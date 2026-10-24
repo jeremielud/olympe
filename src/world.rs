@@ -591,13 +591,15 @@ const GOODS_MONTHS: u64 = 50;
 /// L'attrait ne rayonne jamais plus loin, quelles que soient les règles.
 const APPEAL_MAX_RANGE: i32 = 6;
 const APPEAL_LIMIT: i32 = 100;
-/// Risques d'incendie et d'effondrement. Les sauvegardes d'origine montrent deux
-/// compteurs par bâtiment (octets 70 et 72) qui montent par pas égaux aux valeurs des
-/// règles et atteignent 154 et 120 sans sinistre. Le seuil de 200 et le rythme (chaque
-/// jour, une chance sur huit de monter d'un cran) sont ceux de Caesar III, dont le
-/// moteur descend ; ils ne sont pas vérifiés dans Zeus.
-const RISK_LIMIT: i32 = 200;
+/// Risques d'incendie et d'effondrement (`Zeus.exe`, 0x492260, chaque jour) : le risque
+/// d'effondrement monte chaque jour de la valeur des règles (colonne 7), sauf pour les
+/// huttes et les baraques ; celui d'incendie, un jour sur huit en moyenne, de la valeur
+/// des règles (colonne 6) multipliée par un nombre tiré de 1 à 5, sauf dans une maison
+/// vide. Le sinistre survient à 1 000. La maintenance remet les deux à zéro.
+const RISK_LIMIT: i32 = 1000;
 const RISK_DAILY_CHANCE: u32 = 8;
+const FIRE_DRAW: u32 = 5;
+const STURDY_HOUSE_LEVELS: usize = 2;
 /// Criminalité (`Zeus.exe`) : humeur à laquelle elle ne bouge que de l'incrément du
 /// logement, baisse au passage d'un garde (réducteur de risque des règles), et seuil
 /// au-delà duquel la maison « va bientôt produire un criminel ». Un voleur qui ne trouve
@@ -1036,8 +1038,11 @@ pub struct Building {
     walks: u8,
     /// Un porteur ou une acheteuse du bâtiment est déjà en route.
     errand_out: bool,
-    /// Le bâtiment a reçu ses employés ce mois-ci ; sinon il est à l'arrêt.
+    /// Le bâtiment a reçu des employés ce mois-ci ; sinon il est à l'arrêt.
     pub staffed: bool,
+    /// Employés présents ; en dessous de son effectif, il travaille d'autant plus
+    /// lentement.
+    pub workers: i32,
 }
 
 /// Ce que distribue un marcheur en tournée.
@@ -1503,6 +1508,8 @@ impl World {
             Function::Fishery | Function::Wharf => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
             Function::Farm => Some("elle se pose sur un pré fleuri"),
             Function::Racetrack => Some("une section se pose dans le prolongement de la piste"),
+            Function::Agora { grand: false } => Some("elle se pose le long d'une route droite de six cases, libre d'un côté sur deux cases"),
+            Function::Agora { grand: true } => Some("elle se pose de part et d'autre d'une route droite de six cases, libre des deux côtés sur deux cases"),
             _ => None,
         }
     }
@@ -1724,6 +1731,7 @@ impl World {
             sown_at: self.ticks,
             errand_out: false,
             staffed: self.workers_available() >= self.workers_needed() + self.kinds[kind].employees,
+            workers: if self.workers_available() >= self.workers_needed() + self.kinds[kind].employees { self.kinds[kind].employees } else { 0 },
         }));
         for dy in 0..depth {
             for dx in 0..size {
@@ -3368,19 +3376,23 @@ impl World {
         let fireproof = self.has_sanctuary(HEPHAISTOS);
         for id in 0..self.buildings.len() {
             let Some(building) = self.buildings[id].as_ref() else { continue };
-            // Une maison vide ne risque rien.
-            if building.house.as_ref().is_some_and(|house| house.population == 0) {
-                continue;
-            }
-            if self.next_random() % RISK_DAILY_CHANCE != 0 {
-                continue;
-            }
+            let house = building.house.as_ref().map(|h| (h.population, h.level));
+            let fire_day = self.next_random() % RISK_DAILY_CHANCE == 0;
+            let draw = 1 + (self.next_random() % FIRE_DRAW) as i32;
             let Some(building) = self.buildings[id].as_mut() else { continue };
             let kind = &self.kinds[building.kind];
-            if !fireproof {
-                building.fire += kind.fire_risk;
-            }
             building.damage += kind.damage_risk;
+            // Les huttes et les baraques ne s'effondrent pas.
+            if house.is_some_and(|(_, level)| level < STURDY_HOUSE_LEVELS) {
+                building.damage = 0;
+            }
+            if fire_day && !fireproof {
+                building.fire += kind.fire_risk * draw;
+            }
+            // Une maison vide ne risque pas l'incendie.
+            if house.is_some_and(|(population, _)| population == 0) {
+                building.fire = 0;
+            }
             let (burns, collapses) = (building.fire > RISK_LIMIT, building.damage > RISK_LIMIT);
             let (kind, x, y) = (building.kind, building.x, building.y);
             if burns || collapses {
@@ -3496,19 +3508,31 @@ impl World {
         self.buildings.iter().flatten().map(|b| self.kinds[b.kind].employees).sum()
     }
 
-    /// Répartit la main-d'œuvre : les bâtiments sont servis dans l'ordre de
-    /// construction, ceux qui restent sans employés s'arrêtent. Partager la pénurie
-    /// entre tous (comme Caesar III) a été essayé : une cité posée d'un coup, comme la
-    /// démo, n'a alors plus ni vivres ni maintenance à temps plein et s'effondre.
+    /// Répartit la main-d'œuvre comme `Zeus.exe` (0x487750 puis 0x487ba0) : si elle
+    /// suffit, chaque bâtiment a tout son effectif ; sinon la pénurie est partagée,
+    /// chacun recevant la même part de ses postes (arrondie au-dessous), et le reste
+    /// va un par un aux bâtiments, dans l'ordre. Le jeu sert ses catégories par
+    /// priorité, toutes égales par défaut, ce qui revient à ce partage.
     fn assign_workers(&mut self) {
-        let mut left = self.workers_available();
-        for id in 0..self.buildings.len() {
-            let Some(building) = self.buildings[id].as_mut() else { continue };
-            let needed = self.kinds[building.kind].employees;
-            building.staffed = needed <= left;
-            if building.staffed {
-                left -= needed;
+        let available = self.workers_available().max(0);
+        let needed = self.workers_needed();
+        let mut left = available;
+        for building in self.buildings.iter_mut().flatten() {
+            let wanted = self.kinds[building.kind].employees;
+            building.workers = if needed <= available { wanted } else { wanted * available / needed.max(1) };
+            left -= building.workers;
+        }
+        for building in self.buildings.iter_mut().flatten() {
+            if left <= 0 {
+                break;
             }
+            if building.workers < self.kinds[building.kind].employees {
+                building.workers += 1;
+                left -= 1;
+            }
+        }
+        for building in self.buildings.iter_mut().flatten() {
+            building.staffed = building.workers > 0 || self.kinds[building.kind].employees == 0;
         }
     }
 
@@ -3646,7 +3670,7 @@ impl World {
             _ => taxes / 100,
         };
         self.update_sentiment();
-        let employed: i32 = self.buildings.iter().flatten().filter(|b| b.staffed).map(|b| self.kinds[b.kind].employees).sum();
+        let employed: i32 = self.buildings.iter().flatten().map(|b| b.workers).sum();
         let wages = employed * WAGES_PER_100_WORKERS * (NORMAL_WAGE + self.wage_shift).max(0) / (100 * NORMAL_WAGE);
         self.money += taxes - wages;
         let (sections, closed) = self.hippodrome();
@@ -3744,10 +3768,23 @@ impl World {
             let kind = &self.kinds[building.kind];
             let (function, walker) = (kind.function, kind.walker);
             let (stock, errand_out, due) = (building.stock, building.errand_out, building.next_walk <= self.ticks);
-            if !building.staffed {
+            // En sous-effectif, le bâtiment perd la part des pas qui revient aux postes
+            // vacants : production et marcheurs y attendent (comme la progression du jeu,
+            // proportionnelle aux employés, `Zeus.exe` 0x4854d8).
+            let (wanted, present) = (kind.employees.max(0) as u64, building.workers.max(0) as u64);
+            let idle_tick = present < wanted && {
+                let vacant = wanted - present;
+                (self.ticks * vacant) / wanted != (self.ticks.saturating_sub(1) * vacant) / wanted
+            };
+            if !building.staffed || idle_tick {
+                let walking = building.next_walk != WALKER_OUT && building.next_walk > self.ticks;
+                let building = self.buildings[id].as_mut().unwrap();
                 // À l'arrêt : la pousse des champs est suspendue elle aussi.
                 if matches!(function, Function::Farm | Function::Supplier(_) | Function::Producer(_) | Function::Fishery | Function::Workshop(_) | Function::Wharf) {
-                    self.buildings[id].as_mut().unwrap().sown_at += 1;
+                    building.sown_at += 1;
+                }
+                if idle_tick && walking {
+                    building.next_walk += 1;
                 }
                 continue;
             }
@@ -4557,10 +4594,10 @@ fn direction(from: (u16, u16), to: (u16, u16)) -> usize {
 }
 
 /// En-tête des fichiers de sauvegarde ; le numéro change quand le format change.
-const SAVE_HEADER: &str = "zeus-sauvegarde 12";
+const SAVE_HEADER: &str = "zeus-sauvegarde 13";
 /// Versions précédentes, encore lues, et nombre de marchandises qu'elles connaissaient
 /// (les plus récentes s'ajoutent à la fin de `GOODS`).
-const OLD_SAVE_HEADERS: [(&str, usize); 3] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7), ("zeus-sauvegarde 11", 9)];
+const OLD_SAVE_HEADERS: [(&str, usize); 4] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7), ("zeus-sauvegarde 11", 9), ("zeus-sauvegarde 12", GOODS.len())];
 
 impl World {
     /// État de la partie sous forme de texte : une ligne par route, bâtiment ou
@@ -4658,7 +4695,7 @@ impl World {
             let _ = write!(
                 out,
                 "batiment {} {} {} {} {} {} {} {} {} {} {} {}",
-                b.kind, b.x, b.y, b.stock, b.next_walk, b.sown_at, b.errand_out as u8, b.staffed as u8, b.raw, b.walks, b.fire, b.damage
+                b.kind, b.x, b.y, b.stock, b.next_walk, b.sown_at, b.errand_out as u8, b.workers, b.raw, b.walks, b.fire, b.damage
             );
             let _ = write!(
                 out,
@@ -4712,6 +4749,8 @@ impl World {
     /// Remplace l'état de la partie par celui d'une sauvegarde faite sur la même carte.
     pub fn load(&mut self, text: &str) -> Result<(), String> {
         let mut lines = text.lines();
+        let header = lines.clone().next();
+        let counts_workers = header == Some(SAVE_HEADER);
         let goods_len = match lines.next() {
             Some(SAVE_HEADER) => GOODS.len(),
             Some(header) => OLD_SAVE_HEADERS.iter().find(|(old, _)| *old == header).map(|&(_, len)| len).ok_or("ce n'est pas une sauvegarde de cette version")?,
@@ -4911,7 +4950,13 @@ impl World {
                         next_walk: number_at(4)? as u64,
                         sown_at: number_at(5)? as u64,
                         errand_out: number_at(6)? != 0,
-                        staffed: number_at(7)? != 0,
+                        staffed: number_at(7)? != 0 || self.kinds.get(number_at(0)? as usize).is_some_and(|k| k.employees == 0),
+                        // Les sauvegardes plus anciennes ne retiennent que « pourvu ou non ».
+                        workers: match (counts_workers, number_at(7)? as i32) {
+                            (true, workers) => workers,
+                            (false, 0) => 0,
+                            (false, _) => self.kinds.get(number_at(0)? as usize).map_or(0, |k| k.employees),
+                        },
                     }));
                 }
                 "personnage" => {

@@ -20,7 +20,10 @@ Ce qui fonctionne :
 - construction : routes, logements modestes et luxueux, agoras et échoppes, fermes,
   ateliers, entrepôt, grenier, culture, palais, stade, embellissements ;
 - simulation : immigrants, emploi, tournées des marcheurs, vivres et marchandises,
-  attrait des quartiers, évolution des logements, impôts, incendies et effondrements ;
+  attrait des quartiers, évolution des logements, impôts, incendies et effondrements
+  (rythmes et seuils de `Zeus.exe`) ; la main-d'œuvre se partage comme dans le jeu : en
+  cas de pénurie, chaque bâtiment reçoit la même part de ses postes et travaille
+  d'autant plus lentement ;
 - musique et bruitages d'ambiance d'origine ;
 - objectifs de l'épisode, lus dans l'aventure (touche `O`) : population, trésor,
   logement, profit et production annuels sont suivis, et les marchandises à
