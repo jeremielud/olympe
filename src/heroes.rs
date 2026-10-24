@@ -141,9 +141,12 @@ impl Requirement {
                 });
                 if near { Check::Met } else { Check::Missing { current: 0, wanted: 1 } }
             }
+            // Temple protégé par des murs : lecture d'Olympe, il est dans une enceinte
+            // qu'aucun envahisseur ne peut franchir sans brèche.
+            14 => if world.walled_in(hall.0, hall.1) { Check::Met } else { Check::Missing { current: 0, wanted: 1 } },
             // Attrait autour du temple.
             13 => against(world.appeal(hall.0 as i32, hall.1 as i32), a),
-            // Jeux panhelléniques, murs…
+            // Jeux panhelléniques…
             _ => Check::Unsimulated,
         }
     }

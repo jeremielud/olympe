@@ -1145,6 +1145,9 @@ fn walls_hold_invaders_back_until_breached() {
     let walls = |w: &World| (0..GRID as i32).flat_map(|ty| (0..GRID as i32).map(move |tx| (tx, ty))).filter(|&(tx, ty)| w.is_wall(tx, ty)).count();
     let built = walls(&world);
     assert!(built >= 30, "{built} murs");
+    // L'intérieur est protégé, pas l'extérieur.
+    assert!(world.walled_in((x + 4) as usize, (y + 3) as usize));
+    assert!(!world.walled_in((x + 14) as usize, (y + 3) as usize));
     world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0 }];
     world.schedule(INVASION, (0, 0), (8, 8), 1, (0, 0));
     let standing = world.buildings.iter().flatten().count();

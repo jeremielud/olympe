@@ -2848,6 +2848,13 @@ impl World {
     }
 
     /// Chemin à pied par la campagne, s'il en existe un.
+    /// Une enceinte protège la case : aucun envahisseur venu d'un point d'invasion ou
+    /// d'entrée de la carte ne peut l'atteindre sans franchir de mur.
+    pub fn walled_in(&self, x: usize, y: usize) -> bool {
+        let starts: Vec<(usize, usize)> = self.map.invasion_points().into_iter().chain(self.map.entry_points()).filter(|&(sx, sy)| self.in_map(sx as i32, sy as i32)).collect();
+        !starts.is_empty() && self.cells.iter().any(|c| matches!(c, Cell::Wall(_))) && starts.iter().all(|&(sx, sy)| self.land_route((sx as u16, sy as u16), (x as u16, y as u16), true).is_none())
+    }
+
     /// Mur le plus proche d'une case, s'il y en a.
     fn nearest_wall(&self, at: (u16, u16)) -> Option<(u16, u16)> {
         let distance = |index: usize| ((index % GRID) as i32 - at.0 as i32).abs().max(((index / GRID) as i32 - at.1 as i32).abs());
