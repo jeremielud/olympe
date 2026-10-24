@@ -54,7 +54,8 @@ options :
                      d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,
                      t:n (pas), p:ms (pause), fin (termine l'épisode en cours),
                      r:x1,y1,x2,y2 (route en équerre), b:x,y,nom (bâtiment, _ pour les
-                     espaces), bilan (état de la cité et des objectifs)
+                     espaces), bilan (état de la cité et des objectifs), vue:x,y (vue
+                     centrée sur une case), mc:x,y (pointeur sur une case)
 en jeu : H affiche l'aide";
 
 /// Demi-largeur et demi-hauteur d'une case à l'écran, à l'échelle 1.
@@ -2824,6 +2825,19 @@ fn run(
                         Some(sdl::Event::mouse_button(false, sdl::BUTTON_LEFT, script_pointer))
                     }
                     ("w", &[steps]) => Some(sdl::Event::mouse_wheel(steps, script_pointer)),
+                    // Vue centrée sur une case, pointeur sur le centre d'une case.
+                    ("vue", &[x, y]) => {
+                        (view.cx, view.cy) = tile_origin(x as i32, y as i32);
+                        None
+                    }
+                    ("mc", &[x, y]) => {
+                        let (wx, wy) = tile_origin(x as i32, y as i32);
+                        let at = view.to_screen(wx + HALF_WIDTH, wy + HALF_HEIGHT, w / ui, h / ui);
+                        let at = (at.0 * ui, at.1 * ui);
+                        let moved = sdl::Event::mouse_motion(script_pointer, at, script_buttons);
+                        script_pointer = at;
+                        Some(moved)
+                    }
                     // Chiffre : la touche à cet emplacement du clavier, quelle que soit la disposition.
                     ("k", &[digit]) if (1.0..=9.0).contains(&digit) => Some(sdl::Event::key_down(sdl::SCANCODE_1 + digit as u32 - 1, 0)),
                     ("k", _) => match argument {
