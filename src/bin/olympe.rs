@@ -1119,6 +1119,35 @@ impl Journey {
         }
     }
 
+    /// Colonies parmi lesquelles le joueur choisit au rang `next`, quand l'aventure en
+    /// offre plus qu'il ne lui reste d'épisodes de colonie (Jason en propose deux pour
+    /// un seul épisode) : celles qu'il n'a pas encore fondées.
+    fn colony_choices(&self, next: usize) -> Option<Vec<usize>> {
+        let Some(Step::Colony(_)) = self.order.get(next) else { return None };
+        let founded: Vec<usize> = self.order[..next].iter().filter_map(|step| if let Step::Colony(k) = step { Some(*k) } else { None }).collect();
+        let left: Vec<usize> = (0..self.colony_maps.len()).filter(|k| !founded.contains(k)).collect();
+        let steps = self.order[next..].iter().filter(|step| matches!(step, Step::Colony(_))).count();
+        (left.len() > steps).then_some(left)
+    }
+
+    /// Le joueur fonde `pick` au rang `next` ; les épisodes de colonie suivants prennent
+    /// les autres colonies, dans l'ordre de l'aventure.
+    fn choose_colony(&mut self, next: usize, pick: usize) {
+        let founded: Vec<usize> = self.order[..next].iter().filter_map(|step| if let Step::Colony(k) = step { Some(*k) } else { None }).collect();
+        let mut others = (0..self.colony_maps.len()).filter(|k| *k != pick && !founded.contains(k));
+        let mut first = Some(pick);
+        for step in &mut self.order[next..] {
+            if let Step::Colony(k) = step {
+                *k = first.take().or_else(|| others.next()).unwrap_or(*k);
+            }
+        }
+    }
+
+    /// Colonies dans l'ordre où elles se fondent.
+    fn colonies(&self) -> Vec<usize> {
+        self.order.iter().filter_map(|step| if let Step::Colony(k) = step { Some(*k) } else { None }).collect()
+    }
+
     /// Fichiers qui accompagnent une sauvegarde : le rang de l'épisode, et la cité
     /// mère pendant un épisode de colonie.
     fn companions(save: &Path) -> (PathBuf, PathBuf) {
@@ -1128,8 +1157,9 @@ impl Journey {
     fn save(&self, world: &World, save: &Path) -> std::io::Result<()> {
         let (episode, home) = Self::companions(save);
         fs::write(save, world.save())?;
-        // Rang de l'épisode, puis niveau de difficulté de la partie.
-        fs::write(episode, format!("{}\n{}\n", self.position, difficulty()))?;
+        // Rang de l'épisode, niveau de difficulté de la partie, puis colonies choisies.
+        let colonies: Vec<String> = self.colonies().iter().map(|k| k.to_string()).collect();
+        fs::write(episode, format!("{}\n{}\n{}\n", self.position, difficulty(), colonies.join(" ")))?;
         match &self.home {
             Some(city) => fs::write(home, city.save()),
             None => fs::remove_file(home).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }),
@@ -1150,6 +1180,16 @@ impl Journey {
         let level = lines.next().and_then(|t| t.parse::<usize>().ok()).unwrap_or(2);
         if level != difficulty() {
             return Err(format!("partie enregistrée au niveau {}, relancez avec --difficulte {}", ["Débutant", "Mortel", "Héros", "Titan", "Olympien"].get(level).unwrap_or(&"?"), ["debutant", "mortel", "heros", "titan", "olympien"].get(level).unwrap_or(&"heros")));
+        }
+        // Colonies dans l'ordre choisi par le joueur (absent des anciennes sauvegardes).
+        let chosen: Vec<usize> = lines.next().unwrap_or_default().split_whitespace().filter_map(|k| k.parse().ok()).filter(|&k| k < self.colony_maps.len()).collect();
+        if chosen.len() == self.colonies().len() {
+            let mut chosen = chosen.into_iter();
+            for step in &mut self.order {
+                if let Step::Colony(k) = step {
+                    *k = chosen.next().unwrap_or(*k);
+                }
+            }
         }
         // Toutes les cités se bâtissent sur le modèle de la cité mère.
         let base = self.home.as_ref().unwrap_or(world);
@@ -2706,6 +2746,8 @@ fn run(
         let mut goals: Vec<Goal> = episode(Step::Parent(0)).map(|e| e.goals.clone()).unwrap_or_default();
         let mut goals_met = vec![false; goals.len()];
         let (mut goals_panel, mut won) = (false, false);
+        // Colonies proposées au choix du joueur, et celle qu'il a choisie.
+        let (mut colony_choice, mut colony_pick): (Option<Vec<usize>>, Option<usize>) = (None, None);
         // Panneau des cités du monde, ouvert par C.
         let mut cities_panel = false;
         // Panneau des conseillers, ouvert par A.
@@ -3129,9 +3171,25 @@ fn run(
 
             // Récit de victoire refermé : place à l'épisode suivant, dans la même cité ou
             // dans une autre, ou à la fin de l'aventure.
-            if won && intro.is_none() {
+            let choices = if won && intro.is_none() && colony_pick.is_none() { journey.colony_choices(journey.position + 1) } else { None };
+            if let Some(choices) = choices {
+                // Plusieurs colonies possibles : le joueur choisit au clavier.
+                let lines = choices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &k)| {
+                        let name = story(data, map_path, settings.as_ref(), Step::Colony(k), Moment::Opening).map_or_else(|| format!("Colonie {}", k + 1), |(title, _)| title);
+                        format!("{} : {name}", i + 1)
+                    })
+                    .collect();
+                intro = Some((format!("Choisissez votre colonie : touche 1 à {}", choices.len()), lines));
+                colony_choice = Some(choices);
+            } else if won && intro.is_none() {
                 won = false;
                 let next = journey.position + 1;
+                if let Some(pick) = colony_pick.take() {
+                    journey.choose_colony(next, pick);
+                }
                 if next < journey.order.len() {
                     // Ce qui a été mis de côté part avec le joueur : les cadeaux de
                     // l'épisode suivant l'apportent.
@@ -3184,6 +3242,15 @@ fn run(
                 // Sur un écran mis à l'échelle, la souris est en points et le rendu en pixels.
                 sdl::SDL_ConvertEventToRenderCoordinates(renderer, &mut event);
                 // Le récit d'ouverture se referme au premier clic ou à la première touche.
+                if let Some(choices) = &colony_choice {
+                    let picked = (event.kind() == sdl::EVENT_KEY_DOWN && (sdl::SCANCODE_1..=sdl::SCANCODE_9).contains(&event.scancode()))
+                        .then(|| choices.get((event.scancode() - sdl::SCANCODE_1) as usize).copied())
+                        .flatten();
+                    if picked.is_some() {
+                        (colony_pick, colony_choice, intro) = (picked, None, None);
+                    }
+                    continue;
+                }
                 if intro.is_some() && matches!(event.kind(), sdl::EVENT_KEY_DOWN | sdl::EVENT_MOUSE_BUTTON_DOWN) {
                     intro = None;
                     continue;

@@ -95,8 +95,12 @@ Ce qui fonctionne :
   pente, et les bâtiments touchés sont détruits ;
 - enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits narrés
   (voix du jeu, retrouvées pour les aventures de Zeus, de Poséidon et en dossier), leurs
-  objectifs et leurs ressources : départ pour une colonie sur sa propre carte, retour
-  à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours ;
+  objectifs et leurs ressources : départ pour une colonie sur sa propre carte (au
+  choix du joueur quand l'aventure en propose plus qu'elle n'a d'épisodes de colonie),
+  retour à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours
+  et les colonies choisies ;
+- fiche des maisons : ce qui leur manque pour évoluer ; un service bloqué dit ce qu'il
+  attend (palais pour les percepteurs, école pour les philosophes et les acteurs) ;
 - superviseurs (touche A, Tab pour changer de page) : population par niveau de
   logement, emploi par catégorie, finances, services et réserves, mythologie, armée
   et commerce, en panneaux de texte comme dans le jeu ;
