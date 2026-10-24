@@ -1328,9 +1328,12 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
     pages.push(("Emploi".to_string(), employment));
     // Finances.
     let (sold, bought): (i32, i32) = world.cities.iter().fold((0, 0), |(s, b), c| (s + c.sold, b + c.bought));
+    // Les percepteurs ne sortent pas sans palais.
+    let unpaid = world.buildings.iter().flatten().find(|b| world.service_waits_for(b) == Some(Function::Palace));
+    let palace_note = unpaid.and_then(|_| world.kinds.iter().find(|k| k.function == Function::Palace)).map(|k| format!("Sans {}, les percepteurs ne lèvent aucun impôt", k.name.to_lowercase()));
     pages.push((
         "Finances".to_string(),
-        vec![
+        [
             format!("Trésor : {} dr.", world.money),
             format!("Dernier mois : impôts {} dr., salaires {} dr.", world.last_month.0, world.last_month.1),
             format!("Imposition (+ et -) : {}", tax_name(world)),
@@ -1341,7 +1344,10 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
                 None => "Aucune année achevée".to_string(),
             },
             format!("Commerce depuis le début : ventes {sold} dr., achats {bought} dr."),
-        ],
+        ]
+        .into_iter()
+        .chain(palace_note)
+        .collect(),
     ));
     // Services : part des maisons desservies, et réserves.
     let mut services: Vec<String> = SERVICES
