@@ -1343,6 +1343,9 @@ pub struct World {
     fires: Vec<(u16, u16, u64)>,
     /// Sinistres survenus depuis la dernière lecture, pour avertir le joueur.
     pub disasters: Vec<Disaster>,
+    /// Bâtiments que monstres et dieux ont abattus pendant le pas : ils tombent à la fin
+    /// de la marche des personnages, dont leur chute emporte certains.
+    ravaged: Vec<(u16, Cause)>,
     /// Vols et épidémies survenus depuis la dernière lecture.
     pub incidents: Vec<Incident>,
     /// Attrait de chaque case, recalculé quand un bâtiment apparaît ou disparaît.
@@ -1413,6 +1416,7 @@ impl World {
             locked: Vec::new(),
             fires: Vec::new(),
             disasters: Vec::new(),
+            ravaged: Vec::new(),
             incidents: Vec::new(),
             appeal: vec![0; GRID * GRID],
         };
@@ -2662,15 +2666,13 @@ impl World {
     fn rampage(&mut self, index: usize, at: (u16, u16), target: u16, rest_until: u64, rest: u64) -> (u16, u64) {
         let now = self.ticks;
         if target != NO_TARGET {
-            if let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) {
-                let (kind, x, y) = (building.kind, building.x, building.y);
+            if self.buildings.get(target as usize).is_some_and(|b| b.is_some()) {
                 let cause = match self.figures[index].role {
                     Role::God { god, .. } => Cause::God(god),
                     Role::Monster { monster, .. } => Cause::Monster(monster),
                     _ => Cause::Collapse,
                 };
-                self.remove_building(target, Cell::Rubble(0));
-                self.disasters.push(Disaster { cause, kind, x, y });
+                self.ravaged.push((target, cause));
             }
             return (NO_TARGET, now + rest);
         }
@@ -4394,6 +4396,12 @@ impl World {
         finished.dedup();
         for index in finished.into_iter().rev() {
             self.figures.swap_remove(index);
+        }
+        for (target, cause) in std::mem::take(&mut self.ravaged) {
+            let Some(building) = self.buildings.get(target as usize).and_then(|b| b.as_ref()) else { continue };
+            let (kind, x, y) = (building.kind, building.x, building.y);
+            self.remove_building(target, Cell::Rubble(0));
+            self.disasters.push(Disaster { cause, kind, x, y });
         }
     }
 

@@ -1095,3 +1095,21 @@ fn a_house_tells_what_it_lacks_and_a_tax_office_waits_for_a_palace() {
     let office = world.buildings.iter().flatten().find(|b| b.kind == tax).unwrap();
     assert_eq!(world.service_waits_for(office), Some(Function::Palace));
 }
+
+#[test]
+fn a_monster_can_wreck_buildings_whose_walkers_are_out() {
+    use zeus::world::Monster;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Des bâtiments dont les marcheurs sont dehors quand le monstre les abat : leur
+    // chute ne doit pas déranger la marche des autres personnages.
+    street(&mut world, x, y);
+    assert!(world.place_building(FOUNTAIN, x + 8, y + 2));
+    assert!(world.place_building(MAINTENANCE, x, y + 5));
+    for i in 1..5 {
+        assert!(world.place_building(if i % 2 == 0 { FOUNTAIN } else { MAINTENANCE }, x + 2 * i, y + 5));
+    }
+    world.monsters.push(Monster { event: 0, monster: 3, fight_until: None, slain: false, arrives_at: 0 });
+    (0..10 * 12 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    assert!(world.buildings.iter().flatten().count() < 10);
+}
