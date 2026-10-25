@@ -4901,6 +4901,7 @@ fn run(
                             good_names[Good::Arms as usize],
                             building.goods[Good::Arms as usize]
                         ),
+                        ..0 => "Sa trière est partie en campagne".to_string(),
                         _ => "Une trière est à quai".to_string(),
                     });
                 }

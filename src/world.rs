@@ -554,6 +554,8 @@ pub struct Expedition {
     pub city: usize,
     pub raid: bool,
     pub soldiers: [i32; 3],
+    /// Trières parties avec l'armée ; leur quai les attend (stock −1).
+    pub triremes: i32,
     /// Pas de l'arrivée devant la cité, puis du retour une fois la bataille livrée.
     pub arrives: u64,
     pub returns: u64,
@@ -593,6 +595,9 @@ const PLUNDER_DIVISOR: [f64; 5] = [0.5, 0.66, 0.75, 1.0, 1.5];
 const PLUNDER_DRACHMAS: [f64; 5] = [5.0, 4.0, 3.0, 2.5, 2.0];
 const PLUNDER_DRACHMAS_UNIT: f64 = 200.0;
 const CARRY: [i32; 3] = [0, 50, 100];
+const TRIREME_CARRY: i32 = 600;
+/// Une trière compte pour six hommes dans une bataille au loin (0x4dea00).
+const TRIREME_FORCE: i32 = 6;
 /// Une marchandise pillée marque la cité de 15 ; au-delà de 40, elle ne peut plus
 /// l'être ; la marque baisse d'un point par mois.
 const PLUNDER_MARK: i32 = 15;
@@ -2521,7 +2526,7 @@ impl World {
 
     /// Trières à quai.
     pub fn triremes(&self) -> i32 {
-        self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == Function::Wharf).map(|b| b.stock.min(1)).sum()
+        self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == Function::Wharf).map(|b| b.stock.clamp(0, 1)).sum()
     }
 
     /// Monuments achevés de ce rang, ou de tous les rangs.
@@ -2912,15 +2917,28 @@ impl World {
         std::array::from_fn(|rank| (home[rank] - away[rank]).max(0))
     }
 
-    /// Force de soldats comme `Zeus.exe` la compte (0x4dea00) : un par homme de
-    /// piétaille ou hoplite, deux par cavalier.
-    fn force(soldiers: [i32; 3]) -> i32 {
-        soldiers[0] + soldiers[1] + 2 * soldiers[2]
+    /// Force comme `Zeus.exe` la compte (0x4dea00) : un par homme de piétaille ou
+    /// hoplite, deux par cavalier, six par trière.
+    fn force(soldiers: [i32; 3], triremes: i32) -> i32 {
+        soldiers[0] + soldiers[1] + 2 * soldiers[2] + TRIREME_FORCE * triremes
     }
 
-    /// Force de l'armée présente dans la cité.
+    /// Force de l'armée et de la flotte présentes dans la cité.
     pub fn army(&self) -> i32 {
-        Self::force(self.ranks())
+        Self::force(self.ranks(), self.triremes())
+    }
+
+    /// Trières qui partent (quai à −1) ou qui rentrent : `count` quais passent de
+    /// `from` à `to`.
+    fn moor(&mut self, count: i32, from: i32, to: i32) -> i32 {
+        let mut moved = 0;
+        for building in self.buildings.iter_mut().flatten() {
+            if moved < count && self.kinds[building.kind].function == Function::Wharf && building.stock == from {
+                building.stock = to;
+                moved += 1;
+            }
+        }
+        moved
     }
 
     /// Défense la plus haute d'une cité du monde à ce jour.
@@ -2961,13 +2979,14 @@ impl World {
         if self.expedition.is_some() || self.ticks < self.campaign_until {
             return Err(Conquest::Away);
         }
-        let soldiers = self.ranks();
-        if Self::force(soldiers) == 0 {
+        let (soldiers, docked) = (self.ranks(), self.triremes());
+        if Self::force(soldiers, docked) == 0 {
             return Err(Conquest::NoArmy);
         }
+        let triremes = self.moor(docked, 1, -1);
         let months = self.travel_months(city);
         let arrives = self.ticks + months as u64 * TICKS_PER_MONTH;
-        self.expedition = Some(Expedition { city, raid, soldiers, arrives, returns: arrives, won: None, loot: (0, 0) });
+        self.expedition = Some(Expedition { city, raid, soldiers, triremes, arrives, returns: arrives, won: None, loot: (0, 0) });
         Ok(months)
     }
 
@@ -2976,7 +2995,7 @@ impl World {
         let Some(mut expedition) = self.expedition else { return };
         let city = expedition.city;
         if expedition.won.is_none() && self.ticks >= expedition.arrives {
-            let (attack, defence) = (Self::force(expedition.soldiers), self.defence(city));
+            let (attack, defence) = (Self::force(expedition.soldiers, expedition.triremes), self.defence(city));
             let won = attack >= defence;
             let margin = |stronger: i32, weaker: i32| if stronger == 0 { 0 } else { (stronger - weaker) * 100 / stronger };
             // Pertes en pour cent : celles de l'armée, celles de la cité (0x461540).
@@ -2991,6 +3010,10 @@ impl World {
                 self.bury_soldiers(rank, dead);
                 expedition.soldiers[rank] -= dead;
             }
+            // Les trières coulées laissent leur quai libre pour en bâtir d'autres.
+            let sunk = expedition.triremes * ours / 100;
+            self.moor(sunk, -1, 0);
+            expedition.triremes -= sunk;
             if let Some(c) = self.cities.get_mut(city) {
                 let strength = if c.strength < 0 { defence } else { c.strength };
                 c.strength = (strength - theirs * defence / 100).max(0);
@@ -3004,8 +3027,8 @@ impl World {
                     self.campaign_news.push(CampaignNews::Conquered(city));
                 }
                 (false, false) => self.campaign_news.push(CampaignNews::ConquestFailed(city)),
-                (true, true) => expedition.loot = self.plunder(city, expedition.soldiers),
-                (true, false) if expedition.soldiers.iter().all(|&n| n == 0) => {
+                (true, true) => expedition.loot = self.plunder(city, expedition.soldiers, expedition.triremes),
+                (true, false) if expedition.soldiers.iter().all(|&n| n == 0) && expedition.triremes == 0 => {
                     self.campaign_news.push(CampaignNews::WipedOut(city));
                     self.expedition = None;
                     return;
@@ -3017,6 +3040,7 @@ impl World {
         }
         if expedition.won.is_some() && self.ticks >= expedition.returns {
             self.expedition = None;
+            self.moor(expedition.triremes, -1, 1);
             let (resource, amount) = expedition.loot;
             if amount > 0 {
                 let stored = if resource == DRACHMAS {
@@ -3035,7 +3059,7 @@ impl World {
     /// Butin d'un raid victorieux sur cette cité, porté par les survivants : une
     /// marchandise qu'elle échange, ou des drachmes, tirées au sort parmi celles
     /// qu'elle n'a pas trop souvent perdues (0x42d380).
-    fn plunder(&mut self, city: usize, soldiers: [i32; 3]) -> (u8, i32) {
+    fn plunder(&mut self, city: usize, soldiers: [i32; 3], triremes: i32) -> (u8, i32) {
         let Some(c) = self.cities.get(city) else { return (DRACHMAS, 0) };
         let marked = |resource: u8| self.plundered.iter().find(|p| (p.0, p.1) == (city, resource)).map_or(0, |p| p.2);
         let mut choices: Vec<(u8, i32)> = c.sells.iter().chain(&c.buys).copied().filter(|&(r, q)| q > 0 && r != DRACHMAS && marked(r) <= PLUNDER_LIMIT).collect();
@@ -3051,7 +3075,7 @@ impl World {
         let amount = if resource == DRACHMAS {
             ((wealth as f64 + 1.0) * PLUNDER_DRACHMAS[difficulty] * PLUNDER_DRACHMAS_UNIT) as i32
         } else {
-            let carried: i32 = (0..3).map(|rank| soldiers[rank] * CARRY[rank]).sum();
+            let carried: i32 = (0..3).map(|rank| soldiers[rank] * CARRY[rank]).sum::<i32>() + TRIREME_CARRY * triremes;
             ((quantity as f64 / PLUNDER_DIVISOR[difficulty]) as i32).min(carried)
         };
         match self.plundered.iter_mut().find(|p| (p.0, p.1) == (city, resource)) {
@@ -5570,7 +5594,7 @@ impl World {
         if let Some(e) = self.expedition {
             let [rabble, hoplites, horsemen] = e.soldiers;
             let won = e.won.map_or(-1, |w| w as i32);
-            let _ = writeln!(out, "campagne {} {} {rabble} {hoplites} {horsemen} {} {} {won} {} {}", e.city, e.raid as u8, e.arrives, e.returns, e.loot.0, e.loot.1);
+            let _ = writeln!(out, "campagne {} {} {rabble} {hoplites} {horsemen} {} {} {won} {} {} {}", e.city, e.raid as u8, e.arrives, e.returns, e.loot.0, e.loot.1, e.triremes);
         }
         for s in &self.scheduled {
             let _ = writeln!(out, "changement {} {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1, s.resource);
@@ -5765,6 +5789,7 @@ impl World {
                         returns: number_at(6)? as u64,
                         won: (won >= 0).then_some(won != 0),
                         loot: (number_at(8)? as u8, number_at(9)? as i32),
+                        triremes: number_at(10).unwrap_or(0) as i32,
                     });
                 }
                 "cites" => {

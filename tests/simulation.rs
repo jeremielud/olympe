@@ -366,6 +366,15 @@ fn a_wharf_builds_a_trireme_from_wood() {
     (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!((world.triremes(), world.stored(9)), (1, 4));
     assert_eq!(goal.status(&world), Status::Met);
+    // La trière part seule soumettre une cité sans défense : son quai l'attend sans
+    // en bâtir d'autre, puis elle rentre.
+    world.cities = vec![zeus::map::City { active: true, kind: 2, name: 68, status: zeus::map::RIVAL, military: 1, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0, wealth: 3, strength: 0 }];
+    assert_eq!(world.army(), 6);
+    assert_eq!(world.conquer(0, false), Ok(2));
+    assert_eq!((world.army(), world.expedition.unwrap().triremes), (0, 1));
+    (0..4 * TICKS_PER_MONTH + TICKS_PER_DAY).for_each(|_| world.tick());
+    assert!(world.expedition.is_none());
+    assert_eq!((world.triremes(), world.cities[0].status), (1, zeus::map::VASSAL));
 }
 
 #[test]
