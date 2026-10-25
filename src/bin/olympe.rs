@@ -1645,9 +1645,31 @@ fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, V
     }
 }
 
+/// Nom anglais des dieux et des héros dans les clés des lettres d'événements.
+const LETTER_GODS: [&str; 14] = ["zeus", "poseidon", "demeter", "apollo", "artemis", "ares", "aphrodite", "hermes", "athena", "hephaestus", "dionysus", "hades", "hera", "atlas"];
+const LETTER_HEROES: [&str; 8] = ["achilles", "hercules", "jason", "odysseus", "perseus", "theseus", "atalanta", "bellerophon"];
+
+/// Champs d'une lettre qui concerne une cité du monde.
+fn city_fields(text: &Text, world: &World, leaders: &[u8], city: usize) -> Vec<(&'static str, String)> {
+    let written = CITY_TITLES.read().ok().and_then(|t| t.get(city).and_then(|(_, leader)| leader.clone()));
+    let leader = written.unwrap_or_else(|| leaders.get(city).map_or_else(|| "le chef".to_string(), |&l| text.get(139, l as usize)));
+    vec![
+        ("player_name", "Chef".to_string()),
+        ("greeting", "Salutations".to_string()),
+        ("city_name", city_name(text, world, city)),
+        ("leader_name", leader),
+        ("a_foreign_army", "une armée".to_string()),
+    ]
+}
+
+/// Noms de cités et de chefs écrits en toutes lettres par la carte (Poséidon), fixés
+/// au chargement de l'aventure.
+static CITY_TITLES: std::sync::RwLock<Vec<(Option<String>, Option<String>)>> = std::sync::RwLock::new(Vec::new());
+
 /// Nom d'une cité du monde.
 fn city_name(text: &Text, world: &World, city: usize) -> String {
-    world.cities.get(city).map_or(String::new(), |c| text.get(TEXT_CITIES, c.name as usize))
+    let written = CITY_TITLES.read().ok().and_then(|t| t.get(city).and_then(|(name, _)| name.clone()));
+    written.unwrap_or_else(|| world.cities.get(city).map_or(String::new(), |c| text.get(TEXT_CITIES, c.name as usize)))
 }
 
 /// Ce qu'une cité demande : drachmes, troupes, vivres ou une marchandise.
@@ -3136,6 +3158,14 @@ fn run(
         let mut goals: Vec<Goal> = episode(Step::Parent(0)).map(|e| e.goals.clone()).unwrap_or_default();
         let mut goals_met = vec![false; goals.len()];
         let (mut goals_panel, mut won) = (false, false);
+        // Lettres d'événements du jeu, en attente d'affichage (titre, paragraphes) ; elles
+        // s'ouvrent comme les récits, et le temps s'arrête tant qu'on ne les a pas lues.
+        let letters = zeus::letters::Letters::parse(&fs::read(data.join("model/zeus eventmsg.txt")).unwrap_or_default());
+        let mut letter_queue: std::collections::VecDeque<(String, Vec<String>)> = std::collections::VecDeque::new();
+        let leaders = world.map.city_leaders();
+        if let Ok(mut titles) = CITY_TITLES.write() {
+            *titles = world.map.city_titles();
+        }
         // Colonies proposées au choix du joueur, et celle qu'il a choisie.
         let (mut colony_choice, mut colony_pick): (Option<Vec<usize>>, Option<usize>) = (None, None);
         // Panneau des cités du monde, ouvert par C.
@@ -3452,6 +3482,18 @@ fn run(
             }
 
             // Sinistres survenus pendant la simulation : on prévient le joueur.
+            // Lettre d'événement : titre et texte du jeu, datés.
+            let date = {
+                let (day, month, year) = world.date();
+                let year = if start_year == 0 { year as i64 + 1 } else { start_year as i64 + year as i64 };
+                format!("{} {} {}{}", day + 1, months[month as usize], year.abs(), if year < 0 { " av. J.-C." } else { "" })
+            };
+            let mut post = |title_key: &str, body_key: &str, fields: &[(&str, String)]| {
+                let fields: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+                if let Some((title, body)) = letters.letter(title_key, body_key, &fields) {
+                    letter_queue.push_back((title, vec![date.clone(), body]));
+                }
+            };
             // Un sanctuaire vient d'être achevé : son dieu apporte sa ressource.
             let built = world.sanctuaries();
             if built.len() != sanctuaries_built {
@@ -3462,6 +3504,9 @@ fn run(
                 if let Some(&god) = built.last() {
                     let gift = SANCTUARY_RESOURCES.iter().find(|&&(g, _)| g == god).map(|&(_, r)| text.get(23, r as usize).to_lowercase());
                     let name = text.get(sanctuary::TEXT_GODS, god as usize);
+                    if let Some(key) = LETTER_GODS.get(god as usize) {
+                        post(&format!("{key}_sanctuary_complete_title"), &format!("{key}_sanctuary_complete_initial_announcement"), &[("player_name", "Chef".to_string()), ("god", name.clone())]);
+                    }
                     notice = match gift {
                         Some(gift) => (format!("Sanctuaire de {name} achevé : {name} vous offre {gift}"), now),
                         None => (format!("Sanctuaire de {name} achevé"), now),
@@ -3470,6 +3515,11 @@ fn run(
             }
             // Héros : arrivées, départs en quête, combats.
             if let Some(news) = world.hero_news.pop() {
+                if let zeus::world::HeroNews::Arrived(hero) = news {
+                    if let Some(key) = LETTER_HEROES.get(hero as usize) {
+                        post(&format!("{key}_arrives_title"), &format!("{key}_arrives_initial_announcement"), &[("player_name", "Chef".to_string())]);
+                    }
+                }
                 let events = episode(journey.step()).map_or(&[][..], |e| &e.events[..]);
                 notice = (hero_news(&text, news, events), now);
                 world.hero_news.clear();
@@ -3490,8 +3540,20 @@ fn run(
             }
             if !world.gifts.is_empty() {
                 let gifts = std::mem::take(&mut world.gifts);
-                let lines: Vec<String> = gifts.iter().map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
-                notice = (format!("Cadeaux reçus : {}", lines.join(", ")), now);
+                for &(city, resource, amount) in &gifts {
+                    let mut fields = city_fields(&text, &world, &leaders, city);
+                    let good = request_good(&text, resource);
+                    // Sans place pour le recevoir, le jeu en parle sans quantité.
+                    if amount > 0 {
+                        fields.push(("amount", amount.to_string()));
+                    }
+                    fields.extend([("item", good.clone()), ("itemshort", good)]);
+                    post("gift_title", if amount > 0 { "gift_granted" } else { "gift_insufficient_space" }, &fields);
+                }
+                let lines: Vec<String> = gifts.iter().filter(|g| g.2 > 0).map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
+                if !lines.is_empty() {
+                    notice = (format!("Cadeaux reçus : {}", lines.join(", ")), now);
+                }
             }
             // Début d'une invasion : l'armée ennemie vient d'entrer sur la carte.
             if world.raid.is_some() != raid_seen {
@@ -3499,6 +3561,7 @@ fn run(
                 if let Some(raid) = world.raid {
                     let defenders = world.figures.iter().filter(|f| f.soldier() == Some(false)).count();
                     let name = city_name(&text, &world, raid.city);
+                    post("invasion_title", "invasion_city_attacked_alert", &city_fields(&text, &world, &leaders, raid.city));
                     notice = (format!("Invasion ! L'armée de {name} ({} soldats) marche sur la cité ; {defenders} hoplites la défendent", raid.soldiers), now);
                 }
             }
@@ -3523,6 +3586,9 @@ fn run(
             }
             if let Some((god, arrived)) = world.god_news.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
+                if let (true, Some(key)) = (arrived, LETTER_GODS.get(god as usize)) {
+                    post(&format!("{key}_invades_title"), &format!("{key}_invades_city_attacked_alert"), &[("player_name", "Chef".to_string()), ("god", name.clone())]);
+                }
                 let defenders: Vec<String> = world.sanctuaries().iter().map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
                 notice = match (arrived, defenders.is_empty()) {
                     (true, true) => (format!("{name} s'abat sur la cité !"), now),
@@ -3534,6 +3600,19 @@ fn run(
             if let Some(news) = world.request_news.pop() {
                 let (zeus::world::RequestNews::Arrived(r) | zeus::world::RequestNews::Expired(r)) = news;
                 let (name, good) = (city_name(&text, &world, r.city), request_good(&text, r.resource));
+                if let zeus::world::RequestNews::Arrived(_) = news {
+                    // Ton de la demande : celle d'une rivale est un ordre, celle d'une vassale
+                    // une supplique, les autres une demande ordinaire.
+                    let tone = match world.cities.get(r.city).map(|c| c.status) {
+                        Some(zeus::map::RIVAL) => "D",
+                        Some(zeus::map::VASSAL) => "P",
+                        _ => "S",
+                    };
+                    let mut fields = city_fields(&text, &world, &leaders, r.city);
+                    let months_left = r.until.saturating_sub(world.ticks) / zeus::world::TICKS_PER_MONTH;
+                    fields.extend([("amount", r.amount.to_string()), ("item", good.clone()), ("itemshort", good.clone()), ("time_allotted", months_left.to_string())]);
+                    post(&format!("general_request_title_{tone}"), &format!("general_request_initial_announcement_{tone}"), &fields);
+                }
                 notice = match news {
                     zeus::world::RequestNews::Arrived(_) => (format!("{name} demande {} {good} (touche C)", r.amount), now),
                     zeus::world::RequestNews::Expired(_) => (format!("La demande de {name} n'a pas été satisfaite"), now),
@@ -3557,12 +3636,23 @@ fn run(
                 world.disaster_news.clear();
             }
             if let Some(change) = world.wage_news.pop() {
+                let tone = if change > 0 { "I" } else { "D" };
+                post(&format!("wage_change_title_{tone}"), &format!("wage_change_initial_announcement_{tone}"), &[("player_name", "Chef".to_string()), ("amount", change.abs().to_string())]);
                 let (verb, normal) = (if change > 0 { "montent" } else { "baissent" }, 30 + world.wage_shift);
                 notice = (format!("Les salaires {verb} de {} dr. : {normal} dr. par an pour dix ouvriers", change.abs()), now);
                 world.wage_news.clear();
             }
             if let Some((city, change)) = world.world_news.pop() {
                 let name = city_name(&text, &world, city);
+                let key = match change {
+                    zeus::world::TRADE_SHUTS => Some("trade_shuts_down"),
+                    zeus::world::TRADE_OPENS => Some("trade_opens_up"),
+                    zeus::world::ARMY_AWAY => Some("rival_away"),
+                    _ => None,
+                };
+                if let Some(key) = key {
+                    post(&format!("{key}_title"), &format!("{key}_initial_announcement"), &city_fields(&text, &world, &leaders, city));
+                }
                 let line = match change {
                     zeus::world::BECOMES_ALLY => format!("{name} redevient votre alliée"),
                     zeus::world::BECOMES_RIVAL => format!("{name} devient votre rivale"),
@@ -3580,6 +3670,9 @@ fn run(
                 world.world_news.clear();
             }
             if let Some(incident) = world.incidents.pop() {
+                if let zeus::world::Incident::Plague { .. } = incident {
+                    post("plague_title", "plague_initial_announcement", &[("player_name", "Chef".to_string())]);
+                }
                 notice = match incident {
                     zeus::world::Incident::Pillage { .. } => ("Des voleurs ont pillé une maison luxueuse : postez des gardes".to_string(), now),
                     zeus::world::Incident::Theft { amount, .. } => (format!("Un voleur a dérobé {amount} dr. au trésor : postez des gardes"), now),
@@ -3600,6 +3693,10 @@ fn run(
                 world.disasters.clear();
             }
 
+            // Une lettre en attente s'ouvre quand rien d'autre n'est affiché.
+            if intro.is_none() && !won {
+                intro = letter_queue.pop_front();
+            }
             // Récit de victoire refermé : place à l'épisode suivant, dans la même cité ou
             // dans une autre, ou à la fin de l'aventure.
             let choices = if won && intro.is_none() && colony_pick.is_none() { journey.colony_choices(journey.position + 1) } else { None };

@@ -64,6 +64,10 @@ const PRICES: usize = 36;
 const CITY_KIND: usize = 2;
 const CITY_NAME: usize = 3;
 const CITY_STATUS: usize = 212;
+/// Chef de la cité : rang dans le groupe de textes 139 (0 pour la cité du joueur).
+const CITY_LEADER: usize = 208;
+const CITY_TITLE: usize = 505;
+const CITY_LEADER_TITLE: usize = 537;
 const CITY_MILITARY: usize = 220;
 /// Nation de l'armée (octet 204 : Troie 1, Sardes 2, Cymé 4…).
 const CITY_ARMY: usize = 204;
@@ -336,6 +340,25 @@ impl Map {
                 tribute_paid: le32(r, CITY_TRIBUTE_PAID) as i32,
             })
             .collect()
+    }
+
+    /// Chef de chaque cité du monde (octet 208 de son enregistrement : rang dans le
+    /// groupe de textes 139), dans l'ordre de `cities`.
+    pub fn city_leaders(&self) -> Vec<u8> {
+        let Some(block) = self.blocks.iter().find(|b| b.count == CITIES && CITY_SIZES.contains(&b.element_size)) else { return Vec::new() };
+        block.data.chunks_exact(block.element_size).map(|r| r[CITY_LEADER]).collect()
+    }
+
+    /// Noms écrits en toutes lettres dans les cartes de Poséidon (nom de la cité en 505,
+    /// nom du chef en 537, chaînes terminées par un zéro), quand le numéro de nom vaut
+    /// 255 : (cité, chef) pour chaque cité, dans l'ordre de `cities`.
+    pub fn city_titles(&self) -> Vec<(Option<String>, Option<String>)> {
+        let Some(block) = self.blocks.iter().find(|b| b.count == CITIES && b.element_size == CITY_SIZES[1]) else { return Vec::new() };
+        let string = |r: &[u8], at: usize, end: usize| {
+            let bytes: Vec<u8> = r[at..end].iter().copied().take_while(|&b| b != 0).collect();
+            (!bytes.is_empty()).then(|| bytes.iter().map(|&b| crate::text::cp1252(b)).collect::<String>())
+        };
+        block.data.chunks_exact(block.element_size).map(|r| (string(r, CITY_TITLE, CITY_LEADER_TITLE), string(r, CITY_LEADER_TITLE, block.element_size))).collect()
     }
 
     pub fn terrain(&self, x: usize, y: usize) -> u32 {

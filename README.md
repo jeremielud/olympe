@@ -156,6 +156,10 @@ Ce qui fonctionne :
 - superviseurs (touche A, Tab pour changer de page) : population par niveau de
   logement, emploi par catégorie, finances, services et réserves, mythologie, armée
   et commerce, en panneaux de texte comme dans le jeu ;
+- lettres d'événements du jeu (`model/zeus eventmsg.txt`) : demandes des cités (au
+  ton de leur statut), cadeaux, invasions, dieux, héros, sanctuaires achevés,
+  commerce, salaires, peste s'ouvrent comme les récits, datées, avec le nom de la
+  cité et de son chef (en toutes lettres dans les cartes de Poséidon) ;
 - un clic sur un passant (porteur d'eau, garde, philosophe, dieu…) le fait parler,
   avec les voix du jeu ;
 - la vidéo d'introduction, convertie par l'installateur (avec ffmpeg) en images et en
