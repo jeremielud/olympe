@@ -87,7 +87,7 @@ Ce qui fonctionne :
   × son niveau militaire, moitié moins si son armée est partie, et remonte d'un point
   par mois ; pertes des deux camps selon l'écart des forces (barèmes du jeu), soldats
   tombés retirés des logements qui les fournissaient ; un raid victorieux rapporte une
-  marchandise que la cité échange (dans la limite de ce que portent hoplites,
+  marchandise que la cité vend (dans la limite de ce que portent hoplites,
   cavaliers et trières) ou des drachmes selon sa richesse ;
 - soldats des cités atlantes : archers, lanciers et chars de `poseidonimps.sg3`
   (mêmes règles que piétaille, hoplites et cavaliers, comme dans les règles des
