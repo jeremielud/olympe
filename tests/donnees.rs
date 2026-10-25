@@ -340,7 +340,6 @@ fn terrain_tiling_matches_the_maps() {
         let (mut same, mut total) = (0, 0);
         for map in maps.drain(..) {
             let tiling = zeus::tiling::tile(&map, &terrain, &poseidon, 0);
-            let zeus = map.version < 318;
             for i in 0..zeus::map::GRID * zeus::map::GRID {
                 let (x, y) = (i % zeus::map::GRID, i / zeus::map::GRID);
                 // Terrain nu, hors routes et zones de catastrophe peintes par l'éditeur.
@@ -348,7 +347,6 @@ fn terrain_tiling_matches_the_maps() {
                     continue;
                 }
                 let stored = map.image(x, y);
-                let stored = if zeus && (0xC000..0xC000 + 10_000).contains(&stored) { stored - 0xC000 + 0x14000 } else { stored };
                 total += 1;
                 same += (stored == tiling.images[i]) as usize;
             }

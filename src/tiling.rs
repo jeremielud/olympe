@@ -66,6 +66,14 @@ pub struct Tiling {
 pub fn tile(map: &Map, terrain: &[usize], poseidon: &[usize], orientation: u8) -> Tiling {
     let mut work = Work::new(map, terrain, poseidon, orientation);
     work.run();
+    // Les cartes de Zeus numérotent les images du terrain à partir de 0xC000.
+    if map.version < 318 {
+        for id in &mut work.img {
+            if (0x14000..0x14000 + 10_000).contains(id) {
+                *id -= 0x8000;
+            }
+        }
+    }
     Tiling { images: work.img, edges: work.edge }
 }
 

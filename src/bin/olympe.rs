@@ -254,6 +254,9 @@ const EMPTY_BAY_IMAGE: usize = 934;
 const TYPE_PALACE: usize = 117;
 const PALACE_BACK_IMAGE: usize = 1174;
 const PALACE_FRONT_IMAGE: usize = 1163;
+/// Moitiés du palais pour l'autre sens de la vue (relevées à l'œil).
+const PALACE_BACK_TURNED_IMAGE: usize = 1175;
+const PALACE_FRONT_TURNED_IMAGE: usize = 1176;
 const PALACE_TILE_IMAGE: usize = 1187;
 const PALACE_CORNER_IMAGE: usize = 1188;
 /// Agora : type de l'agora et de ses emplacements, image d'un emplacement vide.
@@ -391,6 +394,7 @@ const HELP: [&str; 18] = [
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "+ et - : taux d'imposition",
+    "Origine et Fin : pivoter la vue",
     "Survoler un bâtiment : son résumé ; clic droit : sa fiche ; clic sur un passant : il parle",
     "H : refermer cette aide",
 ];
@@ -553,12 +557,13 @@ fn minimap_colour(world: &World, x: usize, y: usize) -> [u8; 4] {
     }
 }
 
-/// Pixels de la mini-carte, en RVBA.
+/// Pixels de la mini-carte, en RVBA, tournée comme la vue.
 fn minimap_pixels(world: &World) -> Vec<u8> {
     let mut pixels = vec![0u8; MINIMAP_WIDTH * MINIMAP_HEIGHT * 4];
     for y in 0..GRID {
         for x in 0..GRID {
-            let colour = minimap_colour(world, x, y);
+            let (mx, my) = zeus::world::unrotate(orientation(), x as i32, y as i32);
+            let colour = minimap_colour(world, mx as usize, my as usize);
             let (px, py) = (x + GRID - 1 - y, (x + y) / 2);
             for column in px..(px + 2).min(MINIMAP_WIDTH) {
                 pixels[(py * MINIMAP_WIDTH + column) * 4..][..4].copy_from_slice(&colour);
@@ -592,6 +597,8 @@ impl Minimap {
         for y in 0..GRID {
             for x in 0..GRID {
                 if world.map.image(x, y) != 0 {
+                    let (x, y) = zeus::world::rotate(orientation(), x as i32, y as i32);
+                    let (x, y) = (x as usize, y as usize);
                     let (px, py) = (x + GRID - 1 - y, (x + y) / 2);
                     (x0, y0, x1, y1) = (x0.min(px), y0.min(py), x1.max(px + 2), y1.max(py + 1));
                 }
@@ -2210,7 +2217,17 @@ impl Graphics {
 }
 
 /// Position du coin haut-gauche de la boîte d'une case, en pixels de monde.
+/// Orientation de la vue (0, 2, 4 ou 6 comme dans le jeu), touches Origine et Fin.
+static ORIENTATION: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+fn orientation() -> u8 {
+    ORIENTATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Coin haut-gauche, dans le monde dessiné, de la case de carte (x, y) vue dans
+/// l'orientation courante.
 fn tile_origin(x: i32, y: i32) -> (f32, f32) {
+    let (x, y) = zeus::world::rotate(orientation(), x, y);
     ((x - y) as f32 * HALF_WIDTH, (x + y) as f32 * HALF_HEIGHT)
 }
 
@@ -2241,6 +2258,13 @@ fn drag_tiles(world: &World, tool: Tool, from: (i32, i32), to: (i32, i32)) -> Ve
     }
 }
 
+/// Coin de carte d'un bâtiment posé à partir de la case survolée, pour qu'il paraisse
+/// à l'écran comme à l'orientation 0.
+fn build_corner(world: &World, kind: usize, at: (i32, i32)) -> (i32, i32) {
+    let k = &world.kinds[kind];
+    World::footprint_corner(orientation(), at, k.size as i32, k.depth as i32)
+}
+
 fn tile_at_pointer(view: &View, pointer: (f32, f32), w: f32, h: f32) -> (i32, i32) {
     let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
     tile_at(wx, wy)
@@ -2249,7 +2273,7 @@ fn tile_at_pointer(view: &View, pointer: (f32, f32), w: f32, h: f32) -> (i32, i3
 fn tile_at(wx: f32, wy: f32) -> (i32, i32) {
     let u = (wx - HALF_WIDTH) / HALF_WIDTH;
     let v = (wy - HALF_HEIGHT) / HALF_HEIGHT;
-    (((v + u) / 2.0).round() as i32, ((v - u) / 2.0).round() as i32)
+    zeus::world::unrotate(orientation(), ((v + u) / 2.0).round() as i32, ((v - u) / 2.0).round() as i32)
 }
 
 struct View {
@@ -3520,6 +3544,8 @@ fn run(
                         "+" => Some(sdl::Event::key_down(0, sdl::KEY_PLUS)),
                         "-" => Some(sdl::Event::key_down(0, sdl::KEY_MINUS)),
                         "c" => Some(sdl::Event::key_down(0, sdl::KEY_C)),
+                        "pivot" => Some(sdl::Event::key_down(0, sdl::KEY_END)),
+                        "pivotg" => Some(sdl::Event::key_down(0, sdl::KEY_HOME)),
                         "v" => Some(sdl::Event::key_down(0, sdl::KEY_V)),
                         "j" => Some(sdl::Event::key_down(0, sdl::KEY_J)),
                         _ => None,
@@ -4122,6 +4148,14 @@ fn run(
                         sdl::KEY_J => journal_panel = !journal_panel,
                         sdl::KEY_O => goals_panel = !goals_panel,
                         sdl::KEY_C => cities_panel = !cities_panel,
+                        // Pivoter la vue vers la droite (Fin) ou vers la gauche (Origine),
+                        // autour de la case du centre (`Zeus.exe` 0x44a620 / 0x44a6e0).
+                        sdl::KEY_END | sdl::KEY_HOME => {
+                            let centre = tile_at(view.cx, view.cy);
+                            let step = if event.key() == sdl::KEY_END { 2 } else { 6 };
+                            ORIENTATION.store((orientation() + step) & 6, std::sync::atomic::Ordering::Relaxed);
+                            (view.cx, view.cy) = tile_origin(centre.0, centre.1);
+                        }
                         sdl::KEY_A => advisor_panel = !advisor_panel,
                         sdl::KEY_TAB if advisor_panel => advisor_page += 1,
                         sdl::KEY_PLUS | sdl::KEY_EQUALS | sdl::KEY_KP_PLUS | sdl::KEY_MINUS | sdl::KEY_KP_MINUS => {
@@ -4317,6 +4351,7 @@ fn run(
                             // Le geste commence ; il se pose au relâchement.
                             Tool::Road | Tool::Wall | Tool::Demolish => drag_from = Some((x, y)),
                             Tool::Build(kind) => {
+                                let (x, y) = build_corner(&world, kind, (x, y));
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
                                         notice = (format!("Pas assez de drachmes pour {}", world.kinds[kind].name), now);
@@ -4371,6 +4406,17 @@ fn run(
                 sdl::SDL_SetWindowTitle(window, title(&info).as_ptr());
             }
 
+            // Vue tournée : le terrain se repave pour l'orientation (la carte ne le donne
+            // que pour l'orientation 0).
+            if world.orientation != orientation() {
+                world.orientation = orientation();
+                world.terrain_view = (world.orientation != 0).then(|| zeus::tiling::tile(&world.map, &graphics.terrain.groups, &graphics.poseidon.groups, world.orientation));
+                // La mini-carte tourne aussi.
+                minimap_at = Minimap::new(&world);
+                minimap_age = MINIMAP_REFRESH;
+                // Le palais vu de côté : ses deux moitiés pour l'autre sens.
+                world.turned_images = vec![(PALACE_BACK_IMAGE, PALACE_BACK_TURNED_IMAGE), (PALACE_FRONT_IMAGE, PALACE_FRONT_TURNED_IMAGE)];
+            }
             // Cases visibles : on parcourt le rectangle de l'écran en diagonales.
             let (left, top) = view.to_world(0.0, 0.0, w, h);
             let (right, bottom) = view.to_world(w, h, w, h);
@@ -4418,7 +4464,8 @@ fn run(
                     if (sum + diff) % 2 != 0 {
                         continue;
                     }
-                    let tile = ((sum + diff) / 2, (sum - diff) / 2);
+                    let screen_tile = ((sum + diff) / 2, (sum - diff) / 2);
+                    let tile = zeus::world::unrotate(orientation(), screen_tile.0, screen_tile.1);
                     if !in_grid(tile) {
                         continue;
                     }
@@ -4431,7 +4478,7 @@ fn run(
                         let top = oy + (n as f32 + 1.0) * HALF_HEIGHT - height - draw.lift as f32;
                         if let Some((source, image)) = draw.ground {
                             let ground_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
-                            draw_list.push((sum, tile.0 * 3, ox, oy + 2.0 * HALF_HEIGHT - ground_height, source, image, None));
+                            draw_list.push((sum, screen_tile.0 * 3, ox, oy + 2.0 * HALF_HEIGHT - ground_height, source, image, None));
                         }
                         // Mer : la même tuile revient tous les quinze numéros, à un autre instant
                         // de la houle ; la carte donne à chaque case son instant de départ.
@@ -4444,11 +4491,11 @@ fn run(
                             false => draw.image,
                         };
                         let tint = world.building_at(tile.0, tile.1).and_then(|b| overlay_tint(&world, overlay, b));
-                        draw_list.push((sum + n - 1, tile.0 * 3 + 1, ox, top, draw.source, image, tint));
+                        draw_list.push((sum + n - 1, screen_tile.0 * 3 + 1, ox, top, draw.source, image, tint));
                         // Pièce qui couronne un étage de monument.
                         if let Some((source, image, lift)) = draw.above {
                             let above_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ox, oy + 2.0 * HALF_HEIGHT - above_height - lift as f32, source, image, tint));
+                            draw_list.push((sum + n - 1, screen_tile.0 * 3 + 2, ox, oy + 2.0 * HALF_HEIGHT - above_height - lift as f32, source, image, tint));
                         }
                         // Incendie : une flamme animée, le pied au centre de la case, décalée
                         // d'une case à l'autre pour ne pas battre à l'unisson.
@@ -4457,18 +4504,18 @@ fn run(
                             let frame = FIRE_FIRST_IMAGE + ((world.ticks / FIRE_FRAME_TICKS) as usize + phase) % FIRE_FRAMES;
                             if let Some(flame) = graphics.destruction.images.get(frame) {
                                 let (fx, fy) = (ox + HALF_WIDTH - flame.width as f32 / 2.0, oy + 1.5 * HALF_HEIGHT - flame.height as f32);
-                                draw_list.push((sum, tile.0 * 3 + 2, fx, fy, Source::Destruction, frame, None));
+                                draw_list.push((sum, screen_tile.0 * 3 + 2, fx, fy, Source::Destruction, frame, None));
                             }
                         }
                         // Bâtiment animé : l'image d'animation se pose sur la base, à l'ancrage indiqué.
                         let base = &graphics.catalog(draw.source).images[draw.image];
                         if let Some(overlay) = draw.overlay {
                             let (ax, ay) = (ox + base.offset_x as f32, top + base.offset_y as f32);
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, overlay, tint));
+                            draw_list.push((sum + n - 1, screen_tile.0 * 3 + 2, ax, ay, draw.source, overlay, tint));
                         } else if draw.source == Source::General && base.animation_frames > 0 {
                             let frame = (world.ticks / ANIMATION_TICKS) as usize % base.animation_frames;
                             let (ax, ay) = (ox + base.offset_x as f32, top + base.offset_y as f32);
-                            draw_list.push((sum + n - 1, tile.0 * 3 + 2, ax, ay, draw.source, draw.image + 1 + frame, tint));
+                            draw_list.push((sum + n - 1, screen_tile.0 * 3 + 2, ax, ay, draw.source, draw.image + 1 + frame, tint));
                         }
                     }
                 }
@@ -4489,12 +4536,13 @@ fn run(
             }
             // Personnages : ancrés au centre de leur case, par-dessus le sol de même rang.
             for figure in &world.figures {
-                let image = figure.image();
+                let image = figure.image_facing(orientation());
                 let Some(info) = graphics.catalog(figure.source).images.get(image) else { continue };
-                let wx = (figure.x - figure.y) * HALF_WIDTH + HALF_WIDTH - 1.0 - info.offset_x as f32;
-                let wy = (figure.x + figure.y) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32;
+                let (fx, fy) = zeus::world::rotate_point(orientation(), figure.x, figure.y);
+                let wx = (fx - fy) * HALF_WIDTH + HALF_WIDTH - 1.0 - info.offset_x as f32;
+                let wy = (fx + fy) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32;
                 if wx < right && wx + info.width as f32 > left && wy < bottom && wy + info.height as f32 > top {
-                    draw_list.push(((figure.x + figure.y).ceil() as i32, i32::MAX, wx, wy, figure.source, image, None));
+                    draw_list.push(((fx + fy).ceil() as i32, i32::MAX, wx, wy, figure.source, image, None));
                 }
             }
             draw_list.sort_unstable_by_key(|&(depth, layer, ..)| (depth, layer));
@@ -4553,7 +4601,7 @@ fn run(
             sdl::SDL_SetRenderDrawColor(renderer, 60, 40, 20, 255);
             for ((fx, fy), (tx, ty), progress) in world.missiles() {
                 let at = |t: f32| {
-                    let (x, y) = (fx + (tx - fx) * t, fy + (ty - fy) * t);
+                    let (x, y) = zeus::world::rotate_point(orientation(), fx + (tx - fx) * t, fy + (ty - fy) * t);
                     // Centre de la case, à hauteur d'homme ; le trait monte puis redescend.
                     let arc = 30.0 * (t * (1.0 - t)) * 4.0;
                     view.to_screen((x - y) * HALF_WIDTH + HALF_WIDTH, (x + y) * HALF_HEIGHT + HALF_HEIGHT - 20.0 - arc, w, h)
@@ -4564,11 +4612,14 @@ fn run(
 
             // Aperçu de ce que l'outil poserait : translucide, rougi si c'est impossible.
             if let (Tool::Build(kind), true) = (tool, in_grid(under)) {
-                let allowed = world.can_place(kind, under.0, under.1) && world.money >= world.kinds[kind].cost;
+                let corner = build_corner(&world, kind, under);
+                let allowed = world.can_place(kind, corner.0, corner.1) && world.money >= world.kinds[kind].cost;
+                // Le bâtiment se montre comme à l'orientation 0, à partir de la case survolée.
+                let start = zeus::world::rotate(orientation(), under.0, under.1);
                 for part in world.kinds[kind].parts.clone() {
                     let Some(sprite) = graphics.sprite(part.source, part.image) else { continue };
-                    let (px, py) = (under.0 + part.dx as i32, under.1 + part.dy as i32);
-                    let (ox, oy) = tile_origin(px, py + part.size as i32 - 1);
+                    let carrier = zeus::world::unrotate(orientation(), start.0 + part.dx as i32, start.1 + part.dy as i32 + part.size as i32 - 1);
+                    let (ox, oy) = tile_origin(carrier.0, carrier.1);
                     let (sx, sy) = view.to_screen(ox, oy + (part.size as f32 + 1.0) * HALF_HEIGHT - sprite.height, w, h);
                     let target = sdl::FRect {
                         x: sx.floor(),

@@ -29,7 +29,7 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 65 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : les rotations de la vue, le choix des compagnies envoyées
+Manque encore notamment : le choix des compagnies envoyées
 au loin (toute l'armée et toute la flotte partent), et dans
 les cités atlantes la frégate (la trière en tient lieu).
 
@@ -97,6 +97,13 @@ Ce qui fonctionne :
   chars à l'entrepôt (baies de Poséidon), et le marchand de chars de l'agora les
   porte aux logements luxueux, qui les exigent à la place des chevaux ; le marbre
   noir et l'orichalque ont aussi retrouvé leurs vraies baies ;
+- rotation de la vue (touches Origine et Fin), comme dans le jeu : le terrain est
+  repavé pour l'orientation par une transcription de la routine de `Zeus.exe`
+  (0x521520 : eau, falaises et rampes d'après les hauteurs, arbres, rochers,
+  carrières, plages, marais, broussailles, prés, herbe en plaques), qui retrouve
+  99,9 % des images des cartes à l'orientation 0 ; les bâtiments gardent leur seule
+  vue et c'est leur emprise qui tourne, le palais prend ses images de l'autre sens,
+  la mini-carte et les personnages tournent avec la vue ;
 - jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
   Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
   départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de

@@ -199,6 +199,41 @@ pub enum GamesNews {
     Concluded { kind: u8, home: bool, place: u8 },
 }
 
+/// Orientation de la vue (0, 2, 4 ou 6 comme dans le jeu) : case de la carte → case
+/// à l'écran. La case porteuse d'un objet sur plusieurs cases reste la plus à gauche
+/// à l'écran, comme dans `Zeus.exe` (0x4a04b0).
+pub fn rotate(orientation: u8, x: i32, y: i32) -> (i32, i32) {
+    let last = GRID as i32 - 1;
+    match orientation & 6 {
+        2 => (y, last - x),
+        4 => (last - x, last - y),
+        6 => (last - y, x),
+        _ => (x, y),
+    }
+}
+
+/// Case à l'écran → case de la carte.
+pub fn unrotate(orientation: u8, x: i32, y: i32) -> (i32, i32) {
+    let last = GRID as i32 - 1;
+    match orientation & 6 {
+        2 => (last - y, x),
+        4 => (last - x, last - y),
+        6 => (y, last - x),
+        _ => (x, y),
+    }
+}
+
+/// Position continue (personnages) dans le repère de l'écran.
+pub fn rotate_point(orientation: u8, x: f32, y: f32) -> (f32, f32) {
+    let last = GRID as f32 - 1.0;
+    match orientation & 6 {
+        2 => (y, last - x),
+        4 => (last - x, last - y),
+        6 => (last - y, x),
+        _ => (x, y),
+    }
+}
+
 /// Voisines dans l'ordre des bits ci-dessus.
 const NEIGHBOURS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 /// Les huit directions de marche, dans l'ordre des images de personnage.
@@ -1385,6 +1420,15 @@ impl Figure {
 
     /// Image à dessiner : une rangée de 8 directions par étape de marche.
     pub fn image(&self) -> usize {
+        self.image_toward(self.direction)
+    }
+
+    /// Image du personnage vu dans une vue tournée : sa direction à l'écran.
+    pub fn image_facing(&self, orientation: u8) -> usize {
+        self.image_toward((self.direction + 8 - (orientation as usize & 6)) & 7)
+    }
+
+    fn image_toward(&self, direction: usize) -> usize {
         let anim = match self.role {
             Role::Soldier { enemy: true, army, .. } => {
                 let unit = army_unit(army);
@@ -1396,9 +1440,9 @@ impl Figure {
             _ => COMMON_ANIM,
         };
         if let Role::Soldier { fighting: true, .. } = self.role {
-            return self.image_base + anim.fight + self.direction + 8 * ((self.frame / SOLDIER_FIGHT_FRAME_TICKS) % anim.fight_frames);
+            return self.image_base + anim.fight + direction + 8 * ((self.frame / SOLDIER_FIGHT_FRAME_TICKS) % anim.fight_frames);
         }
-        self.image_base + self.direction + 8 * (self.frame * anim.walk / WALK_TICKS)
+        self.image_base + direction + 8 * (self.frame * anim.walk / WALK_TICKS)
     }
 
     /// Soldat d'une bataille : `Some(true)` pour un envahisseur.
@@ -1520,6 +1564,12 @@ pub struct World {
     cells: Vec<Cell>,
     house_levels: Vec<HouseModel>,
     pub walkers: WalkerImages,
+    /// Orientation de la vue, et terrain repavé pour elle (le pavage de la carte vaut
+    /// pour l'orientation 0).
+    pub orientation: u8,
+    pub terrain_view: Option<crate::tiling::Tiling>,
+    /// Images d'un bâtiment non carré pour l'autre sens (palais) : (image, image tournée).
+    pub turned_images: Vec<(usize, usize)>,
     /// Migrants pas encore assez nombreux pour former un groupe (arrivants, partants),
     /// et jours pendant lesquels arrivées et départs restent suspendus.
     migrants: (i32, i32),
@@ -1662,6 +1712,9 @@ impl World {
             cells: vec![Cell::Terrain; GRID * GRID],
             house_levels,
             walkers,
+            orientation: 0,
+            terrain_view: None,
+            turned_images: Vec::new(),
             migrants: (0, 0),
             migration_pause: (0, 0),
             random: 0x2545_F491,
@@ -2268,8 +2321,12 @@ impl World {
     pub fn draw(&self, x: usize, y: usize) -> Option<Draw> {
         match self.cell(x, y) {
             Cell::Terrain => {
-                let id = self.map.image(x, y);
-                if id == 0 || self.map.edge(x, y) & EDGE_DRAW_TILE == 0 {
+                let (id, edge) = self.terrain_at(x, y);
+                // Route de la carte dans une vue tournée : le repavage ne la dessine pas.
+                if id == 0 && self.orientation != 0 && self.map.terrain(x, y) & TERRAIN_ROAD != 0 {
+                    return Some(self.road_draw(x, y));
+                }
+                if id == 0 || edge & EDGE_DRAW_TILE == 0 {
                     return None;
                 }
                 self.map.resolve(id).map(|(source, image)| Draw { source, image, burning: false, overlay: None, ground: None, lift: 0, above: None })
@@ -2287,7 +2344,7 @@ impl World {
                 source: Source::Terrain,
                 image: {
                     let open = |dx: i32, dy: i32| {
-                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        let (nx, ny) = self.beside(x, y, dx, dy);
                         Self::in_grid(nx, ny) && matches!(self.cell(nx as usize, ny as usize), Cell::Chasm(_))
                     };
                     let shape = NEIGHBOURS.iter().enumerate().filter(|&(_, &(dx, dy))| open(dx, dy)).fold(0, |mask, (bit, _)| mask | 1 << bit);
@@ -2296,7 +2353,7 @@ impl World {
                 },
                 burning: false,
                 overlay: None,
-                ground: self.map.resolve(self.map.image(x, y)),
+                ground: self.map.resolve(self.terrain_at(x, y).0),
                 lift: 0,
                 above: None,
             }),
@@ -2320,26 +2377,24 @@ impl World {
                 above: None,
             }),
             Cell::Wall(_) => {
-                let around = WALL_NEIGHBOURS.map(|(dx, dy)| self.is_wall(x as i32 + dx, y as i32 + dy));
+                let around = WALL_NEIGHBOURS.map(|(dx, dy)| {
+                    let (nx, ny) = self.beside(x, y, dx, dy);
+                    self.is_wall(nx, ny)
+                });
                 let offset = WALL_PATTERNS.iter().find(|(wanted, _)| wanted.iter().zip(around).all(|(&w, wall)| w == 2 || (w == 1) == wall)).map_or(0, |&(_, offset)| offset);
                 Some(Draw { source: Source::General, image: WALL_FIRST_IMAGE + offset, burning: false, overlay: None, ground: None, lift: 0, above: None })
             }
-            Cell::Road => {
-                let mut borders = 0;
-                for (bit, (dx, dy)) in NEIGHBOURS.iter().enumerate() {
-                    if !self.is_road(x as i32 + dx, y as i32 + dy) {
-                        borders |= 1 << bit;
-                    }
-                }
-                Some(Draw { source: Source::Terrain, image: ROAD_FIRST_IMAGE + ROAD_VARIANT[borders], burning: false, overlay: None, ground: None, lift: 0, above: None })
-            }
+            Cell::Road => Some(self.road_draw(x, y)),
             Cell::Building(id) => {
                 let building = self.buildings[id as usize].as_ref()?;
                 let kind = &self.kinds[building.kind];
+                // Position de la case dans le rectangle du bâtiment tel qu'il paraît à
+                // l'écran : les bâtiments n'ont qu'une vue, la rotation ne tourne que leur
+                // emprise.
+                let (rx, ry) = self.on_screen(building, x, y);
                 // Sanctuaire en chantier : autel et statues ne sont pas encore là, chacune
                 // de leurs cases montre du dallage.
                 if matches!(kind.function, Function::Sanctuary { .. }) && !self.is_complete(building) {
-                    let (rx, ry) = (x - building.x, y - building.y);
                     let hidden = kind.parts.iter().any(|p| {
                         (p.dx..p.dx + p.size).contains(&rx)
                             && (p.dy..p.dy + p.size).contains(&ry)
@@ -2352,7 +2407,7 @@ impl World {
                     }
                 }
                 if kind.function == Function::Racetrack {
-                    if (x, y) != (building.x, building.y + RACETRACK_SIZE - 1) {
+                    if (rx, ry) != (0, RACETRACK_SIZE - 1) {
                         return None;
                     }
                     let links = self.racetrack_links(building.x as i32, building.y as i32);
@@ -2367,22 +2422,28 @@ impl World {
                 // Corps de garde : la seconde image quand la route le traverse le long de x.
                 if kind.function == Function::Gatehouse {
                     let part = kind.parts.first()?;
-                    if (x, y) != (building.x, building.y + part.size - 1) {
+                    if (rx, ry) != (0, part.size - 1) {
                         return None;
                     }
                     let (bx, by, size) = (building.x as i32, building.y as i32, kind.size as i32);
-                    let along_x = (0..size).any(|dy| self.is_road(bx - 1, by + dy) || self.is_road(bx + size, by + dy));
+                    let along_x = (0..size).any(|dy| self.is_road(bx - 1, by + dy) || self.is_road(bx + size, by + dy)) != (self.orientation & 2 != 0);
                     let image = part.image + along_x as usize;
                     return Some(Draw { source: part.source, image, burning: false, overlay: None, ground: None, lift: 0, above: None });
                 }
                 if let Function::Monument { model, needs } = kind.function {
                     let layout = self.monument_layouts.get(model as usize)?;
-                    let tile = layout.tiles.iter().find(|t| (building.x + t.dx, building.y + t.dy) == (x, y))?;
+                    let tile = layout.tiles.iter().find(|t| (t.dx, t.dy) == (rx, ry))?;
                     let stage = self.monument_stage(building, needs, layout.stages());
                     return Some(self.monument_draw(layout, &kind.parts, tile, stage));
                 }
-                // Chaque élément est porté par sa case la plus à gauche à l'écran.
-                let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
+                // Chaque élément est porté par sa case la plus à gauche à l'écran. Un
+                // bâtiment non carré vu de côté prend sa disposition transposée.
+                let turned = kind.size != kind.depth && self.orientation & 2 != 0;
+                let part = if turned {
+                    kind.parts.iter().find(|p| rx == p.dy && ry == p.dx + p.size - 1)?
+                } else {
+                    kind.parts.iter().find(|p| rx == p.dx && ry == p.dy + p.size - 1)?
+                };
                 let mut bay_source = None;
                 let image = match (&building.house, part.crop, part.bay) {
                     // Logement luxueux : le rang de la baie désigne le quart du bâtiment.
@@ -2397,10 +2458,11 @@ impl World {
                         bay_source = Some(source);
                         image
                     }
+                    (None, false, None) if turned => self.turned_images.iter().find(|&&(from, _)| from == part.image).map_or(part.image, |&(_, to)| to),
                     (None, false, None) => part.image,
                 };
                 let overlay = kind.stock_overlay.filter(|_| building.stock > 0);
-                let ground = part.crop.then(|| self.map.resolve(self.map.image(x, y))).flatten();
+                let ground = part.crop.then(|| self.map.resolve(self.terrain_at(x, y).0)).flatten();
                 let (source, image) = match kind.function {
                     Function::Sanctuary { needs, .. } if !self.is_complete(building) => {
                         // Chantier : le temple passe par deux états d'échafaudage ; le
@@ -2416,6 +2478,58 @@ impl World {
                 };
                 Some(Draw { source, image, burning: false, overlay, ground, lift: 0, above: None })
             }
+        }
+    }
+
+    /// Route : son image suit les routes voisines à l'écran.
+    fn road_draw(&self, x: usize, y: usize) -> Draw {
+        let mut borders = 0;
+        for (bit, &(dx, dy)) in NEIGHBOURS.iter().enumerate() {
+            let (nx, ny) = self.beside(x, y, dx, dy);
+            if !self.is_road(nx, ny) {
+                borders |= 1 << bit;
+            }
+        }
+        Draw { source: Source::Terrain, image: ROAD_FIRST_IMAGE + ROAD_VARIANT[borders], burning: false, overlay: None, ground: None, lift: 0, above: None }
+    }
+
+    /// Image et bords du terrain d'une case pour l'orientation de la vue.
+    pub fn terrain_at(&self, x: usize, y: usize) -> (u32, u8) {
+        match &self.terrain_view {
+            Some(view) if self.orientation != 0 => (view.images[y * GRID + x], view.edges[y * GRID + x]),
+            _ => (self.map.image(x, y), self.map.edge(x, y)),
+        }
+    }
+
+    /// Coin de carte d'une emprise de `w` × `d` cases qui commence, à l'écran, sur la case
+/// de carte `at` (vue d'orientation `orientation`).
+pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32, i32) {
+    let (hx, hy) = rotate(orientation, at.0, at.1);
+    let n = GRID as i32;
+    match orientation & 6 {
+        2 => (n - w - hy, hx),
+        4 => (n - w - hx, n - d - hy),
+        6 => (hy, n - d - hx),
+        _ => (hx, hy),
+    }
+}
+
+/// Case voisine de (x, y) dans la direction (dx, dy) vue à l'écran.
+    fn beside(&self, x: usize, y: usize, dx: i32, dy: i32) -> (i32, i32) {
+        let (sx, sy) = rotate(self.orientation, x as i32, y as i32);
+        unrotate(self.orientation, sx + dx, sy + dy)
+    }
+
+    /// Position d'une case dans le rectangle qu'occupe le bâtiment à l'écran.
+    fn on_screen(&self, building: &Building, x: usize, y: usize) -> (usize, usize) {
+        let kind = &self.kinds[building.kind];
+        let (w, d) = (kind.size, kind.depth);
+        let (mx, my) = (x - building.x, y - building.y);
+        match self.orientation & 6 {
+            2 => (my, w - 1 - mx),
+            4 => (w - 1 - mx, d - 1 - my),
+            6 => (d - 1 - my, mx),
+            _ => (mx, my),
         }
     }
 
