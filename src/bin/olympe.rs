@@ -401,6 +401,8 @@ const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
 /// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
 /// Taille d'un bouton de groupe de bâtiments.
 const GROUP_BUTTON: (f32, f32) = (58.0, 42.0);
+/// Délai avant l'affichage d'une bulle d'aide.
+const TOOLTIP_MS: u64 = 500;
 const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0, 2.0, 63.0, 19.0)];
 /// Zone des messages, sous les boutons (relevée sur l'image du panneau).
 const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
@@ -3195,6 +3197,8 @@ fn run(
         let mut open_category: Option<usize> = None;
         // Groupe de bâtiments déplié dans la catégorie ouverte (image de son bouton).
         let mut open_group: Option<usize> = None;
+        // Élément survolé et depuis quand, pour les bulles d'aide.
+        let mut tooltip: (Option<i64>, u64) = (None, 0);
         let category_names: Vec<String> =
             CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
         // Une sauvegarde par carte, à côté de l'exécutable lancé.
@@ -5042,6 +5046,46 @@ fn run(
                 let width = graphics.text_width(FONT_TEXT, &banner) + 48.0;
                 graphics.panel((side - width) / 2.0, TOP_BAR_HEIGHT + 12.0, width, row + 12.0);
                 graphics.draw_text(FONT_TEXT, &banner, (side - width) / 2.0 + 24.0, TOP_BAR_HEIGHT + 18.0);
+            }
+            // Bulle d'aide : ce que fait l'élément d'interface survolé, après un instant.
+            let hovered_row = menu_rows.iter().rev().find(|&&(slot, _)| inside(slot)).map(|&(slot, action)| (slot, action));
+            let hovered_key = hovered_row.map(|(slot, _)| ((slot.0 * 7.0 + slot.1) as i64));
+            if hovered_key != tooltip.0 {
+                tooltip = (hovered_key, now);
+            }
+            if let (Some((_, action)), true) = (hovered_row, now - tooltip.1 > TOOLTIP_MS) {
+                let label = match action {
+                    MenuRow::Category(index) => Some(category_names[index].clone()),
+                    MenuRow::Group(button) => open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button)).map(|(_, tools)| {
+                        {
+                        let names: Vec<String> = tools.iter().map(|&(_, t)| match t { Tool::Build(k) => world.kinds[k].name.clone(), Tool::Wall => wall_name.clone(), _ => road_name.clone() }).collect();
+                        if names.len() > 2 { format!("{}, {} et {} autres", names[0], names[1], names.len() - 2) } else { names.join(", ") }
+                    }
+                    }),
+                    MenuRow::Pick(Tool::Road) => Some(format!("{road_name} ({road_cost})")),
+                    MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
+                    MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
+                    MenuRow::Key(sdl::KEY_R) => Some("Mettre de côté les marchandises demandées (R)".to_string()),
+                    MenuRow::Key(sdl::KEY_O) => Some("Objectifs de l'épisode (O)".to_string()),
+                    MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
+                    MenuRow::Key(sdl::KEY_C) => Some("Cités du monde (C)".to_string()),
+                    MenuRow::SidebarMap(true) => Some("Carte générale".to_string()),
+                    MenuRow::SidebarMap(false) => Some("Constructions".to_string()),
+                    MenuRow::Journal => Some("Journal des annonces (J)".to_string()),
+                    _ => None,
+                };
+                if let Some(label) = label.filter(|l| !l.is_empty()) {
+                    let width = graphics.text_width(FONT_SMALL, &label) + 12.0;
+                    let (mut tx, mut ty) = (pointer_ui.0 + 14.0, pointer_ui.1 + 18.0);
+                    tx = tx.min(w - width - 4.0);
+                    ty = ty.min(h - small_line - 10.0);
+                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                    sdl::SDL_SetRenderDrawColor(renderer, 250, 240, 200, 240);
+                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: tx, y: ty, w: width, h: small_line + 6.0 });
+                    graphics.ink = (40, 30, 10);
+                    graphics.draw_text(FONT_SMALL, &label, tx + 6.0, ty + 3.0);
+                    graphics.ink = (255, 255, 255);
+                }
             }
             if !notice.0.is_empty() && now - notice.1 < NOTICE_MS {
                 let width = graphics.text_width(FONT_TEXT, &notice.0) + 32.0;
