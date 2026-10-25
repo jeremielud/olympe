@@ -563,11 +563,11 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     (0..2 * TICKS_PER_MONTH).for_each(|_| world.tick());
     assert_eq!(world.campaign_news, vec![CampaignNews::Returned { city: 0, won: true }]);
     assert!(world.expedition.is_none());
-    // Une cité qui n'est plus rivale peut devenir partenaire commerciale.
+    // Une cité qui n'est plus rivale devient partenaire commerciale dès que le
+    // commerce s'ouvre (drapeau de la carte, ou événement).
     let partners = Goal { kind: GoalKind::Partners, values: [1, 0, 0] };
     assert_eq!(partners.status(&world), Status::Pending(Some(0)));
-    assert!(world.open_trade(0));
-    assert!(!world.open_trade(0), "déjà ouverte");
+    world.cities[0].trade = true;
     assert_eq!(partners.status(&world), Status::Met);
     // Le statut passe par la sauvegarde.
     let (mut other, ..) = self::world(&data);
@@ -781,12 +781,19 @@ fn trade_partners_buy_surplus_and_sell_what_is_missing() {
     use zeus::map::{ALLY, City};
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
-    let first = world.kinds.len();
-    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
-    assert!(world.place_building(first, x, y));
-    // Une cité achète de la laine (24 par an) et vend du vin (12 par an).
+    let (first, docks) = (world.kinds.len(), world.kinds.len() + 1);
+    world.kinds.push(Kind::simple("poste de commerce".into(), 70, 3, 934, Function::TradePost { sea: false }, 0));
+    world.kinds.push(Kind::simple("docks".into(), 70, 3, 934, Function::TradePost { sea: true }, 0));
+    // Une cité achète de la laine (24 par an) et vend du vin (12 par an) ; sa route
+    // est de terre (pas de route connue) : des docks n'y font rien.
     world.cities = vec![City { active: true, kind: 2, name: 40, status: ALLY, military: 3, trade: true, favor: 50, sells: vec![(21, 12)], buys: vec![(14, 24)], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0, wealth: 3, strength: -1 }];
+    assert!(!world.can_place(docks, x, y), "les docks se posent au bord de l'eau");
+    assert!(world.trade_posts().is_empty());
+    assert!(world.place_building(first, x, y));
+    assert_eq!(world.trade_posts(), vec![0]);
+    // Le poste de commerce range la laine comme un entrepôt.
     world.buildings.iter_mut().flatten().find(|b| b.kind == first).unwrap().goods[Good::Fleece as usize] = 12;
+    assert_eq!(world.stored(14), 12);
     let money = world.money;
     (0..TICKS_PER_MONTH + 1).for_each(|_| world.tick());
     // Laine au-delà de la réserve vendue (2 par mois), vin acheté (1 par mois).

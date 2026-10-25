@@ -71,6 +71,11 @@ const CITY_LEADER_TITLE: usize = 537;
 const CITY_MILITARY: usize = 220;
 /// Richesse (entier en 216, de 1 à 5) : `Zeus.exe` en tire les drachmes d'un raid.
 const CITY_WEALTH: usize = 216;
+/// Commerce ouvert avec le joueur (entier en 368, 0x170 de la cité dans `Zeus.exe`) :
+/// les événements « le commerce s'ouvre » et « cesse » le changent (0x42c9c0).
+const CITY_TRADE: usize = 368;
+/// Cité lointaine : elle ne fait que commercer.
+pub const DISTANT: u8 = 4;
 /// Nation de l'armée (octet 204 : Troie 1, Sardes 2, Cymé 4…).
 const CITY_ARMY: usize = 204;
 const CITY_TRIBUTE_RECEIVED: usize = 228;
@@ -99,7 +104,7 @@ pub struct City {
     pub name: u8,
     pub status: i32,
     pub military: u8,
-    /// Route commerciale ouverte par le joueur.
+    /// Commerce ouvert avec le joueur.
     pub trade: bool,
     /// Faveur de la cité envers le joueur, de 0 à 100.
     pub favor: i32,
@@ -132,12 +137,16 @@ pub struct Route {
     pub to: i16,
     pub length: i32,
     pub pace: u8,
+    /// Route maritime (octet 0x140 à 2 ; 1 pour une route de terre, `Zeus.exe`
+    /// 0x4614b9) : on y commerce par des docks.
+    pub sea: bool,
 }
 
 const ROUTE_SIZE: usize = 324;
 const ROUTES: usize = 232;
 const ROUTE_LENGTH: usize = 0x134;
 const ROUTE_CITIES: usize = 0x13c;
+const ROUTE_KIND: usize = 0x140;
 const ROUTE_ACTIVE: usize = 0x142;
 
 /// Catalogue d'où provient une image de terrain.
@@ -356,7 +365,7 @@ impl Map {
                 name: r[CITY_NAME],
                 status: le32(r, CITY_STATUS) as i32,
                 military: r[CITY_MILITARY],
-                trade: false,
+                trade: le32(r, CITY_TRADE) != 0,
                 favor: (le32(r, CITY_FAVOR) as i32).clamp(0, 100),
                 sold: 0,
                 bought: 0,
@@ -377,7 +386,7 @@ impl Map {
             .data
             .chunks_exact(ROUTE_SIZE)
             .filter(|r| r[ROUTE_ACTIVE] != 0)
-            .map(|r| Route { from: short(r, ROUTE_CITIES), to: short(r, ROUTE_CITIES + 2), length: le32(r, ROUTE_LENGTH) as i32, pace: r[0] })
+            .map(|r| Route { from: short(r, ROUTE_CITIES), to: short(r, ROUTE_CITIES + 2), length: le32(r, ROUTE_LENGTH) as i32, pace: r[0], sea: r[ROUTE_KIND] == 2 })
             .collect()
     }
 

@@ -672,8 +672,6 @@ fn price(resource: usize) -> i32 {
     }
 }
 
-/// Prix d'une route commerciale (Olympe : le jeu fixe un prix par cité).
-pub const TRADE_ROUTE_COST: i32 = 1000;
 const CAMPAIGN_TICKS: u64 = TICKS_PER_MONTH * 6;
 
 /// Monstre sans cible, et repos d'un monstre entre deux destructions (Olympe). Le
@@ -1064,6 +1062,9 @@ pub enum Function {
     Annex,
     /// Entrepose laine et huile entre producteurs et échoppes.
     Storehouse,
+    /// Poste de commerce, ou docks (`sea`) au bord de l'eau : un entrepôt qui ouvre les
+    /// échanges avec une cité partenaire dont la route est de la même voie.
+    TradePost { sea: bool },
     /// Produit seule une marchandise finie (bergerie).
     Producer(Good),
     /// Produit une matière première et la livre aux ateliers qui la transforment
@@ -1856,7 +1857,7 @@ impl World {
                 Some(Deposit::BlackMarble) => "il faut un gisement de marbre noir à moins de huit cases",
                 _ => "il faut un gisement d'orichalque à moins de huit cases",
             }),
-            Function::Fishery | Function::Wharf => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
+            Function::Fishery | Function::Wharf | Function::TradePost { sea: true } => Some("il se pose au bord de l'eau, sur un terrain dégagé"),
             Function::Farm => Some("elle se pose sur un pré fleuri"),
             Function::Racetrack => Some("une section se pose dans le prolongement de la piste"),
             Function::Agora { grand: false } => Some("elle se pose le long d'une route droite de six cases, libre d'un côté sur deux cases"),
@@ -1937,7 +1938,7 @@ impl World {
                 tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || (matches!(self.cell(tx as usize, ty as usize), Cell::Road) && Self::in_grid(tx, ty)))
                     && tiles.iter().any(|&(tx, ty)| Self::in_grid(tx, ty) && self.cell(tx as usize, ty as usize) == Cell::Road)
             }
-            Function::Fishery | Function::Wharf => {
+            Function::Fishery | Function::Wharf | Function::TradePost { sea: true } => {
                 let near_water = (y - 1..=y + size).any(|ty| (x - 1..=x + size).any(|tx| Self::in_grid(tx, ty) && self.map.terrain(tx as usize, ty as usize) & TERRAIN_WATER != 0));
                 self.can_build(x, y, k.size) && near_water
             }
@@ -2460,7 +2461,7 @@ impl World {
         self.buildings
             .iter()
             .flatten()
-            .map(|b| match (self.kinds[b.kind].function, good) {
+            .map(|b| match (storage(self.kinds[b.kind].function), good) {
                 (Function::Granary, _) if (1..FOODS).contains(&resource) => b.foods[resource],
                 (Function::Storehouse, Some(good)) => b.goods[good],
                 _ => 0,
@@ -2486,7 +2487,7 @@ impl World {
         let mut left = amount;
         for id in 0..self.buildings.len() {
             let function = match &self.buildings[id] {
-                Some(b) => self.kinds[b.kind].function,
+                Some(b) => storage(self.kinds[b.kind].function),
                 None => continue,
             };
             let Some(b) = self.buildings[id].as_mut() else { continue };
@@ -3102,12 +3103,13 @@ impl World {
     }
 
     /// Butin d'un raid victorieux sur cette cité, porté par les survivants : une
-    /// marchandise qu'elle échange, ou des drachmes, tirées au sort parmi celles
+    /// marchandise qu'elle vend, ou des drachmes, tirées au sort parmi celles
     /// qu'elle n'a pas trop souvent perdues (0x42d380).
     fn plunder(&mut self, city: usize, soldiers: [i32; 3], triremes: i32) -> (u8, i32) {
         let Some(c) = self.cities.get(city) else { return (DRACHMAS, 0) };
         let marked = |resource: u8| self.plundered.iter().find(|p| (p.0, p.1) == (city, resource)).map_or(0, |p| p.2);
-        let mut choices: Vec<(u8, i32)> = c.sells.iter().chain(&c.buys).copied().filter(|&(r, q)| q > 0 && r != DRACHMAS && marked(r) <= PLUNDER_LIMIT).collect();
+        // Seul ce que la cité vend se pille (guide de l'éditeur de Poséidon).
+        let mut choices: Vec<(u8, i32)> = c.sells.iter().copied().filter(|&(r, q)| q > 0 && r != DRACHMAS && marked(r) <= PLUNDER_LIMIT).collect();
         if marked(DRACHMAS) <= PLUNDER_LIMIT {
             choices.push((DRACHMAS, 0));
         }
@@ -3176,17 +3178,6 @@ impl World {
         }
     }
 
-    /// Ouvre une route commerciale avec une cité étrangère qui n'est pas rivale, au
-    /// prix d'Olympe ; faux si c'est impossible ou trop cher.
-    pub fn open_trade(&mut self, city: usize) -> bool {
-        let open = self.cities.get(city).is_some_and(|c| c.active && c.kind == FOREIGN && c.status != RIVAL && !c.trade);
-        if !open || self.money < TRADE_ROUTE_COST {
-            return false;
-        }
-        self.money -= TRADE_ROUTE_COST;
-        self.cities[city].trade = true;
-        true
-    }
 
     /// Range `amount` d'une ressource au grenier (vivres) ou à l'entrepôt, dans la
     /// limite de la place ; rend ce qui a été rangé.
@@ -3198,7 +3189,7 @@ impl World {
                 break;
             }
             let function = match &self.buildings[id] {
-                Some(b) => self.kinds[b.kind].function,
+                Some(b) => storage(self.kinds[b.kind].function),
                 None => continue,
             };
             let Some(b) = self.buildings[id].as_mut() else { continue };
@@ -3231,9 +3222,10 @@ impl World {
     /// quand les réserves sont basses, au prix d'Olympe, dans la limite d'un
     /// douzième de leur quantité annuelle.
     fn trade(&mut self) {
+        let served = self.trade_posts();
         for city in 0..self.cities.len() {
             let c = &self.cities[city];
-            if !(c.active && c.trade && c.status != RIVAL) {
+            if !(c.active && c.trade && c.status != RIVAL) || !served.contains(&city) {
                 continue;
             }
             let (buys, sells) = (c.buys.clone(), c.sells.clone());
@@ -3273,7 +3265,33 @@ impl World {
         self.scheduled.push(Scheduled { at, change: TRADE_CHANGE + change, cities, amount, resource });
     }
 
-    /// Partenaires commerciaux : cités non rivales avec qui une route est ouverte
+    /// Cités partenaires que dessert un poste de commerce (route de terre) ou des docks
+    /// (route de mer) en activité. Le jeu fait choisir la cité à la pose ; Olympe donne
+    /// à chaque poste, dans l'ordre de construction, la première partenaire de sa voie
+    /// qui n'en a pas.
+    pub fn trade_posts(&self) -> Vec<usize> {
+        let mut served = Vec::new();
+        for sea in [false, true] {
+            let posts = self.buildings.iter().flatten().filter(|b| b.staffed && self.kinds[b.kind].function == Function::TradePost { sea }).count();
+            let partners = (0..self.cities.len()).filter(|&c| self.trades_with(c) && self.sea_route(c) == sea);
+            served.extend(partners.take(posts));
+        }
+        served
+    }
+
+    /// Cité avec qui l'on peut commercer : commerce ouvert, ni rivale, ni lieu enchanté
+    /// ou cité détruite (0x42c9c0).
+    pub fn trades_with(&self, city: usize) -> bool {
+        self.cities.get(city).is_some_and(|c| c.active && c.trade && c.status != RIVAL && (1..=crate::map::DISTANT).contains(&c.kind))
+    }
+
+    /// La route de la cité du joueur à celle-ci passe par la mer.
+    pub fn sea_route(&self, city: usize) -> bool {
+        let home = self.cities.iter().position(|c| c.kind == 0).map(|h| h as i16);
+        self.routes.iter().find(|r| home.is_some_and(|h| (r.from, r.to) == (h, city as i16) || (r.to, r.from) == (h, city as i16))).is_some_and(|r| r.sea)
+    }
+
+    /// Partenaires commerciaux : cités non rivales avec qui le commerce est ouvert
     /// (0x525ec0).
     pub fn partners(&self) -> i32 {
         self.cities.iter().filter(|c| c.active && c.trade && c.status != RIVAL).count() as i32
@@ -4637,8 +4655,10 @@ impl World {
         self.random
     }
 
+    /// Rôle d'un bâtiment dans les échanges de marchandises : un poste de commerce y
+    /// est un entrepôt.
     fn function(&self, id: usize) -> Function {
-        self.buildings[id].as_ref().map_or(Function::None, |b| self.kinds[b.kind].function)
+        self.buildings[id].as_ref().map_or(Function::None, |b| storage(self.kinds[b.kind].function))
     }
 
     /// Case de route touchant l'emprise d'un bâtiment.
@@ -4866,7 +4886,7 @@ impl World {
         let wanted = |to_storehouse: bool| {
             move |world: &World, id: u16| {
                 let Some(building) = world.buildings[id as usize].as_ref() else { return false };
-                match (function, world.kinds[building.kind].function) {
+                match (function, storage(world.kinds[building.kind].function)) {
                     (Function::Farm | Function::Producer(Good::Food) | Function::Fishery, Function::Granary) => building.stock < GRANARY_STORAGE,
                     (Function::Supplier(raw), Function::Workshop(made)) => raw == raw_for(made) && building.raw < WORKSHOP_RAW_STORAGE,
                     // Une baie entamée de la même marchandise, ou une baie libre.
@@ -5504,6 +5524,15 @@ fn bay_image(goods: &[i32; GOODS.len()], bay: usize) -> (Source, usize) {
         first += bays;
     }
     (Source::General, EMPTY_BAY_IMAGE)
+}
+
+/// Fonction d'un bâtiment pour le stockage : postes de commerce et docks rangent leurs
+/// marchandises comme un entrepôt.
+fn storage(function: Function) -> Function {
+    match function {
+        Function::TradePost { .. } => Function::Storehouse,
+        other => other,
+    }
 }
 
 /// Marchandise qu'un bâtiment de cette fonction range à l'entrepôt.

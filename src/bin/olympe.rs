@@ -135,6 +135,12 @@ const TYPE_CHARIOT_WORKSHOP: usize = 212;
 const TYPE_CHARIOT_VENDOR: usize = 215;
 const CHARIOT_WORKSHOP_IMAGE: usize = 679;
 const CHARIOT_VENDOR_IMAGE: usize = 926;
+/// Docks et poste de commerce : entrepôts à huit baies dont la cabane (une case de
+/// `zeus_general.sg3`, groupes 125 et 137) a été attribuée à l'œil.
+const TYPE_DOCK: usize = 60;
+const TYPE_TRADING_POST: usize = 62;
+const DOCK_HUT_IMAGE: usize = 469;
+const TRADING_POST_HUT_IMAGE: usize = 467;
 const RACETRACK_IMAGE: usize = 426;
 const WHARF_IMAGE: usize = 721;
 /// Science atlante : bibliothèque (comme le gymnase), université et observatoire
@@ -324,7 +330,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Service(Service::Athletics) => "GYMNASIUM",
         Function::Service(Service::Drama) => "THEATRE",
         Function::Farm => "FARMING",
-        Function::Granary | Function::Storehouse => "STORAGE",
+        Function::Granary | Function::Storehouse | Function::TradePost { .. } => "STORAGE",
         Function::Producer(Good::Horses) => "HORSE_RANCH",
         Function::Producer(Good::Wood) => "TIMBER_MILL",
         Function::Producer(Good::Marble) => "MARBLE_QUARRY",
@@ -479,7 +485,7 @@ fn category_of(function: Function) -> usize {
         Function::Supplier(Raw::Bronze) | Function::Producer(Good::Wood | Good::Marble | Good::BlackMarble | Good::Orichalc) => 2,
         Function::Farm | Function::Producer(_) | Function::Fishery | Function::Supplier(Raw::Crops) => 1,
         Function::Workshop(_) => 2,
-        Function::Granary | Function::Storehouse | Function::Agora { .. } | Function::Vendor(_) => 3,
+        Function::Granary | Function::Storehouse | Function::TradePost { .. } | Function::Agora { .. } | Function::Vendor(_) => 3,
         // Les emplacements ne se bâtissent qu'à travers l'agora.
         Function::Plot => usize::MAX,
         Function::Service(Service::Water | Service::Maintenance | Service::Security | Service::Health) => 4,
@@ -654,7 +660,7 @@ fn tool_button(world: &World, tool: Tool) -> usize {
         Function::Workshop(Good::Arms) | Function::Producer(Good::Horses) | Function::Wharf => 1588,
         Function::Workshop(_) => 1525,
         Function::Granary => 1531,
-        Function::Storehouse => 1534,
+        Function::Storehouse | Function::TradePost { .. } => 1534,
         Function::Agora { .. } | Function::Plot | Function::Vendor(_) => 1537,
         Function::Service(Service::Water) => 1546,
         Function::Service(Service::Maintenance) => 1543,
@@ -699,7 +705,6 @@ enum MenuRow {
     Pick(Tool),
     /// Envoie l'armée soumettre cette cité du monde, ou y ouvre une route commerciale.
     Conquer(usize, bool),
-    Trade(usize),
     /// Satisfait la demande de ce rang.
     Fulfil(usize),
     /// Change ce que le commerce peut faire de cette ressource.
@@ -2938,14 +2943,14 @@ fn run(
     }
     // Entrepôt : une cabane au coin du fond et huit baies.
     let bays = (0..3).flat_map(|dy| (0..3).map(move |dx| (dx, dy))).filter(|&at| at != (0, 0));
-    let mut storehouse_parts = vec![Part { dx: 0, dy: 0, size: 1, image: STOREHOUSE_HUT_IMAGE, crop: false, bay: None, source: Source::General }];
+    let mut storehouse_parts: Vec<Part> = vec![Part { dx: 0, dy: 0, size: 1, image: STOREHOUSE_HUT_IMAGE, crop: false, bay: None, source: Source::General }];
     storehouse_parts.extend(bays.enumerate().map(|(bay, (dx, dy))| Part { dx, dy, size: 1, image: EMPTY_BAY_IMAGE, crop: false, bay: Some(bay as u8), source: Source::General }));
     kinds.push(Kind {
         name: text.get(TEXT_BUILDINGS, TYPE_STOREHOUSE),
         cost: rules(TYPE_STOREHOUSE)?.cost,
         size: 3,
         depth: 3,
-        parts: storehouse_parts,
+        parts: storehouse_parts.clone(),
         function: Function::Storehouse,
         walker: 0,
         stock_overlay: None,
@@ -3169,6 +3174,25 @@ fn run(
     chariots.appeal = plot_appeal;
     (chariots.fire_risk, chariots.damage_risk) = (rules(TYPE_CHARIOT_VENDOR)?.fire_risk, rules(TYPE_CHARIOT_VENDOR)?.damage_risk);
     kinds.push(chariots);
+    for (kind, hut, sea) in [(TYPE_TRADING_POST, TRADING_POST_HUT_IMAGE, false), (TYPE_DOCK, DOCK_HUT_IMAGE, true)] {
+        let mut parts = storehouse_parts.clone();
+        parts[0].image = hut;
+        kinds.push(Kind {
+            name: text.get(TEXT_BUILDINGS, kind),
+            cost: rules(kind)?.cost,
+            size: 3,
+            depth: 3,
+            parts,
+            function: Function::TradePost { sea },
+            walker: 0,
+            stock_overlay: None,
+            employees: rules(kind)?.employees,
+            appeal: appeal_of(kind)?,
+            fire_risk: rules(kind)?.fire_risk,
+            damage_risk: rules(kind)?.damage_risk,
+            product: 0,
+        });
+    }
     let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
     let _ = NATION.set(nations(&kinds, &text));
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER), atlantean: GROUPS_ATLANTEAN.map(|g| imps.groups.get(g).copied().unwrap_or(0)) };
@@ -4247,15 +4271,6 @@ fn run(
                                 world.trade_policy[resource] = world.trade_policy[resource].next();
                                 continue;
                             }
-                            Some(MenuRow::Trade(city)) => {
-                                let name = city_name(&text, &world, city);
-                                notice = if world.open_trade(city) {
-                                    (format!("Route commerciale ouverte avec {name}"), now)
-                                } else {
-                                    (format!("Pas de route possible avec {name}"), now)
-                                };
-                                continue;
-                            }
                             Some(MenuRow::Conquer(city, raid)) => {
                                 let name = city_name(&text, &world, city);
                                 notice = match world.conquer(city, raid) {
@@ -5123,23 +5138,26 @@ fn run(
             if cities_panel {
                 let heading = "Cités du monde".to_string();
                 let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();
+                let served = world.trade_posts();
                 // Chaque ligne : la cité (clic : la soumettre), le raid (clic : la piller),
                 // puis le commerce (clic : ouvrir une route).
                 let rows: Vec<(usize, String, String, String)> = world
                     .cities
                     .iter()
                     .enumerate()
-                    .filter(|(_, c)| c.active && c.kind == zeus::map::FOREIGN)
+                    .filter(|(_, c)| c.active && (c.kind == zeus::map::FOREIGN || c.kind == zeus::map::DISTANT))
                     .map(|(i, c)| {
-                        let status = statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default();
-                        let open = c.status <= zeus::map::RIVAL;
+                        let status = if c.kind == zeus::map::DISTANT { "lointaine".to_string() } else { statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default() };
+                        let open = c.kind == zeus::map::FOREIGN && c.status <= zeus::map::RIVAL;
                         let action = if open { format!(", défense {}, {} mois de marche) [soumettre]", world.defence(i), world.travel_months(i)) } else { ")".to_string() };
                         let raid = if open { "  [piller]".to_string() } else { String::new() };
                         let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
-                        let trade = match (c.trade, c.status == zeus::map::RIVAL) {
-                            (true, _) => format!("Vend {} ; achète {} (ventes {} dr., achats {} dr.)", names(&c.sells), names(&c.buys), c.sold, c.bought),
-                            (false, false) => format!("Vend {} ; achète {} [ouvrir le commerce : {} dr.]", names(&c.sells), names(&c.buys), zeus::world::TRADE_ROUTE_COST),
-                            (false, true) => String::new(),
+                        let goods = format!("Vend {} ; achète {}", names(&c.sells), names(&c.buys));
+                        let post = if world.sea_route(i) { "des docks" } else { "un poste de commerce" };
+                        let trade = match (world.trades_with(i), served.contains(&i)) {
+                            (true, true) => format!("{goods} (ventes {} dr., achats {} dr.)", c.sold, c.bought),
+                            (true, false) => format!("{goods} : construisez {post} pour commercer"),
+                            (false, _) => String::new(),
                         };
                         let away = if world.army_away(i) { ", armée partie" } else { "" };
                         (i, format!("{} ({status}, faveur {}, force {}{away}{action}", city_name(&text, &world, i), c.favor, c.military), raid, trade)
@@ -5217,7 +5235,6 @@ fn run(
                     y += row;
                     if !trade.is_empty() {
                         graphics.draw_text(FONT_TEXT, trade, px + 24.0 + indent, y);
-                        menu_rows.push(((px, y, width, row), MenuRow::Trade(*city)));
                         y += row;
                     }
                 }

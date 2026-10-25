@@ -137,10 +137,13 @@ Ce qui fonctionne :
   écourtée et rythme des destructions d'Olympe) ;
 - soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
   chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
-- cités du monde lues dans la carte (statut, force militaire) ; panneau `C`, d'où
-  l'on soumet une cité en un clic quand l'armée est assez forte (simple comparaison
-  des forces, sans bataille), ce qui suit les objectifs « Régner », et l'on y ouvre
-  des routes commerciales : chaque mois, on vend à la cité ce qu'elle achète au-delà
+- cités du monde lues dans la carte (statut, force militaire, commerce ouvert) ;
+  panneau `C`, d'où l'on envoie l'armée (voir les campagnes lointaines), ce qui suit
+  les objectifs « Régner » ; le commerce passe, comme dans le jeu, par un poste de
+  commerce pour une cité reliée par la terre ou par des docks au bord de l'eau pour
+  une cité reliée par la mer (voie de la route du monde, octet 0x140), entrepôts à
+  huit baies attribués chacun à une partenaire (le jeu la fait choisir, Olympe prend
+  la première qui n'en a pas) ; les cités lointaines commercent aussi : chaque mois, on vend à la cité ce qu'elle achète au-delà
   d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
   (marchandises, quantités et prix lus dans la carte) ; le panneau dit ce que chaque
   cité vend et achète, et règle par marchandise ce que le commerce peut en faire
