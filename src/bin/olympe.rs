@@ -377,7 +377,7 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 18] = [
+const HELP: [&str; 19] = [
     "Glisser avec le clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
