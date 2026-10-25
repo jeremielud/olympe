@@ -86,6 +86,9 @@ const TYPE_WALL: usize = 130;
 const TYPE_TOWER: usize = 132;
 /// Corps de garde (type 131), deux images : la route le traverse dans un sens ou l'autre.
 const TYPE_GATEHOUSE: usize = 131;
+const TYPE_ROADBLOCK: usize = 123;
+/// Barrage routier (une case), dans `zeus_general.sg3`.
+const ROADBLOCK_IMAGE: usize = 1150;
 const GATEHOUSE_IMAGE: usize = 768;
 const TOWER_IMAGE: usize = 774;
 const MILITARY_CATEGORY: usize = 9;
@@ -307,7 +310,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::House => "COMMON_HOUSING",
         Function::Service(Service::Water) => "FOUNTAIN",
         Function::Service(Service::Maintenance) => "MAINTENANCE_OFFICE",
-        Function::Service(Service::Security) | Function::Tower | Function::Gatehouse => "DEFENSIVE",
+        Function::Service(Service::Security) | Function::Tower | Function::Gatehouse | Function::Roadblock => "DEFENSIVE",
         Function::Service(Service::Health) => "INFIRMARY",
         Function::Service(Service::Tax) => "MUNICIPAL",
         Function::Palace => "PALACE",
@@ -407,6 +410,7 @@ const CLEAR_BUTTON: usize = 1283;
 const ROTATE_BUTTON: usize = 1287;
 const ROAD_SLOT: (f32, f32, f32, f32) = (50.0, 435.0, 35.0, 37.0);
 const CLEAR_BUTTON_SLOT: (f32, f32, f32, f32) = (118.0, 435.0, 32.0, 37.0);
+const ROADBLOCK_SLOT: (f32, f32, f32, f32) = (85.0, 435.0, 32.0, 37.0);
 /// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
 /// Taille d'un bouton de groupe de bâtiments.
 const GROUP_BUTTON: (f32, f32) = (58.0, 42.0);
@@ -416,7 +420,7 @@ const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0
 /// Zone des messages, sous les boutons (relevée sur l'image du panneau).
 const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
 const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
-    (85.0, 435.0, 32.0, 37.0, Some(ROADBLOCK_BUTTON), None),
+    (85.0, 435.0, 32.0, 37.0, None, None),
     (118.0, 435.0, 32.0, 37.0, None, None),
     (151.0, 435.0, 35.0, 37.0, Some(ROTATE_BUTTON), None),
     (146.0, 483.0, 33.0, 28.0, Some(1291), Some(sdl::KEY_J)),
@@ -470,6 +474,8 @@ fn category_of(function: Function) -> usize {
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
         Function::Wharf | Function::Tower | Function::Gatehouse => 9,
         Function::Racetrack => 5,
+        // Le barrage se pose avec son bouton rond, sous les onglets.
+        Function::Roadblock => usize::MAX,
         Function::None => 8,
     }
 }
@@ -3088,6 +3094,10 @@ fn run(
         (entry.fire_risk, entry.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
         kinds.push(entry);
     }
+    // Barrage routier, ajouté après les autres pour la même raison.
+    let mut roadblock = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_ROADBLOCK), rules(TYPE_ROADBLOCK)?.cost, 1, ROADBLOCK_IMAGE, Function::Roadblock, 0);
+    roadblock.appeal = appeal_of(TYPE_ROADBLOCK)?;
+    kinds.push(roadblock);
     let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
     let _ = NATION.set(nations(&kinds, &text));
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
@@ -4544,6 +4554,19 @@ fn run(
                 let state = if tool == held { 2 } else if inside(slot) { 1 } else { 0 };
                 graphics.blit(image + state, slot.0, slot.1);
                 menu_rows.push((slot, MenuRow::Pick(picked)));
+            }
+            // Barrage routier : inactif quand l'épisode ne le permet pas.
+            let roadblock_slot = (side + ROADBLOCK_SLOT.0, ROADBLOCK_SLOT.1, ROADBLOCK_SLOT.2, ROADBLOCK_SLOT.3);
+            let roadblock = world.kinds.iter().position(|k| k.function == Function::Roadblock).filter(|&k| !world.locked.get(k).copied().unwrap_or(false));
+            let state = match roadblock {
+                None => 3,
+                Some(k) if tool == Tool::Build(k) => 2,
+                Some(_) if inside(roadblock_slot) => 1,
+                Some(_) => 0,
+            };
+            graphics.blit(ROADBLOCK_BUTTON + state, roadblock_slot.0, roadblock_slot.1);
+            if let Some(k) = roadblock {
+                menu_rows.push((roadblock_slot, MenuRow::Pick(Tool::Build(k))));
             }
             // Nom de la catégorie ouverte ou survolée, dans le haut du panneau.
             let named = open_category.or_else(|| menu_rows.iter().find_map(|&(slot, action)| match action {

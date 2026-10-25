@@ -935,6 +935,9 @@ pub enum Function {
     /// Corps de garde : posé sur une route, il laisse passer les citoyens à travers les
     /// murs et barre la route aux envahisseurs.
     Gatehouse,
+    /// Barrage routier : posé sur une route, il arrête les marcheurs en tournée mais
+    /// laisse passer ceux qui vont quelque part (porteurs, immigrants).
+    Roadblock,
     /// Monument de Poséidon (rang 0 à 14, type de bâtiment 100 + rang), et ce qu'il
     /// faut y livrer : marbre, bois, sculptures.
     Monument { model: u8, needs: [u16; 3] },
@@ -1614,7 +1617,13 @@ impl World {
 
     /// La case appartient à un corps de garde.
     fn is_gate(&self, x: i32, y: i32) -> bool {
-        Self::in_grid(x, y) && matches!(self.cell(x as usize, y as usize), Cell::Building(id) if self.function(id as usize) == Function::Gatehouse)
+        Self::in_grid(x, y)
+            && matches!(self.cell(x as usize, y as usize), Cell::Building(id) if matches!(self.function(id as usize), Function::Gatehouse | Function::Roadblock))
+    }
+
+    /// Barrage routier : les tournées n'y passent pas.
+    fn is_roadblock(&self, x: i32, y: i32) -> bool {
+        Self::in_grid(x, y) && matches!(self.cell(x as usize, y as usize), Cell::Building(id) if self.function(id as usize) == Function::Roadblock)
     }
 
     fn is_walkable(&self, x: i32, y: i32) -> bool {
@@ -1716,6 +1725,8 @@ impl World {
                 self.can_build(x, y, k.size) && (!any || self.racetrack_links(x, y) != 0)
             }
             // Sur une route, qu'il recouvre : chaque case est libre ou de la route.
+            // Sur une route existante, exactement.
+            Function::Roadblock => Self::in_grid(x, y) && self.cell(x as usize, y as usize) == Cell::Road,
             Function::Gatehouse => {
                 let tiles: Vec<(i32, i32)> = (0..size).flat_map(|dy| (0..size).map(move |dx| (x + dx, y + dy))).collect();
                 tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || (matches!(self.cell(tx as usize, ty as usize), Cell::Road) && Self::in_grid(tx, ty)))
@@ -1915,7 +1926,9 @@ impl World {
             Cell::Building(id) => {
                 // Une échoppe démolie rend son emplacement à l'agora.
                 let vendor = self.buildings[id as usize].as_ref().filter(|b| matches!(self.kinds[b.kind].function, Function::Vendor(_))).map(|b| (b.x, b.y));
-                self.remove_building(id, Cell::Terrain);
+                // Un barrage démoli rend sa route.
+                let left = if self.function(id as usize) == Function::Roadblock { Cell::Road } else { Cell::Terrain };
+                self.remove_building(id, left);
                 if let (Some((bx, by)), Some(plot)) = (vendor, self.kinds.iter().position(|k| k.function == Function::Plot)) {
                     self.money += self.kinds[plot].cost;
                     self.place_building(plot, bx as i32, by as i32);
@@ -4204,7 +4217,7 @@ impl World {
         let open: Vec<u8> = (0..NEIGHBOURS.len() as u8)
             .filter(|&h| {
                 let (dx, dy) = NEIGHBOURS[h as usize];
-                self.is_road(from.0 as i32 + dx, from.1 as i32 + dy)
+                self.is_road(from.0 as i32 + dx, from.1 as i32 + dy) && !self.is_roadblock(from.0 as i32 + dx, from.1 as i32 + dy)
             })
             .collect();
         let heading = if open.is_empty() { 0 } else { open[walks as usize % open.len()] };
@@ -4337,7 +4350,7 @@ impl World {
     fn next_road_step(&mut self, at: (u16, u16), came_from: Option<(u16, u16)>, heading: u8) -> Option<(u16, u16)> {
         let (x, y) = (at.0 as i32, at.1 as i32);
         let road_towards = |world: &World, (dx, dy): (i32, i32)| {
-            world.is_road(x + dx, y + dy).then(|| ((x + dx) as u16, (y + dy) as u16))
+            (world.is_road(x + dx, y + dy) && !world.is_roadblock(x + dx, y + dy)).then(|| ((x + dx) as u16, (y + dy) as u16))
         };
         let roads: Vec<(u16, u16)> = NEIGHBOURS.iter().filter_map(|&step| road_towards(self, step)).collect();
         let ahead: Vec<(u16, u16)> = roads.iter().copied().filter(|&road| Some(road) != came_from).collect();

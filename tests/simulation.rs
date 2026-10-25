@@ -1235,3 +1235,36 @@ fn citizens_cross_walls_only_through_a_gatehouse() {
     let (closed, open) = (settle(false), settle(true));
     assert!(open > closed, "fermée {closed}, ouverte {open}");
 }
+
+#[test]
+fn a_roadblock_turns_back_the_rounds() {
+    let Some(data) = data() else { return };
+    // Une maintenance au début d'une rue, deux maisons au bout ; le barrage, entre les
+    // deux, arrête le préposé : les maisons ne sont plus visitées.
+    let fire_risk = |blocked: bool| {
+        let (mut world, x, y) = world(&data);
+        for i in 0..12 {
+            assert!(world.place_road(x + i, y + 4, 0));
+        }
+        assert!(world.place_building(MAINTENANCE, x, y + 5));
+        for i in 0..2 {
+            assert!(world.place_building(HOUSE, x + 8 + 2 * i, y + 2));
+        }
+        let roadblock = world.kinds.len();
+        world.kinds.push(Kind::simple("barrage routier".into(), 4, 1, 1150, Function::Roadblock, 0));
+        if blocked {
+            assert!(world.place_building(roadblock, x + 4, y + 4));
+            assert!(!world.place_building(roadblock, x + 4, y + 6), "un barrage hors de la route");
+        }
+        (0..TICKS_PER_MONTH * 6).for_each(|_| world.tick());
+        let fire = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| b.fire).max().unwrap_or(0);
+        // Démoli, le barrage rend sa route.
+        if blocked {
+            assert!(world.demolish(x + 4, y + 4));
+            assert!(world.is_road(x + 4, y + 4));
+        }
+        fire
+    };
+    let (open, blocked) = (fire_risk(false), fire_risk(true));
+    assert!(blocked > open, "ouverte {open}, barrée {blocked}");
+}
