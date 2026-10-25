@@ -389,15 +389,23 @@ const UI_SIDEBAR: usize = 1232;
 const SIDEBAR_WIDTH: f32 = 186.0;
 const UI_TABS: usize = 1319;
 const UI_TAB_STATES: usize = 4;
-/// Icône d'onglet de l'armée (grisée), et pioche de « Dégager » (quatre états).
+/// Icône d'onglet de l'armée (grisée).
 const MILITARY_TAB: usize = 9;
-const CLEAR_TAB: usize = 1753;
 /// Réserves transparentes du panneau latéral, relevées sur son image : (x, y,
 /// largeur, hauteur, premier état du bouton qui s'y loge, touche qu'il remplace).
 /// Grande réserve sous les onglets : « Dégager ». Puis l'aide, la mise de côté, un
 /// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
 /// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
 const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+/// Rangée des boutons ronds sous les onglets, comme dans le jeu : route, barrage
+/// routier (non simulé), dégager (la pelle), rotation de la vue (non simulée) ; quatre
+/// états par bouton (repos, survol, enfoncé, inactif).
+const ROAD_BUTTON: usize = 1275;
+const ROADBLOCK_BUTTON: usize = 1279;
+const CLEAR_BUTTON: usize = 1283;
+const ROTATE_BUTTON: usize = 1287;
+const ROAD_SLOT: (f32, f32, f32, f32) = (50.0, 435.0, 35.0, 37.0);
+const CLEAR_BUTTON_SLOT: (f32, f32, f32, f32) = (118.0, 435.0, 32.0, 37.0);
 /// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
 /// Taille d'un bouton de groupe de bâtiments.
 const GROUP_BUTTON: (f32, f32) = (58.0, 42.0);
@@ -406,12 +414,10 @@ const TOOLTIP_MS: u64 = 500;
 const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0, 2.0, 63.0, 19.0)];
 /// Zone des messages, sous les boutons (relevée sur l'image du panneau).
 const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
-/// Tuile de route droite (catalogue du terrain), qui sert d'icône au bouton des routes.
-const ROAD_ICON_IMAGE: usize = 897;
 const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
-    (85.0, 435.0, 32.0, 37.0, Some(1279), Some(sdl::KEY_H)),
-    (118.0, 435.0, 32.0, 37.0, Some(1283), Some(sdl::KEY_R)),
-    (151.0, 435.0, 32.0, 37.0, Some(1279), None),
+    (85.0, 435.0, 32.0, 37.0, Some(ROADBLOCK_BUTTON), None),
+    (118.0, 435.0, 32.0, 37.0, None, None),
+    (151.0, 435.0, 35.0, 37.0, Some(ROTATE_BUTTON), None),
     (146.0, 483.0, 33.0, 28.0, None, None),
     (11.0, 565.0, 33.0, 33.0, Some(1291), Some(sdl::KEY_O)),
     (45.0, 565.0, 69.0, 33.0, Some(1263), Some(sdl::KEY_A)),
@@ -4525,29 +4531,17 @@ fn run(
                     menu_rows.push((slot, MenuRow::Key(key)));
                 }
             }
-            // Grande réserve sous les onglets : la route (une tuile de route du jeu, le jeu
-            // n'ayant pas d'icône à part) puis « Dégager » (la pioche).
-            let half = CLEAR_SLOT.2 / 2.0;
-            let road_slot = (side + CLEAR_SLOT.0, CLEAR_SLOT.1, half, CLEAR_SLOT.3);
-            let clear_slot = (side + CLEAR_SLOT.0 + half, CLEAR_SLOT.1, half, CLEAR_SLOT.3);
+            // Rangée des boutons ronds : route et dégager, comme dans le jeu.
             sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
-            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: road_slot.0, y: road_slot.1, w: CLEAR_SLOT.2, h: CLEAR_SLOT.3 });
-            if tool == Tool::Road || inside(road_slot) {
-                let shade = if tool == Tool::Road { 120 } else { 60 };
-                sdl::SDL_SetRenderDrawColor(renderer, shade / 2, shade, shade + 60, 255);
-                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: road_slot.0 + 2.0, y: road_slot.1 + 2.0, w: half - 4.0, h: CLEAR_SLOT.3 - 4.0 });
+            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: side + CLEAR_SLOT.0, y: CLEAR_SLOT.1, w: ROAD_SLOT.0 - CLEAR_SLOT.0, h: CLEAR_SLOT.3 });
+            let road_slot = (side + ROAD_SLOT.0, ROAD_SLOT.1, ROAD_SLOT.2, ROAD_SLOT.3);
+            let clear_slot = (side + CLEAR_BUTTON_SLOT.0, CLEAR_BUTTON_SLOT.1, CLEAR_BUTTON_SLOT.2, CLEAR_BUTTON_SLOT.3);
+            for (slot, image, held, picked) in [(road_slot, ROAD_BUTTON, Tool::Road, Tool::Road), (clear_slot, CLEAR_BUTTON, Tool::Demolish, Tool::Demolish)] {
+                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                let state = if tool == held { 2 } else if inside(slot) { 1 } else { 0 };
+                graphics.blit(image + state, slot.0, slot.1);
+                menu_rows.push((slot, MenuRow::Pick(picked)));
             }
-            if let Some(sprite) = graphics.sprite(Source::Terrain, ROAD_ICON_IMAGE) {
-                let scale = (half - 6.0) / sprite.width;
-                let (iw, ih) = (sprite.width * scale, sprite.height * scale);
-                let target = sdl::FRect { x: road_slot.0 + (half - iw) / 2.0, y: road_slot.1 + (CLEAR_SLOT.3 - ih) / 2.0, w: iw, h: ih };
-                sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_LINEAR);
-                sdl::SDL_RenderTexture(renderer, sprite.texture, null(), &target);
-            }
-            menu_rows.push((road_slot, MenuRow::Pick(Tool::Road)));
-            let state = if tool == Tool::Demolish { 2 } else if inside(clear_slot) { 1 } else { 0 };
-            graphics.blit(CLEAR_TAB + state, clear_slot.0 + (clear_slot.2 - TAB_WIDTH) / 2.0, clear_slot.1);
-            menu_rows.push((clear_slot, MenuRow::Pick(Tool::Demolish)));
             // Nom de la catégorie ouverte ou survolée, dans le haut du panneau.
             let named = open_category.or_else(|| menu_rows.iter().find_map(|&(slot, action)| match action {
                 MenuRow::Category(index) if inside(slot) => Some(index),
@@ -5071,6 +5065,7 @@ fn run(
                         ("Plus lent (Page suiv.)".to_string(), sdl::KEY_PAGEDOWN),
                         ("Pause (P)".to_string(), sdl::KEY_P),
                         ("Vues (V)".to_string(), sdl::KEY_V),
+                        ("Mettre de côté (R)".to_string(), sdl::KEY_R),
                     ],
                     _ => vec![
                         (format!("{} (H)", text.get(3, 0)), sdl::KEY_H),
@@ -5121,7 +5116,6 @@ fn run(
                     MenuRow::Pick(Tool::Road) => Some(format!("{road_name} ({road_cost})")),
                     MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
                     MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
-                    MenuRow::Key(sdl::KEY_R) => Some("Mettre de côté les marchandises demandées (R)".to_string()),
                     MenuRow::Key(sdl::KEY_O) => Some("Objectifs de l'épisode (O)".to_string()),
                     MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
                     MenuRow::Key(sdl::KEY_C) => Some("Cités du monde (C)".to_string()),
