@@ -1823,6 +1823,9 @@ const GROUP_RABBLE: usize = 80;
 const GROUP_HORSEMAN: usize = 132;
 /// Navire de transport des envahisseurs venus par la mer.
 const GROUP_SHIP: usize = 118;
+/// Soldats atlantes dans `poseidonimps.sg3` (relevés à l'œil, marche, mort, combat) :
+/// archer, lancier, char.
+const GROUPS_ATLANTEAN: [usize; 3] = [75, 69, 72];
 const MONSTER_FILES: [&str; 16] = [
     "zeus_hydra",
     "zeus_kraken",
@@ -2020,6 +2023,7 @@ struct Graphics {
     general: Catalog,
     fonts: Catalog,
     figures: Catalog,
+    imps: Catalog,
     destruction: Catalog,
     interface: Catalog,
     /// Temples des sanctuaires (deux chantiers puis l'achèvement), grandes statues des
@@ -2055,6 +2059,7 @@ impl Graphics {
             Source::General => &self.general,
             Source::Fonts => &self.fonts,
             Source::Figures => &self.figures,
+            Source::Imps => &self.imps,
             Source::Destruction => &self.destruction,
             Source::Interface => &self.interface,
             Source::Sanctuary(stage) => self.sanctuaries.get(stage as usize).unwrap_or(&self.empty),
@@ -2736,6 +2741,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
             general: load("zeus_general.sg3")?,
             fonts: load("zeus_fonts.sg3")?,
             figures: load("sprmain.sg3")?,
+            imps: load("poseidonimps.sg3").unwrap_or_else(|_| Catalog::empty()),
             destruction: load("destruction.sg3")?,
             interface: load("zeus_interface.sg3")?,
             sanctuaries: Vec::new(),
@@ -2881,6 +2887,7 @@ fn run(
     let model = Model::parse(&read(&format!("model/zeus_model_{}.txt", DIFFICULTY_MODELS[difficulty()]))?)?;
     let general = Catalog::load(&data.join("data/zeus_general.sg3"))?;
     let figures = Catalog::load(&data.join("data/sprmain.sg3"))?;
+    let imps = Catalog::load(&data.join("data/poseidonimps.sg3")).unwrap_or_else(|_| Catalog::empty());
     let road_cost = model.buildings.get(TYPE_ROAD).map_or(0, |b| b.cost);
     let road_name = text.get(TEXT_BUILDINGS, TYPE_ROAD);
     let wall_cost = model.buildings.get(TYPE_WALL).map_or(0, |b| b.cost);
@@ -3141,7 +3148,7 @@ fn run(
     kinds.push(roadblock);
     let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
     let _ = NATION.set(nations(&kinds, &text));
-    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER) };
+    let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER), atlantean: GROUPS_ATLANTEAN.map(|g| imps.groups.get(g).copied().unwrap_or(0)) };
     // Les niveaux de logement se suivent dans les noms de bâtiments : modestes, puis luxueux.
     let level_names: Vec<String> = (0..13).map(|level| text.get(TEXT_BUILDINGS, TYPE_HOUSE + level)).collect();
     let good_names = GOOD_TEXTS.map(|index| text.get(23, index));
@@ -3216,6 +3223,7 @@ fn run(
             general,
             fonts: Catalog::load(&data.join("data/zeus_fonts.sg3"))?,
             figures,
+            imps,
             destruction: Catalog::load(&data.join("data/destruction.sg3"))?,
             interface: Catalog::load(&data.join("data/zeus_interface.sg3"))?,
             // Facultatifs : sans eux, les sanctuaires se dessinent sans temple ni statues.

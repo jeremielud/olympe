@@ -31,8 +31,9 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 
 Manque encore notamment : les rotations de la vue, le choix des compagnies envoyées
 au loin (toute l'armée et toute la flotte partent), et dans
-les cités atlantes les frégates, les chars et les soldats propres à l'Atlantide
-(trières, chevaux et soldats grecs en tiennent lieu).
+les cités atlantes la frégate et la fabrique de chars (la trière et le haras en
+tiennent lieu) ; leurs soldats, eux, sont déjà des archers, lanciers et chars
+atlantes.
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -90,6 +91,9 @@ Ce qui fonctionne :
   tombés retirés des logements qui les fournissaient ; un raid victorieux rapporte une
   marchandise que la cité échange (dans la limite de ce que portent hoplites,
   cavaliers et trières) ou des drachmes selon sa richesse ;
+- soldats des cités atlantes : archers, lanciers et chars de `poseidonimps.sg3`
+  (mêmes règles que piétaille, hoplites et cavaliers, comme dans les règles des
+  personnages du jeu), avec leurs animations de marche et de combat ;
 - jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
   Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
   départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de

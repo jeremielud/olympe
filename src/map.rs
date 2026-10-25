@@ -153,6 +153,8 @@ pub enum Source {
     Fonts,
     /// `sprmain.sg3` (personnages).
     Figures,
+    /// `poseidonimps.sg3` (personnages de Poséidon : soldats atlantes, frégates…).
+    Imps,
     /// `destruction.sg3` (flammes, poussière, fumée).
     Destruction,
     /// `zeus_interface.sg3` (bandeau, panneau latéral, boutons).

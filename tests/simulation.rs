@@ -1399,3 +1399,30 @@ fn the_isthmian_games_need_philosophers() {
     assert_eq!(news[0], GamesNews::Begin { kind: GAMES_ISTHMIAN, home: false });
     assert!(matches!(news[1], GamesNews::Concluded { kind: GAMES_ISTHMIAN, home: false, .. }), "{news:?}");
 }
+
+#[test]
+fn an_atlantean_city_raises_atlantean_soldiers() {
+    use zeus::map::{City, RIVAL, Source};
+    use zeus::world::INVASION;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    (world.atlantean, world.walkers.atlantean) = (true, [11, 22, 33]);
+    world.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 3, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0, wealth: 3, strength: -1 }];
+    for building in world.buildings.iter_mut().flatten() {
+        if let Some(house) = building.house.as_mut() {
+            (house.level, house.population) = (6, 1000);
+        }
+    }
+    world.schedule(INVASION, (0, 0), (5, 5), 1, (0, 0));
+    for _ in 0..2 * TICKS_PER_MONTH {
+        world.tick();
+        if world.raid.is_some() {
+            break;
+        }
+    }
+    // Piétaille des maisons de ville : des archers atlantes.
+    let defenders: Vec<_> = world.figures.iter().filter(|f| f.soldier() == Some(false)).collect();
+    assert!(!defenders.is_empty());
+    assert!(defenders.iter().all(|f| f.source == Source::Imps && (11..11 + 104 + 8 * 15).contains(&f.image())), "archers attendus");
+}

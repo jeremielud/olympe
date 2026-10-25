@@ -1202,7 +1202,18 @@ pub struct WalkerImages {
     pub horseman: usize,
     /// Navire de transport des envahisseurs venus par la mer.
     pub ship: usize,
+    /// Soldats d'une cité atlante dans `poseidonimps.sg3`, par rang : archer, lancier,
+    /// char.
+    pub atlantean: [usize; 3],
 }
+
+/// Animations des soldats atlantes, par rang : l'archer frappe en quinze images, le
+/// lancier en huit, le char (neuf images de mort par direction) en douze.
+const ATLANTEAN_ANIMS: [Anim; 3] = [
+    Anim { walk: WALK_FRAMES, fight: 104, fight_frames: 15 },
+    Anim { walk: WALK_FRAMES, fight: 104, fight_frames: 8 },
+    Anim { walk: WALK_FRAMES, fight: 168, fight_frames: 12 },
+];
 
 pub struct House {
     /// Rang dans les niveaux de logement (0 = hutte).
@@ -1357,6 +1368,7 @@ impl Figure {
                 let unit = army_unit(army);
                 Anim { walk: unit.walk_frames, fight: unit.fight - unit.walk, fight_frames: unit.fight_frames }
             }
+            Role::Soldier { enemy: false, army, .. } if self.source == Source::Imps => ATLANTEAN_ANIMS[(army as usize).min(2)],
             // Piétaille et cavaliers de la cité frappent en douze images, l'hoplite en huit.
             Role::Soldier { enemy: false, army, .. } if army != 1 => Anim { fight_frames: 12, ..COMMON_ANIM },
             _ => COMMON_ANIM,
@@ -1485,7 +1497,7 @@ pub struct World {
     pub ticks: u64,
     cells: Vec<Cell>,
     house_levels: Vec<HouseModel>,
-    walkers: WalkerImages,
+    pub walkers: WalkerImages,
     /// Migrants pas encore assez nombreux pour former un groupe (arrivants, partants),
     /// et jours pendant lesquels arrivées et départs restent suspendus.
     migrants: (i32, i32),
@@ -3416,8 +3428,11 @@ impl World {
                 // Pas de soldat dans l'eau ni sur la falaise : il reste au point de départ.
                 let (x, y) = if world.is_walkable(ox, oy) { (ox as u16, oy as u16) } else { (at.0 as u16, at.1 as u16) };
                 let citizen = [world.walkers.rabble, world.walkers.hoplite, world.walkers.horseman];
+                let atlantean = world.walkers.atlantean.get(army as usize).copied().filter(|&b| world.atlantean && b > 0);
                 let (source, image_base) = if enemy {
                     (Source::Army(nation), army_unit(army).walk)
+                } else if let Some(base) = atlantean {
+                    (Source::Imps, base)
                 } else {
                     (Source::Figures, citizen.get(army as usize).copied().filter(|&b| b > 0).unwrap_or(world.walkers.hoplite))
                 };
