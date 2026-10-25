@@ -399,6 +399,8 @@ const CLEAR_TAB: usize = 1753;
 /// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
 const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
 /// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
+/// Taille d'un bouton de groupe de bâtiments.
+const GROUP_BUTTON: (f32, f32) = (58.0, 42.0);
 const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0, 2.0, 63.0, 19.0)];
 /// Zone des messages, sous les boutons (relevée sur l'image du panneau).
 const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
@@ -597,6 +599,62 @@ fn category_tools(world: &World, category: usize) -> Vec<Tool> {
     road.into_iter().chain(kinds).collect()
 }
 
+/// Bouton du panneau (première de trois images de `zeus_interface.sg3` : repos,
+/// survol, choisi) sous lequel le jeu range un outil ; attribution faite à l'œil sur les
+/// images des boutons.
+fn tool_button(world: &World, tool: Tool) -> usize {
+    let Tool::Build(kind) = tool else { return 1585 };
+    let k = &world.kinds[kind];
+    match k.function {
+        Function::House if k.size > 2 => 1507,
+        Function::House => 1504,
+        Function::Farm => 1510,
+        Function::Supplier(Raw::Crops) => 1513,
+        Function::Producer(Good::Fleece) => 1516,
+        Function::Producer(Good::Food) if k.parts.first().is_some_and(|p| p.image == HUNTING_LODGE_IMAGE) => 1519,
+        Function::Producer(Good::Food) => 1516,
+        Function::Fishery => 1519,
+        Function::Producer(Good::Wood | Good::Marble | Good::BlackMarble | Good::Orichalc) | Function::Supplier(Raw::Bronze) => 1522,
+        Function::Workshop(Good::Arms) | Function::Producer(Good::Horses) | Function::Wharf => 1588,
+        Function::Workshop(_) => 1525,
+        Function::Granary => 1531,
+        Function::Storehouse => 1534,
+        Function::Agora { .. } | Function::Plot | Function::Vendor(_) => 1537,
+        Function::Service(Service::Water) => 1546,
+        Function::Service(Service::Maintenance) => 1543,
+        Function::Service(Service::Health) => 1552,
+        Function::Service(Service::Security) => 1555,
+        Function::Service(Service::Tax) => 1558,
+        Function::Palace => 1549,
+        Function::School(Service::Philosophy) | Function::Service(Service::Philosophy) => 1567,
+        Function::Service(Service::Athletics) => 1570,
+        Function::School(_) | Function::Service(Service::Drama) => 1573,
+        Function::Stadium | Function::Annex | Function::Museum | Function::Racetrack => 1576,
+        Function::Sanctuary { .. } | Function::Monument { .. } => 1579,
+        Function::HeroHall(_) => 1582,
+        Function::Tower | Function::Gatehouse => 1585,
+        Function::None if k.size == 1 => 1591,
+        Function::None if k.size >= 3 => 1594,
+        _ => 1597,
+    }
+}
+
+/// Groupes de boutons d'une catégorie, dans l'ordre du menu : (bouton, outils).
+fn category_groups(world: &World, category: usize) -> Vec<(usize, Vec<(usize, Tool)>)> {
+    let mut groups: Vec<(usize, Vec<(usize, Tool)>)> = Vec::new();
+    for (slot, tool) in category_tools(world, category).into_iter().enumerate() {
+        if tool == Tool::Road {
+            continue;
+        }
+        let button = tool_button(world, tool);
+        match groups.iter_mut().find(|(b, _)| *b == button) {
+            Some((_, tools)) => tools.push((slot, tool)),
+            None => groups.push((button, vec![(slot, tool)])),
+        }
+    }
+    groups
+}
+
 /// Ce que fait un clic sur une ligne du menu.
 #[derive(Clone, Copy, PartialEq)]
 enum MenuRow {
@@ -618,6 +676,8 @@ enum MenuRow {
     TopMenu(usize),
     /// Onglets du haut du panneau : constructions, ou carte générale.
     SidebarMap(bool),
+    /// Bouton d'un groupe de bâtiments (image du bouton) dans le panneau.
+    Group(usize),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -1615,7 +1675,7 @@ fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, V
         }
         3 => {
             let fed = if houses.is_empty() { 0 } else { houses.iter().filter(|h| h.ate).count() * 100 / houses.len() };
-            (vec![format!("Agoras : {}", count(&|f| matches!(f, Function::Agora { .. }))), format!("Maisons nourries : {fed} %")], Vec::new())
+            (vec![format!("Échoppes : {}", count(&|f| matches!(f, Function::Vendor(_)))), format!("Maisons nourries : {fed} %")], Vec::new())
         }
         4 => (
             vec![cover(Service::Water), cover(Service::Maintenance), cover(Service::Health), cover(Service::Security), format!("Santé : {} sur 100", world.health)],
@@ -3133,6 +3193,8 @@ fn run(
         // Action de chaque ligne du menu, telle qu'affichée à la dernière image.
         let mut menu_rows: Vec<((f32, f32, f32, f32), MenuRow)> = Vec::new();
         let mut open_category: Option<usize> = None;
+        // Groupe de bâtiments déplié dans la catégorie ouverte (image de son bouton).
+        let mut open_group: Option<usize> = None;
         let category_names: Vec<String> =
             CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
         // Une sauvegarde par carte, à côté de l'exécutable lancé.
@@ -3804,6 +3866,7 @@ fn run(
                             tool = Tool::None;
                             hovered = (-1, -1);
                         }
+                        sdl::KEY_ESCAPE if open_group.is_some() => open_group = None,
                         sdl::KEY_ESCAPE if open_category.is_some() => open_category = None,
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
                         sdl::KEY_SPACE | sdl::KEY_P => paused = !paused,
@@ -3855,7 +3918,7 @@ fn run(
                                         hovered = (-1, -1);
                                     }
                                 }
-                                None if slot < CATEGORY_NAMES.len() => open_category = Some(slot),
+                                None if slot < CATEGORY_NAMES.len() => (open_category, open_group) = (Some(slot), None),
                                 None => {}
                             }
                         }
@@ -3942,11 +4005,25 @@ fn run(
                         match hit.map(|&(_, action)| action) {
                             Some(MenuRow::Category(index)) => {
                                 open_category = (open_category != Some(index)).then_some(index);
+                                open_group = None;
                                 continue;
                             }
                             Some(MenuRow::Pick(picked)) => {
                                 tool = picked;
+                                open_group = None;
                                 hovered = (-1, -1);
+                                continue;
+                            }
+                            Some(MenuRow::Group(button)) => {
+                                // Un seul bâtiment : il est choisi ; plusieurs : leur liste s'ouvre.
+                                let group = open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button));
+                                match group.map(|(_, tools)| tools) {
+                                    Some(tools) if tools.len() == 1 => {
+                                        (tool, open_group, hovered) = (tools[0].1, None, (-1, -1));
+                                    }
+                                    Some(_) => open_group = if open_group == Some(button) { None } else { Some(button) },
+                                    None => {}
+                                }
                                 continue;
                             }
                             Some(MenuRow::SidebarMap(wanted)) => {
@@ -4448,6 +4525,8 @@ fn run(
                 graphics.draw_text(FONT_CHROME, &demolish_name, side + PANEL_LEFT, TAB_TOP + 6.0);
             }
             let small_line = graphics.line_height(FONT_SMALL) + 1.0;
+            // Hauteur du bouton dont la liste est dépliée.
+            let mut group_top = TAB_TOP;
             // Onglets du haut du panneau ; l'onglet inactif est assombri.
             for (wanted, slot) in [(false, SIDEBAR_TABS[0]), (true, SIDEBAR_TABS[1])] {
                 let slot = (side + slot.0, slot.1, slot.2, slot.3);
@@ -4465,12 +4544,32 @@ fn run(
                     graphics.draw_text(FONT_CHROME, word, side + PANEL_LEFT, top);
                     top += row;
                 }
+                // Boutons des groupes de bâtiments, deux par rang, au bas du panneau.
+                let groups = if open_category == Some(index) { category_groups(&world, index) } else { Vec::new() };
+                let rows = groups.len().div_ceil(2) as f32;
+                let buttons_top = SIDEBAR_BUTTONS[0].1 - 6.0 - rows * (GROUP_BUTTON.1 + 4.0);
+                for (i, (button, tools)) in groups.iter().enumerate() {
+                    let x = side + PANEL_LEFT + (i % 2) as f32 * (GROUP_BUTTON.0 + 4.0);
+                    let y = buttons_top + (i / 2) as f32 * (GROUP_BUTTON.1 + 4.0);
+                    let slot = (x, y, GROUP_BUTTON.0, GROUP_BUTTON.1);
+                    if open_group == Some(*button) {
+                        group_top = y;
+                    }
+                    let chosen = open_group == Some(*button) || tools.iter().any(|&(_, t)| t == tool);
+                    let state = if chosen { 2 } else if inside(slot) { 1 } else { 0 };
+                    graphics.blit(button + state, x, y);
+                    menu_rows.push((slot, MenuRow::Group(*button)));
+                }
+                let info_bottom = if groups.is_empty() { SIDEBAR_BUTTONS[0].1 - 4.0 } else { buttons_top - 4.0 };
                 // Ce que la catégorie dit de la cité, puis ses vues en surimpression.
                 let (lines, views) = category_info(&world, &text, index);
                 let width = SIDEBAR_WIDTH - PANEL_LEFT - 6.0;
                 top += 6.0;
                 for (label, wanted) in views {
                     let slot = (side + PANEL_LEFT - 2.0, top, width, small_line + 8.0);
+                    if top + slot.3 > info_bottom {
+                        break;
+                    }
                     let lit = overlay == wanted || inside(slot);
                     sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
                     sdl::SDL_SetRenderDrawColor(renderer, 10, 40, 80, if lit { 220 } else { 140 });
@@ -4494,7 +4593,7 @@ fn run(
                         .chain(value.into_iter().flat_map(|v| wrap_width(&graphics, FONT_SMALL_GOLD, v, width).into_iter().map(|p| (FONT_SMALL_GOLD, p))))
                         .collect();
                     for (font, piece) in pieces {
-                        if top + small_line > SIDEBAR_BUTTONS[0].1 - 4.0 {
+                        if top + small_line > info_bottom {
                             break;
                         }
                         graphics.draw_text(font, &piece, side + PANEL_LEFT, top);
@@ -4517,12 +4616,12 @@ fn run(
             }
             menu_rows.push((message_slot, MenuRow::Journal));
             graphics.ink = (255, 255, 255);
-            if let Some(index) = open_category {
-                let tools = category_tools(&world, index);
-                let labels: Vec<String> = tools
+            if let (Some(index), Some(group)) = (open_category, open_group) {
+                let listed: Vec<(usize, Tool)> = category_groups(&world, index).into_iter().find(|(b, _)| *b == group).map(|(_, t)| t).unwrap_or_default();
+                let tools: Vec<Tool> = listed.iter().map(|&(_, t)| t).collect();
+                let labels: Vec<String> = listed
                     .iter()
-                    .enumerate()
-                    .map(|(slot, picked)| {
+                    .map(|&(slot, ref picked)| {
                         let key = if slot < 9 { (slot + 1).to_string() } else { "-".to_string() };
                         match *picked {
                             Tool::Build(kind) => format!("{key}  {}  ({})", world.kinds[kind].name, world.kinds[kind].cost),
@@ -4534,7 +4633,8 @@ fn run(
                 let width = labels.iter().map(|label| graphics.text_width(FONT_TEXT, label)).fold(0.0, f32::max) + 32.0;
                 let height = row * labels.len() as f32 + 10.0;
                 // À hauteur de l'onglet, sans sortir de l'écran par le bas.
-                let top = (TAB_TOP + TAB_STEP * index as f32).min(h - height - 8.0).max(TOP_BAR_HEIGHT + 4.0);
+                let _ = index;
+                let top = group_top.min(h - height - 8.0).max(TOP_BAR_HEIGHT + 4.0);
                 let left = side - width - 6.0;
                 graphics.panel(left, top, width, height);
                 for (i, (label, picked)) in labels.iter().zip(&tools).enumerate() {
