@@ -1116,6 +1116,7 @@ fn audit(data: &Path, base: &World, text: &Text) -> Result<(), String> {
             let mut world = base.new_city(map, settings.funds);
             if !parent.cities().is_empty() {
                 world.cities = parent.cities();
+                world.routes = parent.routes();
             }
             lock_resources(&mut world, episode);
             begin_events(&mut world, episode);

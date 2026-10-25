@@ -1744,7 +1744,9 @@ impl World {
     pub fn new_city(&self, map: Map, money: i32) -> World {
         let mut city = World::new(map, self.kinds.clone(), self.house_levels.clone(), self.walkers, money);
         city.ticks = self.ticks;
+        // Les cités du monde restent celles de la cité mère, avec leurs routes.
         city.cities = self.cities.clone();
+        city.routes = self.routes.clone();
         city.monument_layouts = self.monument_layouts.clone();
         city.fighters = self.fighters.clone();
         (city.taxes, city.tax_level, city.difficulty) = (self.taxes.clone(), self.tax_level, self.difficulty);
