@@ -360,7 +360,7 @@ const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
 const HELP: [&str; 18] = [
-    "Clic droit ou flèches : déplacer la vue",
+    "Glisser avec le clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
     "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
@@ -376,7 +376,7 @@ const HELP: [&str; 18] = [
     "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "+ et - : taux d'imposition",
-    "Survoler un bâtiment : ses informations ; clic sur un passant : il parle",
+    "Survoler un bâtiment : son résumé ; clic droit : sa fiche ; clic sur un passant : il parle",
     "H : refermer cette aide",
 ];
 
@@ -3199,6 +3199,10 @@ fn run(
         let mut open_group: Option<usize> = None;
         // Élément survolé et depuis quand, pour les bulles d'aide.
         let mut tooltip: (Option<i64>, u64) = (None, 0);
+        // Fiche ouverte par un clic droit (case du bâtiment), et où le bouton droit a été
+        // enfoncé avec le chemin parcouru depuis, pour distinguer un clic d'un glissé.
+        let mut info_pinned: Option<(i32, i32)> = None;
+        let mut right_press: Option<f32> = None;
         let category_names: Vec<String> =
             CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
         // Une sauvegarde par carte, à côté de l'exécutable lancé.
@@ -3360,6 +3364,9 @@ fn run(
                         Some(sdl::Event::mouse_button(false, sdl::BUTTON_LEFT, script_pointer))
                     }
                     ("w", &[steps]) => Some(sdl::Event::mouse_wheel(steps, script_pointer)),
+                    // Clic droit : enfoncé, relâché.
+                    ("rd", _) => Some(sdl::Event::mouse_button(true, sdl::BUTTON_RIGHT, script_pointer)),
+                    ("ru", _) => Some(sdl::Event::mouse_button(false, sdl::BUTTON_RIGHT, script_pointer)),
                     // Vue centrée sur une case, pointeur sur le centre d'une case.
                     ("vue", &[x, y]) => {
                         (view.cx, view.cy) = tile_origin(x as i32, y as i32);
@@ -3870,6 +3877,7 @@ fn run(
                             tool = Tool::None;
                             hovered = (-1, -1);
                         }
+                        sdl::KEY_ESCAPE if info_pinned.is_some() => info_pinned = None,
                         sdl::KEY_ESCAPE if open_group.is_some() => open_group = None,
                         sdl::KEY_ESCAPE if open_category.is_some() => open_category = None,
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
@@ -3971,6 +3979,9 @@ fn run(
                         if buttons & (sdl::BUTTON_RIGHT_MASK | sdl::BUTTON_MIDDLE_MASK) != 0 {
                             view.cx -= dx / view.zoom;
                             view.cy -= dy / view.zoom;
+                            if let Some(moved) = right_press.as_mut() {
+                                *moved += dx.abs() + dy.abs();
+                            }
                         }
                         // Glisser avec le bouton gauche : parcourir la mini-carte, ou tracer une
                         // route, ou démolir en continu.
@@ -3995,6 +4006,23 @@ fn run(
                         }
                     }
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => drag_from = None,
+                    sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_RIGHT => {
+                        right_press = Some(0.0);
+                        // Le clic droit lâche aussi l'outil, comme dans le jeu.
+                        if tool != Tool::None {
+                            (tool, hovered) = (Tool::None, (-1, -1));
+                            right_press = None;
+                        }
+                    }
+                    sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_RIGHT => {
+                        // Un clic droit sans glisser ouvre la fiche du bâtiment visé.
+                        if right_press.take().is_some_and(|moved| moved < 6.0) {
+                            let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
+                            let at = tile_at(wx, wy);
+                            info_pinned = world.building_at(at.0, at.1).map(|_| at);
+                        }
+                    }
+                    sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_LEFT && info_pinned.is_some() => info_pinned = None,
                     sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_LEFT => {
                         let (mx, my) = event.position();
                         // Un clic sur la mini-carte y transporte la vue.
@@ -4677,8 +4705,14 @@ fn run(
                 }
             }
 
-            // Panneau d'information sur le bâtiment survolé.
-            if let Some(building) = world.building_at(under.0, under.1) {
+            // Fiche d'un bâtiment : complète dans une fenêtre après un clic droit (comme
+            // dans le jeu), abrégée au survol.
+            let pinned_building = info_pinned.and_then(|(x, y)| world.building_at(x, y));
+            if pinned_building.is_none() {
+                info_pinned = None;
+            }
+            if let Some(building) = pinned_building.or_else(|| world.building_at(under.0, under.1)) {
+                let full = pinned_building.is_some();
                 let mut lines = vec![world.kinds[building.kind].name.clone()];
                 if let Some(Some(description)) = descriptions.get(building.kind) {
                     lines.extend(wrap(description, INFO_LINE));
@@ -4779,12 +4813,34 @@ fn run(
                         lines.push(format!("En attente : {}", kind.name.to_lowercase()));
                     }
                 }
-                let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 32.0;
-                let height = row * lines.len() as f32 + 12.0;
-                let (px, py) = (12.0, TOP_BAR_HEIGHT + 12.0);
-                graphics.panel(px, py, width, height);
-                for (i, l) in lines.iter().enumerate() {
-                    graphics.draw_text(FONT_TEXT, l, px + 16.0, py + 8.0 + row * i as f32);
+                if full {
+                    // Fenêtre au centre : le nom en titre, le reste dessous.
+                    let heading = lines.remove(0);
+                    lines.push(String::new());
+                    lines.push("Clic ou Echap : fermer".to_string());
+                    let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
+                    let height = title_line + 32.0 + row * lines.len() as f32;
+                    let (px, py) = ((side - width) / 2.0, (h - height) / 2.0);
+                    graphics.panel(px, py, width, height);
+                    graphics.panel(px, py, width, height);
+                    let heading_width = graphics.text_width(FONT_TITLE, &heading);
+                    graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
+                    for (i, l) in lines.iter().enumerate() {
+                        graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 24.0 + row * i as f32);
+                    }
+                } else {
+                    // Au survol : le nom, l'effectif et ce qui manque ou bloque.
+                    let description = descriptions.get(building.kind).cloned().flatten().map(|d| wrap(&d, INFO_LINE).len()).unwrap_or(0);
+                    let mut short: Vec<String> = lines.iter().take(1).cloned().collect();
+                    short.extend(lines.iter().skip(1 + description).filter(|l| l.starts_with(&text.get(8, 13)) || l.starts_with(&text.get(8, 3)) || l.starts_with("Pour évoluer") || l.starts_with("Va évoluer") || l.starts_with("En attente") || l.starts_with("Risques")).cloned());
+                    short.push("Clic droit : détails".to_string());
+                    let width = short.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 32.0;
+                    let height = row * short.len() as f32 + 12.0;
+                    let (px, py) = (12.0, TOP_BAR_HEIGHT + 12.0);
+                    graphics.panel(px, py, width, height);
+                    for (i, l) in short.iter().enumerate() {
+                        graphics.draw_text(FONT_TEXT, l, px + 16.0, py + 8.0 + row * i as f32);
+                    }
                 }
             }
 
