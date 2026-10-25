@@ -2173,26 +2173,19 @@ fn tile_origin(x: i32, y: i32) -> (f32, f32) {
     ((x - y) as f32 * HALF_WIDTH, (x + y) as f32 * HALF_HEIGHT)
 }
 
-/// Case située sous un point du monde.
-/// Cases de `from` (exclue) à `to` (incluse), un pas en x ou en y à la fois.
-fn tile_steps(from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
-    let (mut x, mut y) = from;
-    let (dx, dy) = ((to.0 - x).abs(), (to.1 - y).abs());
-    let mut steps = Vec::with_capacity((dx + dy) as usize + 1);
-    let total = dx + dy;
-    for done in 1..=total {
-        // Avance sur l'axe en retard par rapport à la droite.
-        if (x - from.0).abs() * total < dx * done {
-            x += (to.0 - from.0).signum();
-        } else {
-            y += (to.1 - from.1).signum();
-        }
-        steps.push((x, y));
+/// Cases que couvre un geste de `from` à `to` : le tracé d'une route ou d'un mur, ou
+/// le rectangle à démolir.
+fn drag_tiles(world: &World, tool: Tool, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    match tool {
+        Tool::Road | Tool::Wall => world.plan_line(from, to, tool == Tool::Wall),
+        Tool::Demolish => (from.1.min(to.1)..=from.1.max(to.1)).flat_map(|y| (from.0.min(to.0)..=from.0.max(to.0)).map(move |x| (x, y))).collect(),
+        _ => Vec::new(),
     }
-    if steps.is_empty() {
-        steps.push(to);
-    }
-    steps
+}
+
+fn tile_at_pointer(view: &View, pointer: (f32, f32), w: f32, h: f32) -> (i32, i32) {
+    let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
+    tile_at(wx, wy)
 }
 
 fn tile_at(wx: f32, wy: f32) -> (i32, i32) {
@@ -4000,17 +3993,21 @@ fn run(
                                 *moved += dx.abs() + dy.abs();
                             }
                         }
-                        // Glisser avec le bouton gauche : parcourir la mini-carte, ou tracer une
-                        // route, ou démolir en continu.
+                        // Glisser avec le bouton gauche sur la mini-carte : la parcourir.
                         if let (true, Some(target)) = (buttons & sdl::BUTTON_LEFT_MASK != 0, minimap_at.target(pointer.0 / ui, pointer.1 / ui)) {
                             (view.cx, view.cy) = target;
-                        } else if buttons & sdl::BUTTON_LEFT_MASK != 0 {
-                            let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
-                            let (x, y) = tile_at(wx, wy);
-                            // Toutes les cases depuis la précédente, de proche en proche, pour
-                            // que la route reste continue quel que soit le geste.
-                            let path = tile_steps(drag_from.unwrap_or((x, y)), (x, y));
-                            for &(tx, ty) in &path {
+                        }
+                    }
+                    // Relâcher pose le tracé montré pendant le geste, comme dans le jeu : la
+                    // route ou le mur le long du chemin, ou la démolition du rectangle.
+                    sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => {
+                        if let Some(from) = drag_from.take() {
+                            let to = tile_at_pointer(&view, pointer, w, h);
+                            let tiles = drag_tiles(&world, tool, from, to);
+                            if tiles.is_empty() && matches!(tool, Tool::Road | Tool::Wall) {
+                                notice = ("Aucun chemin praticable jusque-là".to_string(), now);
+                            }
+                            for (tx, ty) in tiles {
                                 match tool {
                                     Tool::Road => drop(world.place_road(tx, ty, road_cost)),
                                     Tool::Wall => drop(world.place_wall(tx, ty, wall_cost)),
@@ -4018,14 +4015,14 @@ fn run(
                                     _ => {}
                                 }
                             }
-                            drag_from = Some((x, y));
                             hovered = (-1, -1);
                         }
                     }
-                    sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => drag_from = None,
                     sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_RIGHT => {
                         right_press = Some(0.0);
-                        // Le clic droit lâche aussi l'outil, comme dans le jeu.
+                        // Le clic droit lâche aussi l'outil, comme dans le jeu, et annule le
+                        // geste en cours.
+                        drag_from = None;
                         if tool != Tool::None {
                             (tool, hovered) = (Tool::None, (-1, -1));
                             right_press = None;
@@ -4162,18 +4159,8 @@ fn run(
                                     }
                                 }
                             }
-                            Tool::Road => {
-                                world.place_road(x, y, road_cost);
-                                drag_from = Some((x, y));
-                            }
-                            Tool::Wall => {
-                                world.place_wall(x, y, wall_cost);
-                                drag_from = Some((x, y));
-                            }
-                            Tool::Demolish => {
-                                world.demolish(x, y);
-                                drag_from = Some((x, y));
-                            }
+                            // Le geste commence ; il se pose au relâchement.
+                            Tool::Road | Tool::Wall | Tool::Demolish => drag_from = Some((x, y)),
                             Tool::Build(kind) => {
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
@@ -4205,6 +4192,8 @@ fn run(
             // Case survolée, affichée dans le titre avec son type de terrain.
             let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
             let under = tile_at(wx, wy);
+            // Geste en cours : ce qu'il poserait si on relâchait maintenant.
+            let drag_plan = drag_from.map(|from| drag_tiles(&world, tool, from, under)).unwrap_or_default();
             if under != hovered {
                 hovered = under;
                 let held = match tool {
@@ -4266,6 +4255,9 @@ fn run(
             let first_diff = (left / HALF_WIDTH).floor() as i32 - 8;
             let last_diff = (right / HALF_WIDTH).ceil() as i32 + 1;
             draw_list.clear();
+            if matches!(tool, Tool::Road | Tool::Wall) {
+                world.show_ghosts(&drag_plan, tool == Tool::Wall);
+            }
             for sum in first_sum.max(0)..=last_sum.min(2 * GRID as i32 - 2) {
                 for diff in first_diff..=last_diff {
                     if (sum + diff) % 2 != 0 {
@@ -4351,6 +4343,7 @@ fn run(
                 }
             }
             draw_list.sort_unstable_by_key(|&(depth, layer, ..)| (depth, layer));
+            world.hide_ghosts();
 
             sdl::SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             sdl::SDL_RenderClear(renderer);
@@ -4434,8 +4427,12 @@ fn run(
                     sdl::SDL_SetTextureAlphaMod(sprite.texture, 255);
                     sdl::SDL_SetTextureColorMod(sprite.texture, 255, 255, 255);
                 }
+            } else if tool == Tool::Demolish && !drag_plan.is_empty() {
+                for &tile in &drag_plan {
+                    outline_tile(renderer, &view, tile, w, h, (255, 60, 40));
+                }
             } else if in_grid(under) {
-                outline_tile(renderer, &view, under, w, h);
+                outline_tile(renderer, &view, under, w, h, (255, 255, 0));
             }
 
             if let (true, Some((texture, ..))) = (staged, scene) {
@@ -4450,6 +4447,19 @@ fn run(
             // lisible. Tout ce qui suit se mesure en unités d'interface.
             sdl::SDL_SetRenderScale(renderer, ui, ui);
             let (w, h) = (w / ui, h / ui);
+            // Coût du tracé, près du pointeur.
+            if matches!(tool, Tool::Road | Tool::Wall) && drag_from.is_some() {
+                let unit = if tool == Tool::Road { road_cost } else { wall_cost };
+                let fresh = drag_plan.iter().filter(|&&(x, y)| !world.is_road(x, y) && !world.is_wall(x, y)).count() as i32;
+                let label = if drag_plan.is_empty() { "—".to_string() } else { format!("{} {}", fresh * unit, text.get(8, 0)) };
+                let (lx, ly) = (pointer.0 / ui + 16.0, pointer.1 / ui - 8.0);
+                let width = graphics.text_width(FONT_SMALL, &label) + 8.0;
+                sdl::SDL_SetRenderDrawColor(renderer, 20, 20, 20, 200);
+                sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: lx - 4.0, y: ly - 2.0, w: width, h: graphics.line_height(FONT_SMALL) + 4.0 });
+                let color = if fresh * unit > world.money { FONT_SMALL } else { FONT_SMALL_GOLD };
+                graphics.draw_text(color, &label, lx, ly);
+            }
             // Habillage d'origine : le bandeau du haut, répété sur la largeur, et le
             // panneau latéral à droite, prolongé vers le bas sur les grands écrans.
             let line = graphics.line_height(FONT_TEXT);
@@ -5224,7 +5234,7 @@ fn in_grid((x, y): (i32, i32)) -> bool {
 }
 
 /// Trace le losange d'une case.
-unsafe fn outline_tile(renderer: sdl::Renderer, view: &View, (x, y): (i32, i32), w: f32, h: f32) {
+unsafe fn outline_tile(renderer: sdl::Renderer, view: &View, (x, y): (i32, i32), w: f32, h: f32, (r, g, b): (u8, u8, u8)) {
     let (ox, oy) = tile_origin(x, y);
     let corner = |dx: f32, dy: f32| view.to_screen(ox + dx, oy + dy, w, h);
     let points = [
@@ -5234,7 +5244,7 @@ unsafe fn outline_tile(renderer: sdl::Renderer, view: &View, (x, y): (i32, i32),
         corner(0.0, HALF_HEIGHT),
     ];
     unsafe {
-        sdl::SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+        sdl::SDL_SetRenderDrawColor(renderer, r, g, b, 255);
         for i in 0..4 {
             let (a, b) = (points[i], points[(i + 1) % 4]);
             sdl::SDL_RenderLine(renderer, a.0, a.1, b.0, b.1);

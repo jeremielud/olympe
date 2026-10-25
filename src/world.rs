@@ -7,7 +7,8 @@
 
 use crate::map::{City, EDGE_DRAW_TILE, FOREIGN, GRID, Map, RIVAL, Source, VASSAL};
 use crate::model::HouseModel;
-use std::collections::VecDeque;
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, VecDeque};
 
 /// Bits de la grille de terrain (hérités du moteur de Caesar III, vérifiés sur les cartes).
 pub const TERRAIN_TREE: u32 = 0x1;
@@ -1338,6 +1339,8 @@ pub struct Draw {
 
 pub struct World {
     pub map: Map,
+    /// Cases d'un tracé en cours, posées le temps de l'affichage : (case, contenu d'avant).
+    ghosts: Vec<(usize, Cell)>,
     pub kinds: Vec<Kind>,
     pub buildings: Vec<Option<Building>>,
     pub figures: Vec<Figure>,
@@ -1461,6 +1464,7 @@ impl World {
     pub fn new(map: Map, kinds: Vec<Kind>, house_levels: Vec<HouseModel>, walkers: WalkerImages, money: i32) -> World {
         let mut world = World {
             map,
+            ghosts: Vec::new(),
             kinds,
             buildings: Vec::new(),
             figures: Vec::new(),
@@ -1842,6 +1846,81 @@ impl World {
         self.cells[y as usize * GRID + x as usize] = Cell::Wall(WALL_HEALTH);
         self.money -= cost;
         true
+    }
+
+    /// Tracé d'une route (ou d'un mur) de `from` à `to`, comme quand on glisse dans le
+    /// jeu : le plus court chemin par les cases libres ou déjà de ce genre, en tournant
+    /// le moins possible. Vide si `to` est inaccessible.
+    pub fn plan_line(&self, from: (i32, i32), to: (i32, i32), wall: bool) -> Vec<(i32, i32)> {
+        const STEP: u32 = 10;
+        const TURN: u32 = 4;
+        const MARGIN: i32 = 12;
+        let passable = |x: i32, y: i32| self.is_free(x, y) || if wall { self.is_wall(x, y) } else { self.is_road(x, y) && !self.is_roadblock(x, y) };
+        if !passable(from.0, from.1) || !passable(to.0, to.1) {
+            return Vec::new();
+        }
+        let (left, top) = (from.0.min(to.0) - MARGIN, from.1.min(to.1) - MARGIN);
+        let (width, height) = ((from.0 - to.0).abs() + 2 * MARGIN + 1, (from.1 - to.1).abs() + 2 * MARGIN + 1);
+        const AXES: [(i32, i32); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
+        // État : case et direction d'arrivée (4 = départ).
+        let state = |x: i32, y: i32, d: usize| (((y - top) * width + (x - left)) as usize) * 5 + d;
+        let mut cost = vec![u32::MAX; (width * height) as usize * 5];
+        let mut previous = vec![usize::MAX; cost.len()];
+        let mut queue = BinaryHeap::new();
+        cost[state(from.0, from.1, 4)] = 0;
+        queue.push(Reverse((0, from.0, from.1, 4usize)));
+        while let Some(Reverse((c, x, y, d))) = queue.pop() {
+            if c > cost[state(x, y, d)] {
+                continue;
+            }
+            if (x, y) == to {
+                let mut line = Vec::new();
+                let mut at = state(x, y, d);
+                loop {
+                    let tile = at / 5;
+                    line.push((left + (tile as i32 % width), top + tile as i32 / width));
+                    at = previous[at];
+                    if at == usize::MAX {
+                        break;
+                    }
+                }
+                line.reverse();
+                return line;
+            }
+            for (nd, (dx, dy)) in AXES.iter().enumerate() {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx < left || ny < top || nx >= left + width || ny >= top + height || !passable(nx, ny) {
+                    continue;
+                }
+                let next = c + STEP + if d != 4 && d != nd { TURN } else { 0 };
+                let index = state(nx, ny, nd);
+                if next < cost[index] {
+                    cost[index] = next;
+                    previous[index] = state(x, y, d);
+                    queue.push(Reverse((next, nx, ny, nd)));
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Montre un tracé en cours comme s'il était posé (sans rien payer), jusqu'à
+    /// `hide_ghosts`.
+    pub fn show_ghosts(&mut self, tiles: &[(i32, i32)], wall: bool) {
+        self.hide_ghosts();
+        for &(x, y) in tiles {
+            if self.is_free(x, y) {
+                let index = y as usize * GRID + x as usize;
+                self.ghosts.push((index, self.cells[index]));
+                self.cells[index] = if wall { Cell::Wall(WALL_HEALTH) } else { Cell::Road };
+            }
+        }
+    }
+
+    pub fn hide_ghosts(&mut self) {
+        for (index, cell) in self.ghosts.drain(..).rev() {
+            self.cells[index] = cell;
+        }
     }
 
     /// La case porte un mur.

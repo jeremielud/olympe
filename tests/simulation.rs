@@ -1268,3 +1268,20 @@ fn a_roadblock_turns_back_the_rounds() {
     let (open, blocked) = (fire_risk(false), fire_risk(true));
     assert!(blocked > open, "ouverte {open}, barrée {blocked}");
 }
+
+#[test]
+fn a_dragged_road_goes_around_obstacles() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Une maison au milieu du chemin direct : le tracé la contourne, avec peu de virages.
+    assert!(world.place_building(HOUSE, x + 4, y + 2));
+    let line = world.plan_line((x, y + 2), (x + 10, y + 2), false);
+    assert!(!line.is_empty());
+    assert_eq!((line[0], *line.last().unwrap()), ((x, y + 2), (x + 10, y + 2)));
+    assert!(line.windows(2).all(|w| (w[0].0 - w[1].0).abs() + (w[0].1 - w[1].1).abs() == 1));
+    assert!(!line.iter().any(|&(lx, ly)| (x + 4..x + 6).contains(&lx) && (y + 2..y + 4).contains(&ly)));
+    // En terrain libre, un seul virage.
+    let line = world.plan_line((x, y + 6), (x + 8, y + 10), false);
+    let turns = line.windows(3).filter(|w| (w[1].0 - w[0].0, w[1].1 - w[0].1) != (w[2].0 - w[1].0, w[2].1 - w[1].1)).count();
+    assert_eq!((line.len(), turns), (13, 1));
+}
