@@ -1426,3 +1426,34 @@ fn an_atlantean_city_raises_atlantean_soldiers() {
     assert!(!defenders.is_empty());
     assert!(defenders.iter().all(|f| f.source == Source::Imps && (11..11 + 104 + 8 * 15).contains(&f.image())), "archers attendus");
 }
+
+#[test]
+fn a_chariot_factory_turns_wood_and_horses_into_chariots() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    for i in 0..10 {
+        assert!(world.place_road(x + i, y + 4, 3));
+    }
+    let (storehouse, factory, ranch) = (world.kinds.len(), world.kinds.len() + 1, world.kinds.len() + 2);
+    world.kinds.push(Kind::simple("entrepôt".into(), 70, 3, 934, Function::Storehouse, 0));
+    world.kinds.push(Kind::simple("fabrique de chars".into(), 225, 2, 679, Function::Workshop(Good::Chariot), 0));
+    world.kinds.push(Kind::simple("haras".into(), 200, 2, 723, Function::Producer(Good::Horses), 0));
+    world.kinds[factory].product = 22;
+    assert!(world.place_building(storehouse, x, y + 5));
+    assert!(world.place_building(factory, x + 4, y + 5));
+    assert!(world.place_building(ranch, x + 7, y + 5));
+    world.buildings.iter_mut().flatten().find(|b| b.kind == storehouse).unwrap().goods[Good::Wood as usize] = 4;
+    // Les porteurs apportent le bois de l'entrepôt et les chevaux du haras ; deux mois
+    // d'assemblage par char, qui rejoint l'entrepôt.
+    (0..6 * TICKS_PER_MONTH).for_each(|_| world.tick());
+    let state: Vec<_> = world.buildings.iter().flatten().map(|b| (b.kind, b.stock, b.goods)).collect();
+    assert!(world.produced[22] >= 1, "{state:?}");
+    assert!(world.stored(22) >= 1);
+    // Une cité atlante exige des chars pour ses logements luxueux ; la sauvegarde les
+    // garde.
+    let saved = world.save();
+    let (mut other, ..) = self::world(&data);
+    other.kinds = world.kinds.clone();
+    other.load(&saved).unwrap();
+    assert_eq!(other.stored(22), world.stored(22));
+}

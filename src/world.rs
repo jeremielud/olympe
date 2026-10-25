@@ -596,6 +596,9 @@ const PLUNDER_DRACHMAS: [f64; 5] = [5.0, 4.0, 3.0, 2.5, 2.0];
 const PLUNDER_DRACHMAS_UNIT: f64 = 200.0;
 const CARRY: [i32; 3] = [0, 50, 100];
 const TRIREME_CARRY: i32 = 600;
+/// Un char demande une charge de bois et une de chevaux (valeurs d'Olympe).
+const CHARIOT_WOOD: i32 = 1;
+const CHARIOT_HORSES: i32 = 1;
 /// Une trière compte pour six hommes dans une bataille au loin (0x4dea00).
 const TRIREME_FORCE: i32 = 6;
 /// Une marchandise pillée marque la cité de 15 ; au-delà de 40, elle ne peut plus
@@ -875,10 +878,23 @@ const AGORA_ROAD_IMAGES: usize = 3;
 pub const STOREHOUSE_BAYS: usize = 8;
 const BAY_LOADS: i32 = 4;
 const EMPTY_BAY_IMAGE: usize = 934;
-/// Une baie ne montre jamais qu'une sculpture.
-/// Le marbre noir et l'orichalque n'ont pas de baie dans `zeus_general.sg3` : ceux
-/// du marbre et du bronze en tiennent lieu.
-const BAY_FIRST_IMAGES: [usize; GOODS.len()] = [837, 861, 877, 881, 869, EMPTY_BAY_IMAGE, 845, 841, 849, 873, 849, 845];
+/// Une baie ne montre jamais qu'une sculpture. Le marbre noir, l'orichalque et les
+/// chars ont leurs baies dans `poseidon_loaded.sg3` (relevées à l'œil).
+const BAY_FIRST_IMAGES: [(Source, usize); GOODS.len()] = [
+    (Source::General, 837),
+    (Source::General, 861),
+    (Source::General, 877),
+    (Source::General, 881),
+    (Source::General, 869),
+    (Source::General, EMPTY_BAY_IMAGE),
+    (Source::General, 845),
+    (Source::General, 841),
+    (Source::General, 849),
+    (Source::General, 873),
+    (Source::Poseidon, 968),
+    (Source::Poseidon, 972),
+    (Source::Poseidon, 987),
+];
 /// Part des habitants des logements modestes qui travaillent (`Zeus.exe`, 0x4865a0),
 /// en pour cent : selon la difficulté, plus selon le niveau de salaire le plus proche
 /// (`WAGE_LEVELS`), plus selon la santé (dès 20, 35, 65 et 80).
@@ -952,6 +968,9 @@ pub enum Good {
     /// Marbre noir et orichalque de Poséidon, rangés à l'entrepôt.
     BlackMarble,
     Orichalc,
+    /// Chars de Poséidon : la fabrique les assemble avec du bois et des chevaux, les
+    /// logements luxueux atlantes les exigent à la place des chevaux.
+    Chariot,
 }
 
 /// Matière première d'un atelier.
@@ -971,7 +990,7 @@ fn raw_for(good: Good) -> Raw {
     }
 }
 
-pub const GOODS: [Good; 12] = [
+pub const GOODS: [Good; 13] = [
     Good::Food,
     Good::Fleece,
     Good::Oil,
@@ -984,6 +1003,7 @@ pub const GOODS: [Good; 12] = [
     Good::Sculpture,
     Good::BlackMarble,
     Good::Orichalc,
+    Good::Chariot,
 ];
 
 /// Ressources numérotées comme dans le jeu (groupe de textes 23, ressources et
@@ -1012,6 +1032,7 @@ pub fn resource_of(good: Good) -> Option<u8> {
         Good::Sculpture => Some(19),
         Good::BlackMarble => Some(16),
         Good::Orichalc => Some(17),
+        Good::Chariot => Some(22),
         Good::Food => None,
     }
 }
@@ -2359,6 +2380,7 @@ impl World {
                 }
                 // Chaque élément est porté par sa case la plus à gauche à l'écran.
                 let part = kind.parts.iter().find(|p| x == building.x + p.dx && y == building.y + p.dy + p.size - 1)?;
+                let mut bay_source = None;
                 let image = match (&building.house, part.crop, part.bay) {
                     // Logement luxueux : le rang de la baie désigne le quart du bâtiment.
                     (Some(house), _, Some(quadrant)) if house.level >= ELITE_FIRST_LEVEL => {
@@ -2367,7 +2389,11 @@ impl World {
                     }
                     (Some(house), ..) => HOUSE_IMAGES[house.level.min(HOUSE_IMAGES.len() - 1)],
                     (None, true, _) => part.image + self.crop_stage(building),
-                    (None, false, Some(bay)) => bay_image(&building.goods, bay as usize),
+                    (None, false, Some(bay)) => {
+                        let (source, image) = bay_image(&building.goods, bay as usize);
+                        bay_source = Some(source);
+                        image
+                    }
                     (None, false, None) => part.image,
                 };
                 let overlay = kind.stock_overlay.filter(|_| building.stock > 0);
@@ -2383,7 +2409,7 @@ impl World {
                             _ => (Source::General, image),
                         }
                     }
-                    _ => (part.source, image),
+                    _ => (bay_source.unwrap_or(part.source), image),
                 };
                 Some(Draw { source, image, burning: false, overlay, ground, lift: 0, above: None })
             }
@@ -2951,6 +2977,11 @@ impl World {
             }
         }
         moved
+    }
+
+    /// Monture des logements luxueux : chevaux, ou chars dans une cité atlante.
+    fn mount(&self) -> Good {
+        if self.atlantean { Good::Chariot } else { Good::Horses }
     }
 
     /// Défense la plus haute d'une cité du monde à ce jour.
@@ -3846,6 +3877,7 @@ impl World {
                 SANCTUARY_MATERIALS.iter().zip(needs).map(|(&good, need)| (good, need as i32)).collect()
             }
             Function::Wharf if building.staffed && building.stock == 0 => vec![(Good::Wood, TRIREME_WOOD), (Good::Arms, TRIREME_ARMS)],
+            Function::Workshop(Good::Chariot) if building.staffed => vec![(Good::Wood, CHARIOT_WOOD), (Good::Horses, CHARIOT_HORSES)],
             _ => Vec::new(),
         };
         wanted.into_iter().map(|(good, need)| (good, need - building.goods[good as usize])).filter(|&(_, missing)| missing > 0).collect()
@@ -3862,11 +3894,18 @@ impl World {
                     continue;
                 }
                 let Some(start) = self.road_next_to(id) else { continue };
+                // Les chevaux ne passent pas par l'entrepôt : on va les prendre au haras.
                 let has = |world: &World, store: u16| {
-                    world.function(store as usize) == Function::Storehouse && world.buildings[store as usize].as_ref().is_some_and(|b| b.goods[good as usize] > 0)
+                    let Some(b) = world.buildings[store as usize].as_ref() else { return false };
+                    match world.function(store as usize) {
+                        Function::Storehouse => b.goods[good as usize] > 0,
+                        Function::Producer(made) => made == good && good == Good::Horses && b.stock > 0,
+                        _ => false,
+                    }
                 };
                 let Some((store, mut path)) = self.road_path(start, has) else { continue };
-                let Some(shelf) = self.buildings[store as usize].as_mut().map(|b| &mut b.goods[good as usize]) else { continue };
+                let from_ranch = self.function(store as usize) != Function::Storehouse;
+                let Some(shelf) = self.buildings[store as usize].as_mut().map(|b| if from_ranch { &mut b.stock } else { &mut b.goods[good as usize] }) else { continue };
                 let load = (*shelf).min(missing).min(CARRIER_LOAD);
                 *shelf -= load;
                 // Le chemin va du chantier à l'entrepôt : le porteur le suit à rebours.
@@ -3915,6 +3954,7 @@ impl World {
         let Some(wanted) = self.house_levels.get(next) else { return vec![Need::Top] };
         let stadium_open = self.stadium_open();
         let state = HouseState {
+            mount: self.mount(),
             fed: house.goods[Good::Food as usize] >= house.population.max(1),
             had: house.goods.map(|amount| amount > 0),
             water: house.has(Service::Water, self.ticks),
@@ -4714,6 +4754,23 @@ impl World {
                         self.send_harvest(id, function);
                     }
                 }
+                Function::Workshop(Good::Chariot) => {
+                    let ready = building.goods[Good::Wood as usize] >= CHARIOT_WOOD && building.goods[Good::Horses as usize] >= CHARIOT_HORSES;
+                    if !ready || building.stock >= PRODUCER_STORAGE {
+                        self.buildings[id].as_mut().unwrap().sown_at = self.ticks;
+                    } else if self.ticks - building.sown_at >= WORKSHOP_TICKS {
+                        let building = self.buildings[id].as_mut().unwrap();
+                        building.sown_at = self.ticks;
+                        building.goods[Good::Wood as usize] -= CHARIOT_WOOD;
+                        building.goods[Good::Horses as usize] -= CHARIOT_HORSES;
+                        building.stock += 1;
+                        let kind = building.kind;
+                        self.count_production(kind, 1);
+                    }
+                    if stock >= GOODS_CART && !errand_out {
+                        self.send_harvest(id, function);
+                    }
+                }
                 Function::Workshop(_) => {
                     let raw = if function == Function::Workshop(Good::Sculpture) { SCULPTURE_BRONZE } else { 1 };
                     if building.raw < raw || building.stock >= PRODUCER_STORAGE {
@@ -4969,7 +5026,7 @@ impl World {
                     let reserve = match good {
                         Good::Food => HOUSE_FOOD_MONTHS * house.population.max(MIN_HOUSEHOLD),
                         // Seuls les logements luxueux prennent du vin, des armes et des chevaux.
-                        Good::Wine | Good::Arms | Good::Horses if house.level < ELITE_FIRST_LEVEL => 0,
+                        Good::Wine | Good::Arms | Good::Horses | Good::Chariot if house.level < ELITE_FIRST_LEVEL => 0,
                         _ => HOUSE_GOODS_RESERVE,
                     };
                     let given = (reserve - house.goods[*good as usize]).clamp(0, *carried);
@@ -5257,7 +5314,7 @@ impl World {
                     house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
-            let state = HouseState { fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open, self.atlantean), stadium_open };
+            let state = HouseState { mount: if self.atlantean { Good::Chariot } else { Good::Horses }, fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open, self.atlantean), stadium_open };
             let meets = |level: &HouseModel| state.missing(level).is_empty();
             let Some(current) = self.house_levels.get(house.level) else { continue };
             let (floor, next) = house_steps(house.level);
@@ -5433,17 +5490,18 @@ impl World {
 
 /// Image d'une baie d'entrepôt : les marchandises remplissent les baies dans l'ordre
 /// de `GOODS`, chacune commençant une nouvelle baie.
-fn bay_image(goods: &[i32; GOODS.len()], bay: usize) -> usize {
+fn bay_image(goods: &[i32; GOODS.len()], bay: usize) -> (Source, usize) {
     let mut first = 0;
     for (good, &loads) in goods.iter().enumerate() {
         let bays = ((loads + BAY_LOADS - 1) / BAY_LOADS) as usize;
         if bay < first + bays {
             let inside = if GOODS[good] == Good::Sculpture { 1 } else { (loads - (bay - first) as i32 * BAY_LOADS).clamp(1, BAY_LOADS) };
-            return BAY_FIRST_IMAGES[good] + inside as usize - 1;
+            let (source, image) = BAY_FIRST_IMAGES[good];
+            return (source, image + inside as usize - 1);
         }
         first += bays;
     }
-    EMPTY_BAY_IMAGE
+    (Source::General, EMPTY_BAY_IMAGE)
 }
 
 /// Marchandise qu'un bâtiment de cette fonction range à l'entrepôt.
@@ -5487,6 +5545,9 @@ pub enum Need {
 
 /// Ce dont dispose une maison au regard des exigences des niveaux.
 struct HouseState {
+    /// Monture qu'exige la colonne « chevaux » des règles : des chars dans une cité
+    /// atlante.
+    mount: Good,
     fed: bool,
     had: [bool; GOODS.len()],
     water: bool,
@@ -5506,7 +5567,7 @@ impl HouseState {
             (level.olive_oil > 0 && !self.had[Good::Oil as usize], Need::Goods(Good::Oil)),
             (level.wine > 0 && !self.had[Good::Wine as usize], Need::Goods(Good::Wine)),
             (level.arms > 0 && !self.had[Good::Arms as usize], Need::Goods(Good::Arms)),
-            (level.horses > 0 && !self.had[Good::Horses as usize], Need::Goods(Good::Horses)),
+            (level.horses > 0 && !self.had[self.mount as usize], Need::Goods(self.mount)),
         ]
         .into_iter()
         .filter_map(|(missing, need)| missing.then_some(need))
@@ -5552,10 +5613,10 @@ fn direction(from: (u16, u16), to: (u16, u16)) -> usize {
 }
 
 /// En-tête des fichiers de sauvegarde ; le numéro change quand le format change.
-const SAVE_HEADER: &str = "zeus-sauvegarde 13";
+const SAVE_HEADER: &str = "zeus-sauvegarde 14";
 /// Versions précédentes, encore lues, et nombre de marchandises qu'elles connaissaient
 /// (les plus récentes s'ajoutent à la fin de `GOODS`).
-const OLD_SAVE_HEADERS: [(&str, usize); 4] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7), ("zeus-sauvegarde 11", 9), ("zeus-sauvegarde 12", GOODS.len())];
+const OLD_SAVE_HEADERS: [(&str, usize); 5] = [("zeus-sauvegarde 9", 6), ("zeus-sauvegarde 10", 7), ("zeus-sauvegarde 11", 9), ("zeus-sauvegarde 12", 12), ("zeus-sauvegarde 13", 12)];
 
 impl World {
     /// État de la partie sous forme de texte : une ligne par route, bâtiment ou
@@ -5725,7 +5786,7 @@ impl World {
     pub fn load(&mut self, text: &str) -> Result<(), String> {
         let mut lines = text.lines();
         let header = lines.clone().next();
-        let counts_workers = header == Some(SAVE_HEADER);
+        let counts_workers = matches!(header, Some(SAVE_HEADER | "zeus-sauvegarde 13"));
         let goods_len = match lines.next() {
             Some(SAVE_HEADER) => GOODS.len(),
             Some(header) => OLD_SAVE_HEADERS.iter().find(|(old, _)| *old == header).map(|&(_, len)| len).ok_or("ce n'est pas une sauvegarde de cette version")?,

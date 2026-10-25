@@ -31,9 +31,7 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 
 Manque encore notamment : les rotations de la vue, le choix des compagnies envoyées
 au loin (toute l'armée et toute la flotte partent), et dans
-les cités atlantes la frégate et la fabrique de chars (la trière et le haras en
-tiennent lieu) ; leurs soldats, eux, sont déjà des archers, lanciers et chars
-atlantes.
+les cités atlantes la frégate (la trière en tient lieu).
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -94,6 +92,11 @@ Ce qui fonctionne :
 - soldats des cités atlantes : archers, lanciers et chars de `poseidonimps.sg3`
   (mêmes règles que piétaille, hoplites et cavaliers, comme dans les règles des
   personnages du jeu), avec leurs animations de marche et de combat ;
+- chars des cités atlantes : l'usine à chars se fait livrer du bois par l'entrepôt et
+  des chevaux par le haras (un de chaque par char, quantités d'Olympe), range ses
+  chars à l'entrepôt (baies de Poséidon), et le marchand de chars de l'agora les
+  porte aux logements luxueux, qui les exigent à la place des chevaux ; le marbre
+  noir et l'orichalque ont aussi retrouvé leurs vraies baies ;
 - jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
   Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
   départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de

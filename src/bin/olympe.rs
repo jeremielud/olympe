@@ -129,6 +129,12 @@ const TYPE_WHARF: usize = 136;
 const TYPE_RACETRACK: usize = 199;
 const TYPE_ORICHALC_REFINERY: usize = 211;
 const TYPE_BLACK_MARBLE_SHOP: usize = 213;
+/// Fabrique et marchand de chars des cités atlantes : images de `poseidon_loaded.sg3`
+/// relevées à l'œil (fabrique 4 × 4 ; échoppe vide, puis garnie).
+const TYPE_CHARIOT_WORKSHOP: usize = 212;
+const TYPE_CHARIOT_VENDOR: usize = 215;
+const CHARIOT_WORKSHOP_IMAGE: usize = 679;
+const CHARIOT_VENDOR_IMAGE: usize = 926;
 const RACETRACK_IMAGE: usize = 426;
 const WHARF_IMAGE: usize = 721;
 /// Science atlante : bibliothèque (comme le gymnase), université et observatoire
@@ -147,7 +153,7 @@ const SCIENCE_KINDS: [(usize, usize, usize, Function, usize); 6] = [
 /// dresseur de chevaux restent ouverts aux cités atlantes : ils y tiennent lieu du
 /// quai à frégates et du marchand de chars, qu'Olympe n'a pas.
 const GREEK_ONLY: [usize; 6] = [77, 78, 79, 80, 81, 82];
-const ATLANTEAN_ONLY: [usize; 6] = [202, 203, 204, 205, 206, 207];
+const ATLANTEAN_ONLY: [usize; 8] = [202, 203, 204, 205, 206, 207, TYPE_CHARIOT_WORKSHOP, TYPE_CHARIOT_VENDOR];
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
     (TYPE_HOUSE, 1006, Function::House, 0),
     (74, 1055, Function::Service(Service::Water), GROUP_WATER_BEARER),
@@ -262,7 +268,7 @@ const VENDORS: [(usize, usize, usize, Good, usize); 6] = [
     (73, 455, 456, Good::Horses, GROUP_HORSE_TRAINER),
 ];
 /// Noms des marchandises dans le groupe de textes 23, dans l'ordre de `GOODS`.
-const GOOD_TEXTS: [usize; 12] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19, 16, 17];
+const GOOD_TEXTS: [usize; 13] = [25, 14, 20, 21, 18, 15, 10, 9, 11, 19, 16, 17, 22];
 /// Sanctuaires : temple d'un seul tenant (puis, deux plus loin, moitiés arrière et
 /// avant des grands temples) dans `zeus_sanctuaryN.sg3`, grande statue (quatre
 /// orientations) dans `zeus_godNN.sg3`, et dans `zeus_general.sg3` : petites statues
@@ -333,7 +339,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Oil) => "AGORA_OIL",
         Function::Vendor(Good::Wine) => "AGORA_WINE",
         Function::Vendor(Good::Arms | Good::Bronze | Good::Wood | Good::Marble | Good::Sculpture | Good::BlackMarble | Good::Orichalc) => "AGORA_ARMS",
-        Function::Vendor(Good::Horses) => "AGORA_HORSE",
+        Function::Vendor(Good::Horses | Good::Chariot) => "AGORA_HORSE",
         Function::Stadium | Function::Annex | Function::Racetrack | Function::Museum => "STADIUM",
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
         Function::None | Function::Commemorative(_) => "BEAUTIFICATION",
@@ -3146,6 +3152,22 @@ fn run(
     let mut roadblock = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_ROADBLOCK), rules(TYPE_ROADBLOCK)?.cost, 1, ROADBLOCK_IMAGE, Function::Roadblock, 0);
     roadblock.appeal = appeal_of(TYPE_ROADBLOCK)?;
     kinds.push(roadblock);
+    // Chars de Poséidon : la fabrique, puis le marchand (son marchand ambulant est celui
+    // des chevaux, faute d'avoir relevé le sien).
+    let mut factory = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_CHARIOT_WORKSHOP), rules(TYPE_CHARIOT_WORKSHOP)?.cost, 4, CHARIOT_WORKSHOP_IMAGE, Function::Workshop(Good::Chariot), 0);
+    factory.parts[0].source = Source::Poseidon;
+    factory.employees = rules(TYPE_CHARIOT_WORKSHOP)?.employees;
+    factory.appeal = appeal_of(TYPE_CHARIOT_WORKSHOP)?;
+    (factory.fire_risk, factory.damage_risk) = (rules(TYPE_CHARIOT_WORKSHOP)?.fire_risk, rules(TYPE_CHARIOT_WORKSHOP)?.damage_risk);
+    factory.product = zeus::world::resource_of(Good::Chariot).unwrap_or(0);
+    kinds.push(factory);
+    let mut chariots = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_CHARIOT_VENDOR), rules(TYPE_CHARIOT_VENDOR)?.cost, 2, CHARIOT_VENDOR_IMAGE, Function::Vendor(Good::Chariot), group(GROUP_HORSE_TRAINER));
+    chariots.parts[0].source = Source::Poseidon;
+    chariots.stock_overlay = Some(CHARIOT_VENDOR_IMAGE + 1);
+    chariots.employees = rules(TYPE_CHARIOT_VENDOR)?.employees;
+    chariots.appeal = plot_appeal;
+    (chariots.fire_risk, chariots.damage_risk) = (rules(TYPE_CHARIOT_VENDOR)?.fire_risk, rules(TYPE_CHARIOT_VENDOR)?.damage_risk);
+    kinds.push(chariots);
     let _ = ALLOWED_SLOT.set(allowed_slots(&kinds, &text));
     let _ = NATION.set(nations(&kinds, &text));
     let walkers = WalkerImages { immigrant: group(GROUP_IMMIGRANT), elite_immigrant: group(GROUP_ELITE_IMMIGRANT), carrier: group(GROUP_CARRIER), hoplite: group(GROUP_HOPLITE), rabble: group(GROUP_RABBLE), horseman: group(GROUP_HORSEMAN), ship: group(GROUP_SHIP), buyer: group(GROUP_BUYER), atlantean: GROUPS_ATLANTEAN.map(|g| imps.groups.get(g).copied().unwrap_or(0)) };
