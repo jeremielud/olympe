@@ -3286,6 +3286,8 @@ fn run(
         // Journal des annonces (touche J) : date et texte, la plus récente en dernier.
         let mut journal: Vec<(String, String)> = Vec::new();
         let (mut journal_panel, mut logged) = (false, notice.clone());
+        // Annonces arrivées depuis la dernière ouverture du journal.
+        let mut unread = 0usize;
         let mut speed = NORMAL_SPEED;
         graphics.set_ground(plain_ground(&world));
         // Mini-carte : texture, emplacement à l'écran (x, y) et images écoulées depuis sa mise à jour.
@@ -3874,6 +3876,7 @@ fn run(
                     let year = if start_year == 0 { year as i64 + 1 } else { start_year as i64 + year as i64 };
                     let date = format!("{} {} {}{}", day + 1, months[month as usize], year.abs(), if year < 0 { " av. J.-C." } else { "" });
                     journal.push((date, notice.0.clone()));
+                    unread += 1;
                     if journal.len() > JOURNAL_LINES {
                         journal.remove(0);
                     }
@@ -4566,6 +4569,17 @@ fn run(
                     Some(_) => 0,
                 };
                 graphics.blit(image + state, slot.0, slot.1);
+                // Sur le parchemin des messages, le nombre de nouvelles annonces.
+                if key == Some(sdl::KEY_J) {
+                    if journal_panel {
+                        unread = 0;
+                    }
+                    if unread > 0 {
+                        let count = unread.min(99).to_string();
+                        let width = graphics.text_width(FONT_SMALL, &count);
+                        graphics.draw_text(FONT_SMALL, &count, slot.0 + (slot.2 - width) / 2.0, slot.1 + (slot.3 - graphics.line_height(FONT_SMALL)) / 2.0);
+                    }
+                }
                 if let Some(key) = key {
                     menu_rows.push((slot, MenuRow::Key(key)));
                 }
