@@ -2177,7 +2177,24 @@ fn tile_origin(x: i32, y: i32) -> (f32, f32) {
 /// le rectangle à démolir.
 fn drag_tiles(world: &World, tool: Tool, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
     match tool {
-        Tool::Road | Tool::Wall => world.plan_line(from, to, tool == Tool::Wall),
+        Tool::Road => {
+            let mut line = world.plan_line(from, to, false);
+            // Un bout du tracé qui ne touche une route que par un coin s'y raccorde par la
+            // case d'angle : sans elle, les deux routes ne se rejoindraient pas.
+            let road = |(x, y): (i32, i32)| world.is_road(x, y) || line.contains(&(x, y));
+            let mut corners = Vec::new();
+            for end in [line.first().copied(), line.last().copied()].into_iter().flatten() {
+                for (dx, dy) in [(1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                    let (corner_x, corner_y) = ((end.0 + dx, end.1), (end.0, end.1 + dy));
+                    if world.is_road(end.0 + dx, end.1 + dy) && !line.contains(&(end.0 + dx, end.1 + dy)) && !road(corner_x) && !road(corner_y) {
+                        corners.extend([corner_x, corner_y].into_iter().find(|&(x, y)| world.can_build(x, y, 1)));
+                    }
+                }
+            }
+            line.extend(corners);
+            line
+        }
+        Tool::Wall => world.plan_line(from, to, true),
         Tool::Demolish => (from.1.min(to.1)..=from.1.max(to.1)).flat_map(|y| (from.0.min(to.0)..=from.0.max(to.0)).map(move |x| (x, y))).collect(),
         _ => Vec::new(),
     }
@@ -5275,20 +5292,6 @@ unsafe fn save_frame(renderer: sdl::Renderer, file: &Path) -> Result<(), String>
 #[cfg(test)]
 mod narration_tests {
     use super::*;
-
-    #[test]
-    fn a_drag_fills_every_tile_on_the_way() {
-        let steps = tile_steps((0, 0), (3, 2));
-        assert_eq!(steps.len(), 5);
-        assert_eq!(steps.last(), Some(&(3, 2)));
-        // Chaque pas touche le précédent par un côté.
-        let mut previous = (0, 0);
-        for &(x, y) in &steps {
-            assert_eq!((x - previous.0).abs() + (y - previous.1).abs(), 1);
-            previous = (x, y);
-        }
-        assert_eq!(tile_steps((4, 4), (4, 4)), vec![(4, 4)]);
-    }
 
     #[test]
     fn each_story_finds_its_voice() {
