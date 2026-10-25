@@ -148,6 +148,11 @@ Ce qui fonctionne :
   choix du joueur quand l'aventure en propose plus qu'elle n'a d'épisodes de colonie),
   retour à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours
   et les colonies choisies ;
+- interface du jeu : bandeau avec menus Fichier, Options et Aide ; panneau latéral
+  avec onglets de catégories, informations de la catégorie (couverture des services,
+  logements libres…), boutons « Voir… », boutons illustrés des groupes de bâtiments,
+  onglet de la carte générale, zone des messages ; bulles d'aide au survol ; fiche
+  d'un bâtiment au clic droit ; pause par `P` avec son bandeau ;
 - vues en surimpression (touche `V`) : eau, risques d'incendie et d'effondrement,
   attrait, criminalité, culture, santé et impôts, chaque bâtiment teinté du vert au
   rouge ;
