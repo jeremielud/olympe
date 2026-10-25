@@ -162,12 +162,43 @@ const ROAD_VARIANT: [usize; 16] = [17, 14, 15, 6, 16, 1, 7, 11, 13, 5, 0, 10, 4,
 pub const COMMEMORATIVES: usize = 9;
 pub const COMMEMORATIVE_GROWTH: u8 = 0;
 pub const COMMEMORATIVE_VICTORY: u8 = 1;
+pub const COMMEMORATIVE_ATHLETES: u8 = 3;
 pub const COMMEMORATIVE_CONQUEST: u8 = 4;
+pub const COMMEMORATIVE_WISDOM: u8 = 8;
 pub const COMMEMORATIVE_HERO: u8 = 6;
 pub const COMMEMORATIVE_ALLY: u8 = 7;
 /// Paliers de population qui, atteints pour la première fois, valent un monument
 /// (annonces `population_1000` à `population_25000` des messages du jeu).
 const POPULATION_MILESTONES: [i32; 7] = [1000, 2000, 5000, 10000, 15000, 20000, 25000];
+/// Jeux panhelléniques (Zeus.exe, objet 0x1082b78) : chaque année les siens, selon
+/// `(année + (mois > 7)) & 3` (0x47b6e0) : Olympiques, Isthmiques (philosophes),
+/// Néméens (athlètes), Pythiques (acteurs). Ils commencent au sixième mois et se
+/// concluent au huitième (événements 0x23 et 0x25 posés par 0x5e7ca0).
+pub const GAMES_OLYMPIAN: u8 = 0;
+pub const GAMES_ISTHMIAN: u8 = 1;
+pub const GAMES_NEMEAN: u8 = 2;
+pub const GAMES_PYTHIAN: u8 = 3;
+const GAMES_BEGIN_MONTH: u64 = 5;
+const GAMES_END_MONTH: u64 = 7;
+/// Score qui assure au moins la deuxième place (0x5e81ce).
+const GAMES_SECOND: i32 = 30;
+/// Bonus d'un bâtiment unique achevé (0x54be4f sur l'objet 0xf920d4), que nous
+/// n'avons pas identifié : l'hippodrome fermé, par hypothèse.
+const GAMES_BONUS: i32 = 20;
+
+/// Nouvelles des jeux, pour prévenir le joueur.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GamesNews {
+    /// Les jeux commencent ; `home` : ce sont ceux de la cité.
+    Begin { kind: u8, home: bool },
+    /// La cité n'a personne à envoyer.
+    CantParticipate(u8),
+    /// La cité devait accueillir les jeux, mais elle n'a pas de stade.
+    HomeCancelled,
+    /// Fin des jeux : 2 gagnés, 1 deuxièmes, 0 perdus.
+    Concluded { kind: u8, home: bool, place: u8 },
+}
+
 /// Voisines dans l'ordre des bits ci-dessus.
 const NEIGHBOURS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 /// Les huit directions de marche, dans l'ordre des images de personnage.
@@ -1445,6 +1476,14 @@ pub struct World {
     pub commemoratives: Vec<u8>,
     /// Paliers de population déjà atteints.
     milestones: u8,
+    /// Jeux panhelléniques : années avant les premiers (aucun si `None`), année de
+    /// départ de l'épisode (le type de jeux en dépend), cité désignée pour accueillir
+    /// les prochains Olympiques, jeux en cours (type, chez soi, place), nouvelles.
+    pub games_from: Option<i32>,
+    pub start_year: i32,
+    games_host: bool,
+    games_running: Option<(u8, bool, u8)>,
+    pub games_news: Vec<GamesNews>,
     /// Prix de base des marchandises, lus dans la carte (0 : pas de prix réglé).
     pub base_prices: [i32; RESOURCES],
     pub trade_news: Vec<(usize, u8, u8)>,
@@ -1536,6 +1575,11 @@ impl World {
             trade_policy: [TradePolicy::Both; RESOURCES],
             commemoratives: Vec::new(),
             milestones: 0,
+            games_from: None,
+            start_year: 0,
+            games_host: false,
+            games_running: None,
+            games_news: Vec::new(),
             base_prices: [0; RESOURCES],
             trade_news: Vec::new(),
             wage_shift: 0,
@@ -3643,9 +3687,98 @@ impl World {
             self.months_in_debt = if self.money < 0 { self.months_in_debt + 1 } else { 0 };
             self.update_houses();
             self.reach_milestones();
+            self.run_games();
             self.assign_workers();
             self.settle_month();
             self.aim_health();
+        }
+    }
+
+    /// Jeux panhelléniques, au début de chaque mois : départ des concurrents au sixième
+    /// mois, résultat au huitième.
+    fn run_games(&mut self) {
+        let (_, month, year) = self.date();
+        if self.games_from.is_none_or(|from| (year as i32) < from) {
+            return;
+        }
+        let kind = ((self.start_year + year as i32) & 3) as u8;
+        match month {
+            GAMES_BEGIN_MONTH => {
+                let home = kind == GAMES_OLYMPIAN && self.games_host;
+                let count = |f: Function| self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == f).count() as i32;
+                let (podiums, colleges) = (count(Function::Service(Service::Philosophy)), count(Function::School(Service::Philosophy)));
+                let (gymnasiums, stadiums) = (count(Function::Service(Service::Athletics)), count(Function::Stadium));
+                let (theatres, drama_schools) = (count(Function::Service(Service::Drama)), count(Function::School(Service::Drama)));
+                if home && stadiums == 0 {
+                    self.games_host = false;
+                    self.games_news.push(GamesNews::HomeCancelled);
+                    return;
+                }
+                // Qui peut concourir (0x5e7e57).
+                let able = match kind {
+                    GAMES_ISTHMIAN => podiums > 0,
+                    GAMES_NEMEAN => gymnasiums + stadiums > 0,
+                    GAMES_PYTHIAN => theatres > 0,
+                    _ => podiums + gymnasiums + stadiums + theatres > 0,
+                };
+                if !able {
+                    self.games_news.push(GamesNews::CantParticipate(kind));
+                    return;
+                }
+                // Score (0x5e8082) : le quart de la part des habitants desservis, plus les
+                // lieux de la discipline ; un stade compte cinq fois.
+                let covered = |service: Service| {
+                    let (mut served, mut all) = (0, 0);
+                    for house in self.buildings.iter().flatten().filter_map(|b| b.house.as_ref()) {
+                        all += house.population;
+                        if house.has(service, self.ticks) {
+                            served += house.population;
+                        }
+                    }
+                    if all == 0 { 0 } else { served * 100 / all }
+                };
+                let philosophy = covered(Service::Philosophy) / 4 + colleges + podiums;
+                let athletics = covered(Service::Athletics) / 4 + gymnasiums + 5 * stadiums;
+                let drama = covered(Service::Drama) / 4 + drama_schools + theatres;
+                let bonus = if self.hippodrome().1 { GAMES_BONUS } else { 0 };
+                let mut score = bonus
+                    + match kind {
+                        GAMES_ISTHMIAN => philosophy,
+                        GAMES_NEMEAN => athletics,
+                        GAMES_PYTHIAN => drama,
+                        _ => (philosophy + athletics + drama) / 3 + 4 * stadiums,
+                    };
+                // Un héros présent dans la cité porte le score au carré, divisé par 6,25
+                // (0x5e816e, d'après le temple des héros).
+                let away: Vec<u8> = self.quests.iter().filter(|q| matches!(q.state, QuestState::Away { .. })).map(|q| q.hero).collect();
+                if (0..self.heroes.len()).any(|h| self.heroes[h] && !away.contains(&(h as u8))) {
+                    score = score * score * 4 / 25;
+                }
+                let roll = (self.next_random() % 100) as i32;
+                let place = if roll < score { 2 } else if score >= GAMES_SECOND { 1 } else { 0 };
+                self.games_running = Some((kind, home, place));
+                self.games_news.push(GamesNews::Begin { kind, home });
+            }
+            GAMES_END_MONTH => {
+                let Some((kind, home, place)) = self.games_running.take() else { return };
+                self.games_news.push(GamesNews::Concluded { kind, home, place });
+                // Les vainqueurs d'Olympie accueillent les prochains jeux (0x5e8238).
+                if kind == GAMES_OLYMPIAN {
+                    self.games_host = place == 2;
+                }
+                if place != 2 {
+                    return;
+                }
+                self.commemoratives.push(if matches!(kind, GAMES_OLYMPIAN | GAMES_NEMEAN) { COMMEMORATIVE_ATHLETES } else { COMMEMORATIVE_WISDOM });
+                // Les cités du monde en sont plus favorables (0x5e8998) : alliées et
+                // vassales de 5, les autres de 10 ; 10 de plus pour les Olympiques.
+                let extra = if kind == GAMES_OLYMPIAN { 10 } else { 0 };
+                for city in self.cities.iter_mut().filter(|c| c.active && c.kind == FOREIGN) {
+                    let gain = if matches!(city.status, crate::map::ALLY | VASSAL) { 5 } else { 10 } + extra;
+                    city.favor = (city.favor + gain).min(100);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -5154,6 +5287,8 @@ impl World {
         let _ = writeln!(out, "commerce {}", policies.join(" "));
         let monuments: Vec<String> = self.commemoratives.iter().map(|m| m.to_string()).collect();
         let _ = writeln!(out, "commemoratifs {} {}", self.milestones, monuments.join(" "));
+        let running = self.games_running.map_or("-".to_string(), |(kind, home, place)| format!("{kind} {} {place}", home as u8));
+        let _ = writeln!(out, "jeux {} {running}", self.games_host as u8);
         let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
         let _ = writeln!(out, "migrants {} {} {} {}", self.migrants.0, self.migrants.1, self.migration_pause.0, self.migration_pause.1);
         let _ = writeln!(out, "sante {} {} {} {} {}", self.health, self.health_target, self.plagues.0, self.plagues.1, self.plague_month as u8);
@@ -5309,6 +5444,7 @@ impl World {
         // Réglages du commerce : absents des sauvegardes plus anciennes.
         let mut trade_policy = [TradePolicy::Both; RESOURCES];
         let mut commemoratives = (0, Vec::new());
+        let mut games = (false, None);
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -5325,6 +5461,10 @@ impl World {
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
+                }
+                "jeux" => {
+                    let running = (rest.get(1) != Some(&"-")).then(|| Ok::<_, String>((number_at(1)? as u8, number_at(2)? != 0, number_at(3)? as u8))).transpose()?;
+                    games = (number_at(0)? != 0, running);
                 }
                 "commemoratifs" => {
                     let numbers: Vec<u8> = rest.iter().filter(|w| !w.is_empty()).map(|w| w.parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
@@ -5596,6 +5736,7 @@ impl World {
         [self.produced, self.best_produced, self.set_aside, self.carried, self.price_shift] = counters;
         self.trade_policy = trade_policy;
         (self.milestones, self.commemoratives) = commemoratives;
+        (self.games_host, self.games_running) = games;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;

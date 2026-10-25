@@ -1272,6 +1272,7 @@ fn lock_resources(world: &mut World, episode: &Episode) {
     let farmable = FARM_RESOURCES.iter().any(|&crop| has(crop)) || [RESOURCE_FISH, RESOURCE_MEAT, RESOURCE_CHEESE].into_iter().any(has);
     world.max_sanctuaries = episode.max_sanctuaries;
     world.atlantean = episode.atlantean;
+    world.games_from = episode.games.map(i32::from);
     // Ce que la liste des bâtiments autorisés de l'épisode interdit.
     let slots = ALLOWED_SLOT.get();
     let wrong_nation = |kind: usize| NATION.get().and_then(|n| n.get(kind)).is_some_and(|&n| n == if episode.atlantean { 1 } else { 2 });
@@ -3163,6 +3164,7 @@ fn run(
         return audit(data, &world, &text);
     }
     let start_year = settings.as_ref().map_or(0, |s| s.start_year);
+    world.start_year = start_year;
     let mut journey = Journey { order: settings.as_ref().map(Settings::order).unwrap_or_default(), position: 0, home: None, colony_maps };
     let episode = |step: Step| settings.as_ref().and_then(|s| s.episode(step));
     // La démonstration a droit à tout.
@@ -3808,6 +3810,24 @@ fn run(
                 };
                 notice = (line, now);
                 world.world_news.clear();
+            }
+            // Jeux panhelléniques : les lettres du jeu, et un mot dans la zone des messages.
+            for news in world.games_news.drain(..) {
+                let games = |kind: u8| ["olympian", "isthmian", "nemean", "pythian"][kind as usize & 3];
+                let chief = [("player_name", "Chef".to_string())];
+                let (title, body, line) = match news {
+                    zeus::world::GamesNews::Begin { home: true, .. } => ("home_games_begin_title".to_string(), "home_games_begin_initial_announcement".to_string(), "Les jeux de la cité commencent"),
+                    zeus::world::GamesNews::Begin { kind, .. } => (format!("{}_games_begin_title", games(kind)), format!("{}_games_begin_initial_announcement_go", games(kind)), "Nos concurrents partent aux jeux"),
+                    zeus::world::GamesNews::CantParticipate(kind) => (format!("{}_games_cant_participate_title", games(kind)), format!("{}_games_cant_participate_initial_announcement", games(kind)), "Personne à envoyer aux jeux"),
+                    zeus::world::GamesNews::HomeCancelled => ("home_games_cancelled_title".to_string(), "home_games_cancelled_initial_announcement".to_string(), "Jeux de la cité annulés : il faut un stade"),
+                    zeus::world::GamesNews::Concluded { kind, home, place } => {
+                        let outcome = ["lost", "second", "won"][place.min(2) as usize];
+                        let name = if home { "home" } else { games(kind) };
+                        (format!("{name}_games_conclude_title"), format!("{name}_games_conclude_initial_announcement_{outcome}"), ["Jeux perdus", "Deuxièmes aux jeux", "Jeux gagnés !"][place.min(2) as usize])
+                    }
+                };
+                post(&title, &body, &chief);
+                notice = (line.to_string(), now);
             }
             if let Some(incident) = world.incidents.pop() {
                 if let zeus::world::Incident::Plague { .. } = incident {

@@ -29,7 +29,7 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde ; batailles au loin simplifiées) | 55 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : les jeux panhelléniques, les batailles menées au loin (une
+Manque encore notamment : les batailles menées au loin (une
 cité se soumet par simple comparaison des forces), les rotations de la vue, et dans
 les cités atlantes les frégates, les chars et les soldats propres à l'Atlantide
 (trières, chevaux et soldats grecs en tiennent lieu).
@@ -79,6 +79,12 @@ Ce qui fonctionne :
   atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; points de
   science mesurés dans le jeu : astronomie 20, apprentissage 15, recherche 25 (le
   musée compte comme le stade, non mesuré) ;
+- jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
+  Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
+  départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de
+  lieux de la discipline (un héros présent aide) ; une victoire vaut un monument
+  commémoratif et la faveur des cités du monde, une victoire aux Olympiques fait
+  accueillir les suivants, ce qui exige un stade ;
 - `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
   objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
   pour ce qu'il faut produire, et assez de culture permise pour les logements

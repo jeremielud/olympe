@@ -1305,3 +1305,34 @@ fn a_commemorative_monument_is_built_once_earned() {
     assert!(world.commemoratives.is_empty());
     assert!(!world.place_building(victory, x + 4, y), "un seul par victoire");
 }
+
+#[test]
+fn the_isthmian_games_need_philosophers() {
+    use zeus::world::{GAMES_ISTHMIAN, GamesNews};
+    let Some(data) = data() else { return };
+    let games = |podium: bool| {
+        let (mut world, x, y) = world(&data);
+        // L'an 1 : année des jeux Isthmiques ((1 + 0) & 3 = 1).
+        (world.games_from, world.start_year) = (Some(0), 1);
+        if podium {
+            world.kinds.push(Kind::simple("podium".into(), 0, 2, 1055, Function::Service(Service::Philosophy), 0));
+            assert!(world.place_building(world.kinds.len() - 1, x, y));
+        }
+        let mut news = Vec::new();
+        for month in 0..8 {
+            (0..TICKS_PER_MONTH).for_each(|_| world.tick());
+            news.extend(world.games_news.drain(..));
+            // Les jeux en cours survivent à une sauvegarde.
+            if podium && month == 5 {
+                let saved = world.save();
+                assert!(saved.contains("\njeux 0 1 0 "), "{}", saved.lines().find(|l| l.starts_with("jeux")).unwrap_or(""));
+                world.load(&saved).unwrap();
+            }
+        }
+        news
+    };
+    assert_eq!(games(false), vec![GamesNews::CantParticipate(GAMES_ISTHMIAN)]);
+    let news = games(true);
+    assert_eq!(news[0], GamesNews::Begin { kind: GAMES_ISTHMIAN, home: false });
+    assert!(matches!(news[1], GamesNews::Concluded { kind: GAMES_ISTHMIAN, home: false, .. }), "{news:?}");
+}

@@ -303,3 +303,20 @@ fn atlantean_adventures_are_flagged() {
         assert!(!atlantean(pak), "{pak}");
     }
 }
+
+#[test]
+fn some_episodes_hold_panhellenic_games() {
+    let Some(data) = data() else { return };
+    let mut with_games = Vec::new();
+    for file in files(&data.join("adventures"), "pak") {
+        let settings = Settings::parse(&fs::read(&file).unwrap()).unwrap();
+        for (rank, episode) in settings.parent.iter().enumerate() {
+            if let Some(years) = episode.games {
+                // Dans les aventures livrées, le délai vaut toujours 0 : jeux dès le départ.
+                assert_eq!(years, 0, "{} épisode {rank}", file.display());
+                with_games.push((file.clone(), rank));
+            }
+        }
+    }
+    assert_eq!(with_games.len(), 47);
+}

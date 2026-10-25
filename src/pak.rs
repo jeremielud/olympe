@@ -37,6 +37,9 @@ const ALLOWED: usize = 1032;
 /// Aventure atlante : la science y remplace la culture (mesuré dans le jeu, lu en
 /// 0x902bb0 ; 1 pour les quatre aventures atlantes de Poséidon).
 const ATLANTEAN: usize = 648;
+/// Jeux panhelléniques : années avant les premiers jeux (16 bits signés), −1 si
+/// l'épisode n'en a pas (lu en 0x99eea0 par Zeus.exe, fiche en 0x99eb78).
+const GAMES: usize = 808;
 pub const ALLOWED_SLOTS: usize = 58;
 const MAX_RESOURCES: usize = 16;
 /// Mythologie de chaque épisode (dix de la cité mère, puis quatre de colonie), une
@@ -158,6 +161,8 @@ pub struct Episode {
     pub allowed: Vec<bool>,
     /// Épisode atlante : science, hippodrome et pyramides au lieu de la culture grecque.
     pub atlantean: bool,
+    /// Années avant les premiers jeux panhelléniques, s'il y en a.
+    pub games: Option<i16>,
     /// Événements, par rang (les objectifs de quête et de monstre y renvoient).
     pub events: Vec<Event>,
 }
@@ -394,6 +399,7 @@ impl Settings {
                             if flags.iter().any(|&f| f) { flags } else { Vec::new() }
                         },
                         atlantean: int(record + ATLANTEAN).is_some_and(|flag| flag != 0),
+                        games: file.get(record + GAMES..record + GAMES + 2).map(|b| i16::from_le_bytes([b[0], b[1]])).filter(|&years| years >= 0),
                     })
                 })
                 .collect()
