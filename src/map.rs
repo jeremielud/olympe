@@ -31,6 +31,7 @@ pub struct Map {
 const IMAGES: usize = 4;
 const EDGES: usize = 5;
 const TERRAIN: usize = 6;
+const HEIGHTS: usize = 23;
 /// Réglages du scénario ; à l'octet 908, deux points (x, y en 16 bits) : entrée et
 /// sortie des voyageurs.
 const SCENARIO: usize = 14;
@@ -407,6 +408,11 @@ impl Map {
             (!bytes.is_empty()).then(|| bytes.iter().map(|&b| crate::text::cp1252(b)).collect::<String>())
         };
         block.data.chunks_exact(block.element_size).map(|r| (string(r, CITY_TITLE, CITY_LEADER_TITLE), string(r, CITY_LEADER_TITLE, block.element_size))).collect()
+    }
+
+    /// Hauteur du terrain (0 à 2 niveaux, bloc 23 : 0x8e01fa dans `Zeus.exe`).
+    pub fn height(&self, x: usize, y: usize) -> u8 {
+        self.blocks.get(HEIGHTS).filter(|b| b.element_size == 1 && b.count == GRID * GRID).map_or(0, |b| b.data[y * GRID + x])
     }
 
     pub fn terrain(&self, x: usize, y: usize) -> u32 {

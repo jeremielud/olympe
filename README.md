@@ -103,7 +103,9 @@ Ce qui fonctionne :
   carrières, plages, marais, broussailles, prés, herbe en plaques), qui retrouve
   99,9 % des images des cartes à l'orientation 0 ; les bâtiments gardent leur seule
   vue et c'est leur emprise qui tourne, le palais prend ses images de l'autre sens,
-  la mini-carte et les personnages tournent avec la vue ;
+  la mini-carte et les personnages tournent avec la vue ; le terrain surélevé se
+  dessine 30 pixels plus haut par niveau, comme dans le jeu (hauteurs du bloc 23 des
+  cartes), et la souris désigne la case surélevée dessinée sous elle ;
 - jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
   Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
   départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de

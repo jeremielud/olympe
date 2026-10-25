@@ -61,6 +61,8 @@ en jeu : H affiche l'aide";
 /// Demi-largeur et demi-hauteur d'une case à l'écran, à l'échelle 1.
 const HALF_WIDTH: f32 = 30.0;
 const HALF_HEIGHT: f32 = 15.0;
+/// Hauteur d'un niveau de terrain surélevé, en pixels.
+const LEVEL_HEIGHT: f32 = 30.0;
 const ZOOM_MIN: f32 = 0.25;
 const ZOOM_MAX: f32 = 6.0;
 /// Déplacement d'une touche fléchée, en pixels d'écran.
@@ -2265,10 +2267,21 @@ fn build_corner(world: &World, kind: usize, at: (i32, i32)) -> (i32, i32) {
     World::footprint_corner(orientation(), at, k.size as i32, k.depth as i32)
 }
 
-fn tile_at_pointer(view: &View, pointer: (f32, f32), w: f32, h: f32) -> (i32, i32) {
-    let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
-    tile_at(wx, wy)
+/// Case désignée à la souris : une case surélevée de k niveaux se dessine à la place
+/// de la case plate décalée de (−k, −k) à l'écran, et passe devant elle.
+fn pick(world: &World, wx: f32, wy: f32) -> (i32, i32) {
+    let u = (wx - HALF_WIDTH) / HALF_WIDTH;
+    let v = (wy - HALF_HEIGHT) / HALF_HEIGHT;
+    let flat = (((v + u) / 2.0).round() as i32, ((v - u) / 2.0).round() as i32);
+    for k in [2, 1] {
+        let tile = zeus::world::unrotate(orientation(), flat.0 + k, flat.1 + k);
+        if in_grid(tile) && world.map.height(tile.0 as usize, tile.1 as usize) as i32 == k {
+            return tile;
+        }
+    }
+    zeus::world::unrotate(orientation(), flat.0, flat.1)
 }
+
 
 fn tile_at(wx: f32, wy: f32) -> (i32, i32) {
     let u = (wx - HALF_WIDTH) / HALF_WIDTH;
@@ -3522,6 +3535,7 @@ fn run(
                     }
                     ("mc", &[x, y]) => {
                         let (wx, wy) = tile_origin(x as i32, y as i32);
+                        let wy = wy - LEVEL_HEIGHT * if in_grid((x as i32, y as i32)) { world.map.height(x as usize, y as usize) as f32 } else { 0.0 };
                         let at = view.to_screen(wx + HALF_WIDTH, wy + HALF_HEIGHT, w / ui, h / ui);
                         let at = (at.0 * ui, at.1 * ui);
                         let moved = sdl::Event::mouse_motion(script_pointer, at, script_buttons);
@@ -4200,7 +4214,7 @@ fn run(
                     // route ou le mur le long du chemin, ou la démolition du rectangle.
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => {
                         if let Some(from) = drag_from.take() {
-                            let to = tile_at_pointer(&view, pointer, w, h);
+                            let to = { let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h); pick(&world, wx, wy) };
                             let tiles = drag_tiles(&world, tool, from, to);
                             if tiles.is_empty() && matches!(tool, Tool::Road | Tool::Wall) {
                                 notice = ("Aucun chemin praticable jusque-là".to_string(), now);
@@ -4230,7 +4244,7 @@ fn run(
                         // Un clic droit sans glisser ouvre la fiche du bâtiment visé.
                         if right_press.take().is_some_and(|moved| moved < 6.0) {
                             let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
-                            let at = tile_at(wx, wy);
+                            let at = pick(&world, wx, wy);
                             info_pinned = world.building_at(at.0, at.1).map(|_| at);
                         }
                     }
@@ -4327,7 +4341,7 @@ fn run(
                             continue;
                         }
                         let (wx, wy) = view.to_world(mx, my, w, h);
-                        let (x, y) = tile_at(wx, wy);
+                        let (x, y) = pick(&world, wx, wy);
                         match tool {
                             // Sans outil, un passant cliqué dit quelques mots.
                             Tool::None => {
@@ -4381,7 +4395,7 @@ fn run(
 
             // Case survolée, affichée dans le titre avec son type de terrain.
             let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
-            let under = tile_at(wx, wy);
+            let under = pick(&world, wx, wy);
             // Geste en cours : ce qu'il poserait si on relâchait maintenant.
             let drag_plan = drag_from.map(|from| drag_tiles(&world, tool, from, under)).unwrap_or_default();
             if under != hovered {
@@ -4474,7 +4488,10 @@ fn run(
                         let n = graphics.size(draw.source, draw.image);
                         let height = graphics.catalog(draw.source).images.get(draw.image).map_or(0, |i| i.height) as f32;
                         // L'image part du bord gauche de sa case ; son bas est celui de l'emprise.
+                        // Le terrain surélevé se dessine 30 pixels plus haut par niveau
+                        // (`Zeus.exe` 0x44af13).
                         let (ox, oy) = tile_origin(tile.0, tile.1);
+                        let oy = oy - LEVEL_HEIGHT * world.map.height(tile.0 as usize, tile.1 as usize) as f32;
                         let top = oy + (n as f32 + 1.0) * HALF_HEIGHT - height - draw.lift as f32;
                         if let Some((source, image)) = draw.ground {
                             let ground_height = graphics.catalog(source).images.get(image).map_or(0, |i| i.height) as f32;
@@ -4540,7 +4557,8 @@ fn run(
                 let Some(info) = graphics.catalog(figure.source).images.get(image) else { continue };
                 let (fx, fy) = zeus::world::rotate_point(orientation(), figure.x, figure.y);
                 let wx = (fx - fy) * HALF_WIDTH + HALF_WIDTH - 1.0 - info.offset_x as f32;
-                let wy = (fx + fy) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32;
+                let level = world.map.height((figure.x.round() as usize).min(GRID - 1), (figure.y.round() as usize).min(GRID - 1)) as f32;
+                let wy = (fx + fy) * HALF_HEIGHT + HALF_HEIGHT - info.offset_y as f32 - LEVEL_HEIGHT * level;
                 if wx < right && wx + info.width as f32 > left && wy < bottom && wy + info.height as f32 > top {
                     draw_list.push(((fx + fy).ceil() as i32, i32::MAX, wx, wy, figure.source, image, None));
                 }
@@ -4620,6 +4638,7 @@ fn run(
                     let Some(sprite) = graphics.sprite(part.source, part.image) else { continue };
                     let carrier = zeus::world::unrotate(orientation(), start.0 + part.dx as i32, start.1 + part.dy as i32 + part.size as i32 - 1);
                     let (ox, oy) = tile_origin(carrier.0, carrier.1);
+                    let oy = oy - if in_grid(carrier) { LEVEL_HEIGHT * world.map.height(carrier.0 as usize, carrier.1 as usize) as f32 } else { 0.0 };
                     let (sx, sy) = view.to_screen(ox, oy + (part.size as f32 + 1.0) * HALF_HEIGHT - sprite.height, w, h);
                     let target = sdl::FRect {
                         x: sx.floor(),
@@ -4635,10 +4654,10 @@ fn run(
                 }
             } else if tool == Tool::Demolish && !drag_plan.is_empty() {
                 for &tile in &drag_plan {
-                    outline_tile(renderer, &view, tile, w, h, (255, 60, 40));
+                    outline_tile(renderer, &view, &world, tile, w, h, (255, 60, 40));
                 }
             } else if in_grid(under) {
-                outline_tile(renderer, &view, under, w, h, (255, 255, 0));
+                outline_tile(renderer, &view, &world, under, w, h, (255, 255, 0));
             }
 
             if let (true, Some((texture, ..))) = (staged, scene) {
@@ -5467,8 +5486,9 @@ fn in_grid((x, y): (i32, i32)) -> bool {
 }
 
 /// Trace le losange d'une case.
-unsafe fn outline_tile(renderer: sdl::Renderer, view: &View, (x, y): (i32, i32), w: f32, h: f32, (r, g, b): (u8, u8, u8)) {
+unsafe fn outline_tile(renderer: sdl::Renderer, view: &View, world: &World, (x, y): (i32, i32), w: f32, h: f32, (r, g, b): (u8, u8, u8)) {
     let (ox, oy) = tile_origin(x, y);
+    let oy = oy - LEVEL_HEIGHT * if in_grid((x, y)) { world.map.height(x as usize, y as usize) as f32 } else { 0.0 };
     let corner = |dx: f32, dy: f32| view.to_screen(ox + dx, oy + dy, w, h);
     let points = [
         corner(HALF_WIDTH, 0.0),
