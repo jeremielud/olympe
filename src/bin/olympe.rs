@@ -610,6 +610,8 @@ enum MenuRow {
     Overlay(Overlay),
     /// Zone des messages du panneau : ouvre le journal.
     Journal,
+    /// Menu du bandeau (Fichier, Options, Aide) : l'ouvre ou le referme.
+    TopMenu(usize),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -3113,6 +3115,8 @@ fn run(
         // Message passager en bas d'écran, et instant où il est apparu.
         let mut notice = ("H : aide".to_string(), sdl::SDL_GetTicks());
         let mut help = false;
+        // Menu du bandeau ouvert (0 Fichier, 1 Options, 2 Aide).
+        let mut top_menu: Option<usize> = None;
         // Images dessinées, et instant de la première, pour `--mesure`.
         let (mut frames, mut measure_start, mut slowest, mut previous_frame) = (0u32, 0u64, 0u64, 0u64);
         // Récit d'ouverture, affiché jusqu'au premier clic ou à la première touche. Pas
@@ -3840,7 +3844,12 @@ fn run(
                                 hovered = (-1, -1);
                                 continue;
                             }
+                            Some(MenuRow::TopMenu(index)) => {
+                                top_menu = if top_menu == Some(index) { None } else { Some(index) };
+                                continue;
+                            }
                             Some(MenuRow::Key(key)) => {
+                                top_menu = None;
                                 let mut pressed = sdl::Event::key_down(0, key);
                                 sdl::SDL_PushEvent(&mut pressed);
                                 continue;
@@ -3883,6 +3892,11 @@ fn run(
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
                                     Err(_) => (format!("{name} ne peut pas être soumise"), now),
                                 };
+                                continue;
+                            }
+                            None if top_menu.is_some() => {
+                                // Un clic hors du menu déroulé le referme.
+                                top_menu = None;
                                 continue;
                             }
                             None => {}
@@ -4238,10 +4252,21 @@ fn run(
             );
             let status_width = graphics.text_width(FONT_CHROME, &status);
             graphics.draw_text(FONT_CHROME, &status, side - status_width - 16.0, (TOP_BAR_HEIGHT - line) / 2.0);
-            // Le titre ne s'affiche que s'il tient à gauche des chiffres : dans une
-            // fenêtre étroite, ce sont eux qui comptent.
-            if 12.0 + graphics.text_width(FONT_CHROME, &display_name) + 24.0 <= side - status_width - 16.0 {
-                graphics.draw_text(FONT_CHROME, &display_name, 12.0, (TOP_BAR_HEIGHT - line) / 2.0);
+            // Menus du bandeau, comme dans le jeu : Fichier, Options, Aide.
+            let menu_titles = [text.get(1, 0), text.get(2, 0), text.get(3, 0)];
+            let mut menu_x = 12.0;
+            let mut menu_slots = Vec::new();
+            for title in &menu_titles {
+                let width = graphics.text_width(FONT_CHROME, title) + 20.0;
+                let slot = (menu_x - 6.0, 0.0, width, TOP_BAR_HEIGHT);
+                graphics.draw_text(FONT_CHROME, title, menu_x, (TOP_BAR_HEIGHT - line) / 2.0);
+                menu_slots.push(slot);
+                menu_x += width;
+            }
+            // Le titre ne s'affiche que s'il tient entre les menus et les chiffres : dans
+            // une fenêtre étroite, ce sont eux qui comptent.
+            if menu_x + 12.0 + graphics.text_width(FONT_CHROME, &display_name) + 24.0 <= side - status_width - 16.0 {
+                graphics.draw_text(FONT_CHROME, &display_name, menu_x + 12.0, (TOP_BAR_HEIGHT - line) / 2.0);
             }
 
             // Onglets des catégories dans la colonne du panneau, avec leurs icônes
@@ -4745,6 +4770,46 @@ fn run(
                 graphics.panel(px, py, width, height);
                 for (i, l) in HELP.iter().enumerate() {
                     graphics.draw_text(FONT_TEXT, l, px + 24.0, py + 12.0 + row * i as f32);
+                }
+            }
+
+            // Menu du bandeau déroulé : chaque ligne fait comme sa touche.
+            for (index, &slot) in menu_slots.iter().enumerate() {
+                menu_rows.push((slot, MenuRow::TopMenu(index)));
+            }
+            if let Some(index) = top_menu {
+                let items: Vec<(String, u32)> = match index {
+                    0 => vec![(format!("{} (F5)", text.get(1, 4)), sdl::KEY_F5), (format!("{} (F9)", text.get(1, 3)), sdl::KEY_F9), (format!("{} (Q)", text.get(1, 5)), sdl::KEY_Q)],
+                    1 => vec![
+                        ("Musique (M)".to_string(), sdl::KEY_M),
+                        ("Bruitages (B)".to_string(), sdl::KEY_B),
+                        ("Plein écran (F)".to_string(), sdl::KEY_F),
+                        ("Plus vite (Page préc.)".to_string(), sdl::KEY_PAGEUP),
+                        ("Plus lent (Page suiv.)".to_string(), sdl::KEY_PAGEDOWN),
+                        ("Pause (P)".to_string(), sdl::KEY_P),
+                        ("Vues (V)".to_string(), sdl::KEY_V),
+                    ],
+                    _ => vec![
+                        (format!("{} (H)", text.get(3, 0)), sdl::KEY_H),
+                        ("Objectifs (O)".to_string(), sdl::KEY_O),
+                        ("Conseillers (A)".to_string(), sdl::KEY_A),
+                        ("Cités du monde (C)".to_string(), sdl::KEY_C),
+                        ("Journal (J)".to_string(), sdl::KEY_J),
+                    ],
+                };
+                let width = items.iter().map(|(label, _)| graphics.text_width(FONT_TEXT, label)).fold(0.0, f32::max) + 32.0;
+                let (px, py) = (menu_slots[index].0, TOP_BAR_HEIGHT);
+                let height = row * items.len() as f32 + 10.0;
+                graphics.panel(px, py, width, height);
+                graphics.panel(px, py, width, height);
+                for (i, (label, key)) in items.iter().enumerate() {
+                    let slot = (px, py + 5.0 + row * i as f32, width, row);
+                    if inside(slot) {
+                        sdl::SDL_SetRenderDrawColor(renderer, 200, 160, 40, 90);
+                        sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0 + 4.0, y: slot.1 - 1.0, w: width - 8.0, h: row - 2.0 });
+                    }
+                    graphics.draw_text(FONT_TEXT, label, px + 16.0, slot.1 + 3.0);
+                    menu_rows.push((slot, MenuRow::Key(*key)));
                 }
             }
 
