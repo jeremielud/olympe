@@ -692,7 +692,7 @@ enum MenuRow {
     Category(usize),
     Pick(Tool),
     /// Envoie l'armée soumettre cette cité du monde, ou y ouvre une route commerciale.
-    Conquer(usize),
+    Conquer(usize, bool),
     Trade(usize),
     /// Satisfait la demande de ce rang.
     Fulfil(usize),
@@ -3811,6 +3811,32 @@ fn run(
                 notice = (line, now);
                 world.world_news.clear();
             }
+            // Campagnes lointaines de l'armée : les lettres du jeu.
+            for news in std::mem::take(&mut world.campaign_news) {
+                use zeus::world::CampaignNews;
+                let city = match news {
+                    CampaignNews::Conquered(c) | CampaignNews::ConquestFailed(c) | CampaignNews::WipedOut(c) => c,
+                    CampaignNews::Returned { city, .. } | CampaignNews::Plunder { city, .. } => city,
+                };
+                let mut fields = city_fields(&text, &world, &leaders, city);
+                fields.push(("nationality", "ennemie".to_string()));
+                let name = city_name(&text, &world, city);
+                let (title, body, line) = match news {
+                    CampaignNews::Conquered(_) => ("city_conquered_by_player_title", "city_conquered_by_player_initial_announcement", format!("{name} est conquise")),
+                    CampaignNews::ConquestFailed(_) => ("players_conquest_fails_title", "players_conquest_fails_initial_announcement", format!("Notre armée est vaincue à {name}")),
+                    CampaignNews::WipedOut(_) => ("raiding_party_wiped_out_title", "raiding_party_wiped_out_initial_announcement", format!("Nos pillards sont anéantis à {name}")),
+                    CampaignNews::Returned { won: true, .. } => ("legion_returns_player_action_good_title", "legion_returns_player_action_good_initial_announcement", "L'armée rentre victorieuse".to_string()),
+                    CampaignNews::Returned { won: false, .. } => ("legion_returns_player_action_bad_title", "legion_returns_player_action_bad_initial_announcement", "L'armée rentre vaincue".to_string()),
+                    CampaignNews::Plunder { resource, amount, .. } => {
+                        fields.push(("amount", amount.to_string()));
+                        fields.push(("item", text.get(23, resource as usize).to_lowercase()));
+                        let body = if resource == zeus::world::DRACHMAS { "raiding_party_returns_cash_granted" } else { "raiding_party_returns_granted" };
+                        ("raiding_party_returns_title", body, format!("Butin de {name} : {amount}"))
+                    }
+                };
+                post(title, body, &fields);
+                notice = (line, now);
+            }
             // Jeux panhelléniques : les lettres du jeu, et un mot dans la zone des messages.
             for news in world.games_news.drain(..) {
                 let games = |kind: u8| ["olympian", "isthmian", "nemean", "pythian"][kind as usize & 3];
@@ -4199,13 +4225,13 @@ fn run(
                                 };
                                 continue;
                             }
-                            Some(MenuRow::Conquer(city)) => {
+                            Some(MenuRow::Conquer(city, raid)) => {
                                 let name = city_name(&text, &world, city);
-                                notice = match world.conquer(city) {
-                                    Ok(()) => (format!("{name} devient vassale"), now),
-                                    Err(Conquest::TooWeak { army, defence }) => (format!("Armée trop faible contre {name} : {army} sur {defence}"), now),
+                                notice = match world.conquer(city, raid) {
+                                    Ok(months) => (format!("L'armée part {} {name} : {months} mois de marche", if raid { "piller" } else { "attaquer" }), now),
+                                    Err(Conquest::NoArmy) => ("La cité n'a pas de soldats à envoyer".to_string(), now),
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
-                                    Err(_) => (format!("{name} ne peut pas être soumise"), now),
+                                    Err(_) => (format!("{name} ne peut pas être attaquée"), now),
                                 };
                                 continue;
                             }
@@ -5065,28 +5091,36 @@ fn run(
             if cities_panel {
                 let heading = "Cités du monde".to_string();
                 let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();
-                // Chaque ligne : la cité (clic : la soumettre), puis le commerce (clic :
-                // ouvrir une route).
-                let rows: Vec<(usize, String, String)> = world
+                // Chaque ligne : la cité (clic : la soumettre), le raid (clic : la piller),
+                // puis le commerce (clic : ouvrir une route).
+                let rows: Vec<(usize, String, String, String)> = world
                     .cities
                     .iter()
                     .enumerate()
                     .filter(|(_, c)| c.active && c.kind == zeus::map::FOREIGN)
                     .map(|(i, c)| {
                         let status = statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default();
-                        let action = if c.status <= zeus::map::RIVAL { format!(", soumettre : {} sur {}", world.army(), world.defence(i)) } else { String::new() };
+                        let open = c.status <= zeus::map::RIVAL;
+                        let action = if open { format!(", défense {}, {} mois de marche) [soumettre]", world.defence(i), world.travel_months(i)) } else { ")".to_string() };
+                        let raid = if open { "  [piller]".to_string() } else { String::new() };
                         let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
                         let trade = match (c.trade, c.status == zeus::map::RIVAL) {
-                            (true, _) => format!("  vend {} ; achète {} (ventes {} dr., achats {} dr.)", names(&c.sells), names(&c.buys), c.sold, c.bought),
-                            (false, false) => format!("  vend {} ; achète {} [ouvrir le commerce : {} dr.]", names(&c.sells), names(&c.buys), zeus::world::TRADE_ROUTE_COST),
+                            (true, _) => format!("Vend {} ; achète {} (ventes {} dr., achats {} dr.)", names(&c.sells), names(&c.buys), c.sold, c.bought),
+                            (false, false) => format!("Vend {} ; achète {} [ouvrir le commerce : {} dr.]", names(&c.sells), names(&c.buys), zeus::world::TRADE_ROUTE_COST),
                             (false, true) => String::new(),
                         };
-                        (i, format!("{} ({status}, faveur {}, force {}{}{action})", city_name(&text, &world, i), c.favor, c.military, if world.army_away(i) { ", armée partie" } else { "" }), trade)
+                        let away = if world.army_away(i) { ", armée partie" } else { "" };
+                        (i, format!("{} ({status}, faveur {}, force {}{away}{action}", city_name(&text, &world, i), c.favor, c.military), raid, trade)
                     })
                     .collect();
-                let line_width = |(_, city, trade): &(usize, String, String)| graphics.text_width(FONT_TEXT, city) + graphics.text_width(FONT_TEXT, trade);
+                // Le commerce d'une cité s'écrit en retrait sur une seconde ligne.
+                let indent = 24.0;
+                let line_width = |(_, city, raid, trade): &(usize, String, String, String)| {
+                    (graphics.text_width(FONT_TEXT, city) + graphics.text_width(FONT_TEXT, raid)).max(indent + graphics.text_width(FONT_TEXT, trade))
+                };
+                let lines = rows.iter().map(|r| if r.3.is_empty() { 1 } else { 2 }).sum::<usize>();
                 let width = rows.iter().map(line_width).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
-                let height = title_line + 32.0 + row * rows.len().max(1) as f32;
+                let height = title_line + 32.0 + row * lines.max(1) as f32;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
                 graphics.panel(px, py, width, height);
                 graphics.panel(px, py, width, height);
@@ -5138,14 +5172,21 @@ fn run(
                     graphics.draw_text(FONT_TEXT, &line, px + 24.0, y + 4.0);
                     menu_rows.push(((px, y, line_width, row), MenuRow::Policy(resource)));
                 }
-                for (i, (city, line, trade)) in rows.iter().enumerate() {
-                    let y = py + title_line + 24.0 + row * i as f32;
-                    let split = px + 24.0 + graphics.text_width(FONT_TEXT, line);
+                let mut y = py + title_line + 24.0;
+                for (city, line, raid, trade) in &rows {
+                    let middle = px + 24.0 + graphics.text_width(FONT_TEXT, line);
+                    let end = middle + graphics.text_width(FONT_TEXT, raid);
                     graphics.draw_text(FONT_TEXT, line, px + 24.0, y);
-                    graphics.draw_text(FONT_TEXT, trade, split, y);
-                    menu_rows.push(((px, y, split - px, row), MenuRow::Conquer(*city)));
+                    graphics.draw_text(FONT_TEXT, raid, middle, y);
+                    menu_rows.push(((px, y, middle - px, row), MenuRow::Conquer(*city, false)));
+                    if !raid.is_empty() {
+                        menu_rows.push(((middle, y, end - middle, row), MenuRow::Conquer(*city, true)));
+                    }
+                    y += row;
                     if !trade.is_empty() {
-                        menu_rows.push(((split, y, px + width - split, row), MenuRow::Trade(*city)));
+                        graphics.draw_text(FONT_TEXT, trade, px + 24.0 + indent, y);
+                        menu_rows.push(((px, y, width, row), MenuRow::Trade(*city)));
+                        y += row;
                     }
                 }
             }

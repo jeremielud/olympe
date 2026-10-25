@@ -26,11 +26,11 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Interface (menus, fiches, vues, journal, superviseurs, panneaux) | 80 % |
 | Commerce et cités du monde | 70 % |
 | Mythologie (dieux, héros, monstres, quêtes) | 65 % |
-| Armée et combats (murs, tours, corps de garde ; batailles au loin simplifiées) | 55 % |
+| Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 65 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : les batailles menées au loin (une
-cité se soumet par simple comparaison des forces), les rotations de la vue, et dans
+Manque encore notamment : les rotations de la vue, le choix des compagnies envoyées
+au loin (toute l'armée part), les trières dans les campagnes lointaines, et dans
 les cités atlantes les frégates, les chars et les soldats propres à l'Atlantide
 (trières, chevaux et soldats grecs en tiennent lieu).
 
@@ -79,6 +79,16 @@ Ce qui fonctionne :
   atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; points de
   science mesurés dans le jeu : astronomie 20, apprentissage 15, recherche 25 (le
   musée compte comme le stade, non mesuré) ;
+- campagnes lointaines (panneau des cités du monde, touche `C`) : l'armée part
+  soumettre ou piller une cité étrangère, marche le temps que donne la route du monde
+  (longueur × allure / 200 mois, deux au moins), livre bataille puis rentre, comme dans
+  `Zeus.exe` : un homme de piétaille ou un hoplite compte pour un, un cavalier pour
+  deux ; la défense d'une cité vaut √(années, trente au plus) × barème de difficulté
+  × son niveau militaire, moitié moins si son armée est partie, et remonte d'un point
+  par mois ; pertes des deux camps selon l'écart des forces (barèmes du jeu), soldats
+  tombés retirés des logements qui les fournissaient ; un raid victorieux rapporte une
+  marchandise que la cité échange (dans la limite de ce que portent hoplites et
+  cavaliers) ou des drachmes selon sa richesse ;
 - jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
   Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
   départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de

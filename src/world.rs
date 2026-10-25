@@ -224,7 +224,7 @@ const ROAD_ACCESS_RANGE: i32 = 2;
 
 /// Calendrier du jeu d'origine, relevé dans ses sauvegardes (blocs 37, 38 et 6 : pas
 /// du jour de 0 à 49, jour de 0 à 15, mois de 0 à 11).
-const TICKS_PER_DAY: u64 = 50;
+pub const TICKS_PER_DAY: u64 = 50;
 const DAYS_PER_MONTH: u64 = 16;
 pub const TICKS_PER_MONTH: u64 = TICKS_PER_DAY * DAYS_PER_MONTH;
 /// Images de marche d'un personnage, par direction.
@@ -538,16 +538,101 @@ pub struct Scheduled {
     pub resource: u8,
 }
 
-/// Pourquoi une conquête n'a pas lieu.
+/// Pourquoi une campagne ne part pas.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Conquest {
     NotForeign,
     AlreadyRuled,
     Away,
-    TooWeak { army: i32, defence: i32 },
+    NoArmy,
 }
 
-const CONQUEST_PER_SHIELD: i32 = 24;
+/// Campagne lointaine de l'armée : conquête, ou raid (`raid`) pour un butin. Les
+/// soldats partis (piétaille, hoplites, cavaliers) manquent à la cité jusqu'au retour.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Expedition {
+    pub city: usize,
+    pub raid: bool,
+    pub soldiers: [i32; 3],
+    /// Pas de l'arrivée devant la cité, puis du retour une fois la bataille livrée.
+    pub arrives: u64,
+    pub returns: u64,
+    /// Issue de la bataille, une fois livrée.
+    pub won: Option<bool>,
+    /// Butin d'un raid victorieux : ressource (23 pour des drachmes) et quantité.
+    pub loot: (u8, i32),
+}
+
+/// Nouvelles des campagnes lointaines, pour prévenir le joueur.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CampaignNews {
+    Conquered(usize),
+    ConquestFailed(usize),
+    /// Raid anéanti : personne ne revient.
+    WipedOut(usize),
+    /// Retour de l'armée, victorieuse ou non.
+    Returned { city: usize, won: bool },
+    /// Butin rapporté d'un raid : ressource et quantité rangée.
+    Plunder { city: usize, resource: u8, amount: i32 },
+}
+
+/// Défense d'une cité du monde (`Zeus.exe`, 0x42d980) : racine des années écoulées
+/// (trente au plus), par un barème de difficulté, par son niveau militaire. Elle
+/// remonte d'un point par mois jusque-là (0x42d540) après une bataille.
+const DEFENCE_BY_DIFFICULTY: [f64; 5] = [3.0, 4.0, 4.5, 5.0, 6.0];
+const DEFENCE_YEARS: f64 = 30.0;
+/// Trajet (0x4625a0) : longueur de la route par son allure, sur 200, en mois, deux au
+/// moins.
+const PACE_DIVISOR: i32 = 200;
+const MIN_TRAVEL_MONTHS: i32 = 2;
+/// Butin d'un raid (0x42d380) : la quantité annuelle d'une marchandise que la cité
+/// échange, divisée par un barème de difficulté, dans la limite de ce que portent les
+/// soldats (0x42d2b0 : un hoplite 50, un cavalier 100, la piétaille rien) ; ou des
+/// drachmes : (richesse + 1) × barème × 200 (0x42d870).
+const PLUNDER_DIVISOR: [f64; 5] = [0.5, 0.66, 0.75, 1.0, 1.5];
+const PLUNDER_DRACHMAS: [f64; 5] = [5.0, 4.0, 3.0, 2.5, 2.0];
+const PLUNDER_DRACHMAS_UNIT: f64 = 200.0;
+const CARRY: [i32; 3] = [0, 50, 100];
+/// Une marchandise pillée marque la cité de 15 ; au-delà de 40, elle ne peut plus
+/// l'être ; la marque baisse d'un point par mois.
+const PLUNDER_MARK: i32 = 15;
+const PLUNDER_LIMIT: i32 = 40;
+/// Pertes d'une bataille selon l'écart des forces en pour cent (0x461540) : moins de
+/// 10, 25, 33, 50, 66, au plus 74, au-delà rien.
+const CONQUEST_LOSSES: [i32; 6] = [70, 50, 33, 25, 20, 10];
+const RAID_LOSSES: [i32; 6] = [25, 18, 12, 9, 6, 3];
+/// Pertes de l'armée vaincue lors d'une conquête, et pertes infligées par une armée
+/// victorieuse.
+const CONQUEST_DEFEAT: i32 = 80;
+const CONQUEST_BLOW: i32 = 50;
+const RAID_BLOW: i32 = 25;
+
+/// Perte selon l'écart des forces, en pour cent.
+fn losses(margin: i32, table: [i32; 6]) -> i32 {
+    match margin {
+        ..10 => table[0],
+        ..25 => table[1],
+        ..33 => table[2],
+        ..50 => table[3],
+        ..66 => table[4],
+        ..=74 => table[5],
+        _ => 0,
+    }
+}
+
+/// Pertes d'un raid repoussé, selon le rapport des forces (défense moins attaque, sur
+/// l'attaque).
+fn raid_defeat(ratio: i32) -> i32 {
+    match ratio {
+        ..1 => 30,
+        ..3 => 40,
+        ..5 => 50,
+        ..7 => 60,
+        ..9 => 70,
+        ..=10 => 85,
+        _ => 100,
+    }
+}
 /// Genre d'une colonie dans la fiche d'une cité.
 const COLONY_KIND: u8 = 1;
 /// Tribut annuel d'une vassale dont la carte ne fixe pas le montant : une part fixe
@@ -1491,6 +1576,12 @@ pub struct World {
     /// armées rivales parties en campagne : (cité, retour).
     pub wage_shift: i32,
     pub armies_away: Vec<(usize, u64)>,
+    /// Campagne lointaine de l'armée du joueur, routes du monde, marques de pillage
+    /// (cité, ressource, marque) et nouvelles des campagnes.
+    pub expedition: Option<Expedition>,
+    pub routes: Vec<crate::map::Route>,
+    plundered: Vec<(usize, u8, i32)>,
+    pub campaign_news: Vec<CampaignNews>,
     /// Hausses (positives) et baisses des salaires survenues depuis la dernière lecture.
     pub wage_news: Vec<i32>,
     /// Catastrophes survenues depuis la dernière lecture : (nature, bâtiments détruits).
@@ -1520,6 +1611,7 @@ pub struct World {
 
 impl World {
     pub fn new(map: Map, kinds: Vec<Kind>, house_levels: Vec<HouseModel>, walkers: WalkerImages, money: i32) -> World {
+        let routes = map.routes();
         let mut world = World {
             map,
             ghosts: Vec::new(),
@@ -1584,6 +1676,10 @@ impl World {
             trade_news: Vec::new(),
             wage_shift: 0,
             armies_away: Vec::new(),
+            expedition: None,
+            routes,
+            plundered: Vec::new(),
+            campaign_news: Vec::new(),
             wage_news: Vec::new(),
             disaster_news: Vec::new(),
             floods: Vec::new(),
@@ -2807,18 +2903,39 @@ impl World {
         }
     }
 
-    /// Force de l'armée : un homme de piétaille compte pour un, un hoplite pour
-    /// deux, un cavalier pour trois (barème d'Olympe).
-    pub fn army(&self) -> i32 {
+    /// Soldats présents dans la cité, par rang (piétaille, hoplites, cavaliers) :
+    /// ceux que les logements entretiennent, moins ceux partis en campagne.
+    pub fn ranks(&self) -> [i32; 3] {
         let (rabble, hoplites, horsemen) = (self.soldiers(Soldier::Rabble), self.soldiers(Soldier::Hoplite), self.soldiers(Soldier::Horseman));
-        (rabble - hoplites) + 2 * (hoplites - horsemen) + 3 * horsemen
+        let away = self.expedition.map_or([0; 3], |e| e.soldiers);
+        let home = [rabble - hoplites, hoplites - horsemen, horsemen];
+        std::array::from_fn(|rank| (home[rank] - away[rank]).max(0))
     }
 
-    /// Force qu'il faut opposer à une cité : 24 par bouclier (barème d'Olympe).
-    /// Une cité dont l'armée est partie ne garde que la moitié de ses boucliers.
+    /// Force de soldats comme `Zeus.exe` la compte (0x4dea00) : un par homme de
+    /// piétaille ou hoplite, deux par cavalier.
+    fn force(soldiers: [i32; 3]) -> i32 {
+        soldiers[0] + soldiers[1] + 2 * soldiers[2]
+    }
+
+    /// Force de l'armée présente dans la cité.
+    pub fn army(&self) -> i32 {
+        Self::force(self.ranks())
+    }
+
+    /// Défense la plus haute d'une cité du monde à ce jour.
+    fn max_strength(&self, city: usize) -> i32 {
+        let years = (self.ticks / TICKS_PER_MONTH) as f64 / 12.0;
+        let scale = DEFENCE_BY_DIFFICULTY[self.difficulty.min(DEFENCE_BY_DIFFICULTY.len() - 1)];
+        self.cities.get(city).map_or(0, |c| (years.min(DEFENCE_YEARS).sqrt() * scale * c.military as f64) as i32)
+    }
+
+    /// Force qu'une armée doit égaler pour vaincre une cité. Une cité dont l'armée
+    /// est partie n'en oppose que la moitié (0x461540).
     pub fn defence(&self, city: usize) -> i32 {
-        let away = self.armies_away.iter().any(|&(c, until)| c == city && until > self.ticks);
-        self.cities.get(city).map_or(0, |c| c.military as i32 * CONQUEST_PER_SHIELD / if away { 2 } else { 1 })
+        let Some(c) = self.cities.get(city) else { return 0 };
+        let strength = if c.strength < 0 { self.max_strength(city) } else { c.strength };
+        if self.army_away(city) { strength / 2 } else { strength }
     }
 
     /// L'armée de cette cité est-elle partie en campagne ?
@@ -2826,25 +2943,168 @@ impl World {
         self.armies_away.iter().any(|&(c, until)| c == city && until > self.ticks)
     }
 
-    /// Envoie l'armée soumettre une cité étrangère, alliée ou rivale : si elle est
-    /// assez forte, la cité devient vassale et l'armée rentre six mois plus tard. Le
-    /// jeu livre bataille ; Olympe se contente de comparer les forces.
-    pub fn conquer(&mut self, city: usize) -> Result<(), Conquest> {
-        let Some(target) = self.cities.get(city).cloned().filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
+    /// Mois de marche de la cité du joueur jusqu'à celle-ci, par la route du monde.
+    pub fn travel_months(&self, city: usize) -> i32 {
+        let home = self.cities.iter().position(|c| c.active && c.kind == 0).map(|h| h as i16);
+        let route = self.routes.iter().find(|r| home.is_some_and(|h| (r.from, r.to) == (h, city as i16) || (r.to, r.from) == (h, city as i16)));
+        route.map_or(MIN_TRAVEL_MONTHS, |r| (r.length * r.pace as i32 / PACE_DIVISOR).max(MIN_TRAVEL_MONTHS))
+    }
+
+    /// Envoie toute l'armée présente soumettre une cité étrangère, alliée ou rivale,
+    /// ou la piller (`raid`) ; rend la durée du trajet en mois. La bataille se livre à
+    /// l'arrivée, puis l'armée rentre par le même chemin.
+    pub fn conquer(&mut self, city: usize, raid: bool) -> Result<i32, Conquest> {
+        let Some(target) = self.cities.get(city).filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
         if target.status > RIVAL {
             return Err(Conquest::AlreadyRuled);
         }
-        if self.ticks < self.campaign_until {
+        if self.expedition.is_some() || self.ticks < self.campaign_until {
             return Err(Conquest::Away);
         }
-        let (army, defence) = (self.army(), self.defence(city));
-        if army < defence {
-            return Err(Conquest::TooWeak { army, defence });
+        let soldiers = self.ranks();
+        if Self::force(soldiers) == 0 {
+            return Err(Conquest::NoArmy);
         }
-        self.cities[city].status = VASSAL;
-        self.campaign_until = self.ticks + CAMPAIGN_TICKS;
-        self.commemoratives.push(COMMEMORATIVE_CONQUEST);
-        Ok(())
+        let months = self.travel_months(city);
+        let arrives = self.ticks + months as u64 * TICKS_PER_MONTH;
+        self.expedition = Some(Expedition { city, raid, soldiers, arrives, returns: arrives, won: None, loot: (0, 0) });
+        Ok(months)
+    }
+
+    /// Campagne en cours : bataille à l'arrivée, retour et butin.
+    fn run_expedition(&mut self) {
+        let Some(mut expedition) = self.expedition else { return };
+        let city = expedition.city;
+        if expedition.won.is_none() && self.ticks >= expedition.arrives {
+            let (attack, defence) = (Self::force(expedition.soldiers), self.defence(city));
+            let won = attack >= defence;
+            let margin = |stronger: i32, weaker: i32| if stronger == 0 { 0 } else { (stronger - weaker) * 100 / stronger };
+            // Pertes en pour cent : celles de l'armée, celles de la cité (0x461540).
+            let (ours, theirs) = match (expedition.raid, won) {
+                (false, true) => (losses(margin(attack, defence), CONQUEST_LOSSES), CONQUEST_BLOW),
+                (false, false) => (CONQUEST_DEFEAT, losses(margin(defence, attack), CONQUEST_LOSSES)),
+                (true, true) => (losses(margin(attack, defence), RAID_LOSSES), RAID_BLOW),
+                (true, false) => (raid_defeat(if attack == 0 { 0 } else { (defence - attack) / attack }), losses(margin(defence, attack), RAID_LOSSES)),
+            };
+            for rank in 0..3 {
+                let dead = expedition.soldiers[rank] * ours / 100;
+                self.bury_soldiers(rank, dead);
+                expedition.soldiers[rank] -= dead;
+            }
+            if let Some(c) = self.cities.get_mut(city) {
+                let strength = if c.strength < 0 { defence } else { c.strength };
+                c.strength = (strength - theirs * defence / 100).max(0);
+            }
+            expedition.won = Some(won);
+            expedition.returns = self.ticks + self.travel_months(city) as u64 * TICKS_PER_MONTH;
+            match (expedition.raid, won) {
+                (false, true) => {
+                    self.cities[city].status = VASSAL;
+                    self.commemoratives.push(COMMEMORATIVE_CONQUEST);
+                    self.campaign_news.push(CampaignNews::Conquered(city));
+                }
+                (false, false) => self.campaign_news.push(CampaignNews::ConquestFailed(city)),
+                (true, true) => expedition.loot = self.plunder(city, expedition.soldiers),
+                (true, false) if expedition.soldiers.iter().all(|&n| n == 0) => {
+                    self.campaign_news.push(CampaignNews::WipedOut(city));
+                    self.expedition = None;
+                    return;
+                }
+                (true, false) => {}
+            }
+            self.expedition = Some(expedition);
+            return;
+        }
+        if expedition.won.is_some() && self.ticks >= expedition.returns {
+            self.expedition = None;
+            let (resource, amount) = expedition.loot;
+            if amount > 0 {
+                let stored = if resource == DRACHMAS {
+                    self.money += amount;
+                    amount
+                } else {
+                    self.store(resource as usize, amount)
+                };
+                self.campaign_news.push(CampaignNews::Plunder { city, resource, amount: stored });
+            } else {
+                self.campaign_news.push(CampaignNews::Returned { city, won: expedition.won == Some(true) });
+            }
+        }
+    }
+
+    /// Butin d'un raid victorieux sur cette cité, porté par les survivants : une
+    /// marchandise qu'elle échange, ou des drachmes, tirées au sort parmi celles
+    /// qu'elle n'a pas trop souvent perdues (0x42d380).
+    fn plunder(&mut self, city: usize, soldiers: [i32; 3]) -> (u8, i32) {
+        let Some(c) = self.cities.get(city) else { return (DRACHMAS, 0) };
+        let marked = |resource: u8| self.plundered.iter().find(|p| (p.0, p.1) == (city, resource)).map_or(0, |p| p.2);
+        let mut choices: Vec<(u8, i32)> = c.sells.iter().chain(&c.buys).copied().filter(|&(r, q)| q > 0 && r != DRACHMAS && marked(r) <= PLUNDER_LIMIT).collect();
+        if marked(DRACHMAS) <= PLUNDER_LIMIT {
+            choices.push((DRACHMAS, 0));
+        }
+        let wealth = c.wealth;
+        if choices.is_empty() {
+            return (DRACHMAS, 2);
+        }
+        let (resource, quantity) = choices[self.next_random() as usize % choices.len()];
+        let difficulty = self.difficulty.min(PLUNDER_DIVISOR.len() - 1);
+        let amount = if resource == DRACHMAS {
+            ((wealth as f64 + 1.0) * PLUNDER_DRACHMAS[difficulty] * PLUNDER_DRACHMAS_UNIT) as i32
+        } else {
+            let carried: i32 = (0..3).map(|rank| soldiers[rank] * CARRY[rank]).sum();
+            ((quantity as f64 / PLUNDER_DIVISOR[difficulty]) as i32).min(carried)
+        };
+        match self.plundered.iter_mut().find(|p| (p.0, p.1) == (city, resource)) {
+            Some(p) => p.2 += PLUNDER_MARK,
+            None => self.plundered.push((city, resource, PLUNDER_MARK)),
+        }
+        (resource, amount.max(1))
+    }
+
+    /// Les cités du monde, chaque mois : leur défense remonte d'un point, les
+    /// marques de pillage s'effacent d'un point (0x42d540).
+    fn cities_month(&mut self) {
+        for city in 0..self.cities.len() {
+            let top = self.max_strength(city);
+            let c = &mut self.cities[city];
+            if c.strength < 0 {
+                c.strength = top;
+            } else if c.strength < top {
+                c.strength += 1;
+            }
+        }
+        for mark in &mut self.plundered {
+            mark.2 -= 1;
+        }
+        self.plundered.retain(|p| p.2 > 0);
+    }
+
+    /// Soldats tombés au loin : les logements qui les fournissaient perdent autant
+    /// d'hommes, au prorata de ceux qu'ils entretiennent.
+    fn bury_soldiers(&mut self, rank: usize, dead: i32) {
+        if dead <= 0 {
+            return;
+        }
+        let wanted = [Soldier::Rabble, Soldier::Hoplite, Soldier::Horseman][rank];
+        let mut houses: Vec<(usize, i32)> = Vec::new();
+        for (id, building) in self.buildings.iter().enumerate() {
+            let Some(house) = building.as_ref().and_then(|b| b.house.as_ref()) else { continue };
+            let Some(&(soldier, full)) = SOLDIERS.get(house.level) else { continue };
+            let capacity = self.capacity(house).max(1);
+            let provided = full * house.population.min(capacity) / capacity;
+            if soldier == wanted && provided > 0 {
+                houses.push((id, provided));
+            }
+        }
+        let total: i32 = houses.iter().map(|h| h.1).sum();
+        let mut left = dead.min(total);
+        for (i, &(id, provided)) in houses.iter().enumerate() {
+            let share = if i + 1 == houses.len() { left } else { (dead * provided / total.max(1)).min(left) };
+            left -= share;
+            if let Some(house) = self.buildings[id].as_mut().and_then(|b| b.house.as_mut()) {
+                house.population -= (share * house.population / provided).min(house.population);
+            }
+        }
     }
 
     /// Ouvre une route commerciale avec une cité étrangère qui n'est pas rivale, au
@@ -3175,8 +3435,7 @@ impl World {
         let home = self.buildings.iter().flatten().find(|b| self.kinds[b.kind].function == Function::Palace).or_else(|| self.buildings.iter().flatten().find(|b| b.house.is_some()));
         if let Some(home) = home.map(|b| (b.x, b.y)) {
             // Les soldats de la cité, par rang : piétaille et archers, hoplites, cavaliers.
-            let (rabble, hoplites, horsemen) = (self.soldiers(Soldier::Rabble), self.soldiers(Soldier::Hoplite), self.soldiers(Soldier::Horseman));
-            let counts = [rabble - hoplites, hoplites - horsemen, horsemen];
+            let counts = self.ranks();
             let total: i32 = counts.iter().sum();
             let scale = |n: i32| if total > MAX_SOLDIERS { n * MAX_SOLDIERS / total } else { n };
             let defenders: Vec<u8> = counts.iter().enumerate().flat_map(|(rank, &n)| std::iter::repeat(rank as u8).take(scale(n).max(0) as usize)).collect();
@@ -3678,6 +3937,7 @@ impl World {
             self.update_risks();
             self.supply_sites();
             self.update_health();
+            self.run_expedition();
         }
         // Humeur et criminalité : aussi en milieu de mois.
         if self.ticks % TICKS_PER_MONTH == TICKS_PER_MONTH / 2 {
@@ -3688,6 +3948,7 @@ impl World {
             self.update_houses();
             self.reach_milestones();
             self.run_games();
+            self.cities_month();
             self.assign_workers();
             self.settle_month();
             self.aim_health();
@@ -5301,6 +5562,16 @@ impl World {
         let cities: Vec<String> =
             std::iter::once(self.campaign_until.to_string()).chain(self.cities.iter().map(|c| (c.status + 10 * c.trade as i32).to_string())).collect();
         let _ = writeln!(out, "cites {}", cities.join(" "));
+        let strengths: Vec<String> = self.cities.iter().map(|c| c.strength.to_string()).collect();
+        let _ = writeln!(out, "defenses {}", strengths.join(" "));
+        for &(city, resource, mark) in &self.plundered {
+            let _ = writeln!(out, "pillage {city} {resource} {mark}");
+        }
+        if let Some(e) = self.expedition {
+            let [rabble, hoplites, horsemen] = e.soldiers;
+            let won = e.won.map_or(-1, |w| w as i32);
+            let _ = writeln!(out, "campagne {} {} {rabble} {hoplites} {horsemen} {} {} {won} {} {}", e.city, e.raid as u8, e.arrives, e.returns, e.loot.0, e.loot.1);
+        }
         for s in &self.scheduled {
             let _ = writeln!(out, "changement {} {} {} {} {} {} {}", s.at, s.change, s.cities.0, s.cities.1, s.amount.0, s.amount.1, s.resource);
         }
@@ -5445,6 +5716,7 @@ impl World {
         let mut trade_policy = [TradePolicy::Both; RESOURCES];
         let mut commemoratives = (0, Vec::new());
         let mut games = (false, None);
+        let (mut strengths, mut plundered, mut expedition): (Vec<i32>, Vec<(usize, u8, i32)>, Option<Expedition>) = (Vec::new(), Vec::new(), None);
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -5480,6 +5752,20 @@ impl World {
                     for (i, slot) in counters[row].iter_mut().enumerate() {
                         *slot = number_at(i)? as i32;
                     }
+                }
+                "defenses" => strengths = rest.iter().filter(|w| !w.is_empty()).map(|w| w.parse().map_err(|_| bad())).collect::<Result<_, _>>()?,
+                "pillage" => plundered.push((number_at(0)? as usize, number_at(1)? as u8, number_at(2)? as i32)),
+                "campagne" => {
+                    let won = number_at(7)?;
+                    expedition = Some(Expedition {
+                        city: number_at(0)? as usize,
+                        raid: number_at(1)? != 0,
+                        soldiers: [number_at(2)? as i32, number_at(3)? as i32, number_at(4)? as i32],
+                        arrives: number_at(5)? as u64,
+                        returns: number_at(6)? as u64,
+                        won: (won >= 0).then_some(won != 0),
+                        loot: (number_at(8)? as u8, number_at(9)? as i32),
+                    });
                 }
                 "cites" => {
                     campaign = number_at(0)? as u64;
@@ -5737,6 +6023,10 @@ impl World {
         self.trade_policy = trade_policy;
         (self.milestones, self.commemoratives) = commemoratives;
         (self.games_host, self.games_running) = games;
+        for (city, strength) in self.cities.iter_mut().zip(&strengths) {
+            city.strength = *strength;
+        }
+        (self.plundered, self.expedition) = (plundered, expedition);
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;

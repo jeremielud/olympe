@@ -69,6 +69,8 @@ const CITY_LEADER: usize = 208;
 const CITY_TITLE: usize = 505;
 const CITY_LEADER_TITLE: usize = 537;
 const CITY_MILITARY: usize = 220;
+/// Richesse (entier en 216, de 1 à 5) : `Zeus.exe` en tire les drachmes d'un raid.
+const CITY_WEALTH: usize = 216;
 /// Nation de l'armée (octet 204 : Troie 1, Sardes 2, Cymé 4…).
 const CITY_ARMY: usize = 204;
 const CITY_TRIBUTE_RECEIVED: usize = 228;
@@ -115,7 +117,28 @@ pub struct City {
     /// entier en 228) et ce qu'elle lui paie (« Pay », entier en 232), en drachmes.
     pub tribute_received: i32,
     pub tribute_paid: i32,
+    /// Richesse, de 1 à 5.
+    pub wealth: u8,
+    /// Force militaire du moment (entier en 0x1e8 de la cité dans `Zeus.exe`) :
+    /// négative tant que la partie ne l'a pas fixée.
+    pub strength: i32,
 }
+
+/// Route du monde entre deux cités (bloc de 232 enregistrements de 324 octets, en
+/// 0x9034f8 dans `Zeus.exe`) : rangs des deux cités, longueur et allure.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Route {
+    pub from: i16,
+    pub to: i16,
+    pub length: i32,
+    pub pace: u8,
+}
+
+const ROUTE_SIZE: usize = 324;
+const ROUTES: usize = 232;
+const ROUTE_LENGTH: usize = 0x134;
+const ROUTE_CITIES: usize = 0x13c;
+const ROUTE_ACTIVE: usize = 0x142;
 
 /// Catalogue d'où provient une image de terrain.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -338,7 +361,21 @@ impl Map {
                 army: r[CITY_ARMY],
                 tribute_received: le32(r, CITY_TRIBUTE_RECEIVED) as i32,
                 tribute_paid: le32(r, CITY_TRIBUTE_PAID) as i32,
+                wealth: r[CITY_WEALTH],
+                strength: -1,
             })
+            .collect()
+    }
+
+    /// Routes du monde en service.
+    pub fn routes(&self) -> Vec<Route> {
+        let Some(block) = self.blocks.iter().find(|b| b.count == ROUTES && b.element_size == ROUTE_SIZE) else { return Vec::new() };
+        let short = |r: &[u8], at: usize| i16::from_le_bytes([r[at], r[at + 1]]);
+        block
+            .data
+            .chunks_exact(ROUTE_SIZE)
+            .filter(|r| r[ROUTE_ACTIVE] != 0)
+            .map(|r| Route { from: short(r, ROUTE_CITIES), to: short(r, ROUTE_CITIES + 2), length: le32(r, ROUTE_LENGTH) as i32, pace: r[0] })
             .collect()
     }
 
