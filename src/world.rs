@@ -156,6 +156,18 @@ const WATER_IMAGE: usize = 764;
 /// Variante de route pour chaque combinaison de bords sans route voisine
 /// (bit 0 = nord-est, 1 = sud-est, 2 = sud-ouest, 3 = nord-ouest).
 const ROAD_VARIANT: [usize; 16] = [17, 14, 15, 6, 16, 1, 7, 11, 13, 5, 0, 10, 4, 9, 8, 12];
+/// Monuments commémoratifs, dans l'ordre de leurs descriptions (groupe de textes 90) et
+/// de leurs images : croissance, victoire, colonie, athlètes, conquête, âge d'or, héros,
+/// alliance, philosophes et acteurs.
+pub const COMMEMORATIVES: usize = 9;
+pub const COMMEMORATIVE_GROWTH: u8 = 0;
+pub const COMMEMORATIVE_VICTORY: u8 = 1;
+pub const COMMEMORATIVE_CONQUEST: u8 = 4;
+pub const COMMEMORATIVE_HERO: u8 = 6;
+pub const COMMEMORATIVE_ALLY: u8 = 7;
+/// Paliers de population qui, atteints pour la première fois, valent un monument
+/// (annonces `population_1000` à `population_25000` des messages du jeu).
+const POPULATION_MILESTONES: [i32; 7] = [1000, 2000, 5000, 10000, 15000, 20000, 25000];
 /// Voisines dans l'ordre des bits ci-dessus.
 const NEIGHBOURS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 /// Les huit directions de marche, dans l'ordre des images de personnage.
@@ -936,6 +948,9 @@ pub enum Function {
     /// Corps de garde : posé sur une route, il laisse passer les citoyens à travers les
     /// murs et barre la route aux envahisseurs.
     Gatehouse,
+    /// Monument commémoratif (type 119), de l'un des neuf modèles : il ne se pose que
+    /// si la cité en a gagné un.
+    Commemorative(u8),
     /// Barrage routier : posé sur une route, il arrête les marcheurs en tournée mais
     /// laisse passer ceux qui vont quelque part (porteurs, immigrants).
     Roadblock,
@@ -1426,6 +1441,10 @@ pub struct World {
     pub price_shift: [i32; RESOURCES],
     /// Ce que le joueur permet de faire de chaque ressource avec les cités partenaires.
     pub trade_policy: [TradePolicy; RESOURCES],
+    /// Monuments commémoratifs gagnés et pas encore posés (modèles).
+    pub commemoratives: Vec<u8>,
+    /// Paliers de population déjà atteints.
+    milestones: u8,
     /// Prix de base des marchandises, lus dans la carte (0 : pas de prix réglé).
     pub base_prices: [i32; RESOURCES],
     pub trade_news: Vec<(usize, u8, u8)>,
@@ -1515,6 +1534,8 @@ impl World {
             gifts: Vec::new(),
             price_shift: [0; RESOURCES],
             trade_policy: [TradePolicy::Both; RESOURCES],
+            commemoratives: Vec::new(),
+            milestones: 0,
             base_prices: [0; RESOURCES],
             trade_news: Vec::new(),
             wage_shift: 0,
@@ -1752,6 +1773,7 @@ impl World {
                 !self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::HeroHall(hero))
                     && (0..k.depth as i32).all(|dy| (0..size).all(|dx| self.is_free(x + dx, y + dy)))
             }
+            Function::Commemorative(model) => self.commemoratives.contains(&model) && self.can_build(x, y, k.size),
             // Un sanctuaire par dieu, et pas plus que l'épisode n'en permet.
             Function::Sanctuary { god, .. } => {
                 let sanctuaries: Vec<u8> = self.buildings.iter().flatten().filter_map(|b| self.sanctuary_god(b.kind)).collect();
@@ -1987,6 +2009,12 @@ impl World {
             }
         }
         self.money -= cost;
+        // Un monument commémoratif posé n'est plus à poser.
+        if let Function::Commemorative(model) = self.kinds[kind].function {
+            if let Some(i) = self.commemoratives.iter().position(|&m| m == model) {
+                self.commemoratives.remove(i);
+            }
+        }
         self.rebuild_appeal();
         true
     }
@@ -2478,6 +2506,7 @@ impl World {
                 QuestState::Away { until } if until <= now => {
                     quest.state = QuestState::Done;
                     self.hero_news.push(HeroNews::QuestDone(quest.event));
+                    self.commemoratives.push(COMMEMORATIVE_HERO);
                 }
                 QuestState::Away { .. } => busy[quest.hero as usize] = true,
                 _ => {}
@@ -2726,6 +2755,10 @@ impl World {
             };
             if changed {
                 self.world_news.push((city, event.change));
+                // Un nouvel allié offre un monument commémoratif.
+                if event.change == BECOMES_ALLY {
+                    self.commemoratives.push(COMMEMORATIVE_ALLY);
+                }
             }
         }
     }
@@ -2766,6 +2799,7 @@ impl World {
         }
         self.cities[city].status = VASSAL;
         self.campaign_until = self.ticks + CAMPAIGN_TICKS;
+        self.commemoratives.push(COMMEMORATIVE_CONQUEST);
         Ok(())
     }
 
@@ -3324,6 +3358,9 @@ impl World {
             self.money -= drachmas;
             self.figures.retain(|f| f.soldier().is_none() && !matches!(f.role, Role::Ship));
             self.battles.push(Battle { city: raid.city, soldiers: raid.soldiers, repelled, buildings: raid.buildings, drachmas });
+            if repelled {
+                self.commemoratives.push(COMMEMORATIVE_VICTORY);
+            }
             self.raid = None;
         } else {
             self.raid = Some(raid);
@@ -3605,9 +3642,19 @@ impl World {
         if self.ticks % TICKS_PER_MONTH == 0 {
             self.months_in_debt = if self.money < 0 { self.months_in_debt + 1 } else { 0 };
             self.update_houses();
+            self.reach_milestones();
             self.assign_workers();
             self.settle_month();
             self.aim_health();
+        }
+    }
+
+    /// Chaque palier de population atteint pour la première fois vaut un monument.
+    fn reach_milestones(&mut self) {
+        let population = self.population();
+        while POPULATION_MILESTONES.get(self.milestones as usize).is_some_and(|&m| population >= m) {
+            self.milestones += 1;
+            self.commemoratives.push(COMMEMORATIVE_GROWTH);
         }
     }
 
@@ -5105,6 +5152,8 @@ impl World {
         let _ = writeln!(out, "salaires {}", self.wage_shift);
         let policies: Vec<String> = self.trade_policy.iter().map(|p| TradePolicy::ALL.iter().position(|q| q == p).unwrap_or(0).to_string()).collect();
         let _ = writeln!(out, "commerce {}", policies.join(" "));
+        let monuments: Vec<String> = self.commemoratives.iter().map(|m| m.to_string()).collect();
+        let _ = writeln!(out, "commemoratifs {} {}", self.milestones, monuments.join(" "));
         let _ = writeln!(out, "humeur {} {} {} {}", self.tax_level, self.sentiment, self.grown as u8, self.months_in_debt);
         let _ = writeln!(out, "migrants {} {} {} {}", self.migrants.0, self.migrants.1, self.migration_pause.0, self.migration_pause.1);
         let _ = writeln!(out, "sante {} {} {} {} {}", self.health, self.health_target, self.plagues.0, self.plagues.1, self.plague_month as u8);
@@ -5259,6 +5308,7 @@ impl World {
         let mut traded: Vec<i32> = Vec::new();
         // Réglages du commerce : absents des sauvegardes plus anciennes.
         let mut trade_policy = [TradePolicy::Both; RESOURCES];
+        let mut commemoratives = (0, Vec::new());
         for (number, line) in lines.enumerate() {
             let bad = || format!("sauvegarde illisible à la ligne {}", number + 2);
             let mut words = line.split(' ');
@@ -5275,6 +5325,10 @@ impl World {
                     state = Some((number_at(0)?, number_at(1)?, number_at(2)?, number_at(3)?, number_at(4)?, number_at(5)?));
                     // Bénéfices annuels : absents des sauvegardes plus anciennes.
                     profits = (rest.get(7).and_then(|w| w.parse().ok()).unwrap_or(0), rest.get(8).and_then(|w| w.parse().ok()));
+                }
+                "commemoratifs" => {
+                    let numbers: Vec<u8> = rest.iter().filter(|w| !w.is_empty()).map(|w| w.parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
+                    commemoratives = (*numbers.first().ok_or_else(bad)?, numbers[1..].to_vec());
                 }
                 "commerce" => {
                     for (i, policy) in trade_policy.iter_mut().enumerate() {
@@ -5541,6 +5595,7 @@ impl World {
         (self.year_profit, self.best_year_profit) = profits;
         [self.produced, self.best_produced, self.set_aside, self.carried, self.price_shift] = counters;
         self.trade_policy = trade_policy;
+        (self.milestones, self.commemoratives) = commemoratives;
         (self.heroes, self.quests, self.monsters) = (heroes, quests, monsters);
         self.campaign_until = campaign;
         self.scheduled = scheduled;

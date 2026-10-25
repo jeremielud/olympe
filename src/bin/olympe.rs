@@ -336,7 +336,7 @@ fn sound_category(function: Function) -> &'static str {
         Function::Vendor(Good::Horses) => "AGORA_HORSE",
         Function::Stadium | Function::Annex | Function::Racetrack | Function::Museum => "STADIUM",
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => "SANCTUARY",
-        Function::None => "BEAUTIFICATION",
+        Function::None | Function::Commemorative(_) => "BEAUTIFICATION",
     }
 }
 
@@ -394,7 +394,7 @@ const UI_TABS: usize = 1319;
 const UI_TAB_STATES: usize = 4;
 /// Icône d'onglet de l'armée (grisée).
 const MILITARY_TAB: usize = 9;
-/// Icône ailée, onzième onglet de la colonne d'origine.
+/// Icône ailée, onzième onglet de la colonne d'origine : les monuments commémoratifs.
 const WINGED_TAB: usize = 0;
 /// Réserves transparentes du panneau latéral, relevées sur son image : (x, y,
 /// largeur, hauteur, premier état du bouton qui s'y loge, touche qu'il remplace).
@@ -439,11 +439,11 @@ const PANEL_LEFT: f32 = 54.0;
 /// Icône d'onglet de chaque catégorie (rang dans la série des onglets d'origine :
 /// maison, épis, rouage, amphore, chapiteau, personnage assis, discobole, cyprès) ;
 /// l'attribution des icônes aux catégories est faite à l'œil.
-const CATEGORY_TABS: [(usize, usize); 10] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7), (10, 8), (MILITARY_TAB, 9)];
+const CATEGORY_TABS: [(usize, usize); 11] = [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5), (7, 6), (8, 7), (10, 8), (MILITARY_TAB, 9), (WINGED_TAB, 10)];
 
 /// Catégories du menu de construction : intitulé (rang dans le groupe de textes 4,
 /// ou texte de secours quand le jeu n'en a pas) et rôles des bâtiments rangés dedans.
-const CATEGORY_NAMES: [(Option<usize>, &str); 10] = [
+const CATEGORY_NAMES: [(Option<usize>, &str); 11] = [
     (None, "Population"),
     (Some(6), "Agriculture"),
     (Some(1), "Industrie"),
@@ -454,7 +454,17 @@ const CATEGORY_NAMES: [(Option<usize>, &str); 10] = [
     (Some(10), "Mythologie"),
     (None, "Embellissement"),
     (Some(2), "Armée"),
+    (None, "Monuments"),
 ];
+/// Catégorie des monuments commémoratifs (onglet ailé).
+const COMMEMORATIVE_CATEGORY: usize = 10;
+/// Monuments commémoratifs : type de bâtiment, première image (les neuf modèles se
+/// suivent dans `zeus_general.sg3`), groupe de textes de leurs descriptions.
+const TYPE_COMMEMORATIVE: usize = 119;
+const COMMEMORATIVE_IMAGE: usize = 225;
+const TEXT_COMMEMORATIVES: usize = 90;
+/// Ce que célèbre chaque modèle, pour les distinguer dans les listes.
+const COMMEMORATIVE_SUBJECTS: [&str; zeus::world::COMMEMORATIVES] = ["croissance", "victoire", "colonie", "athlètes", "conquête", "âge d'or", "héros", "alliance", "sagesse"];
 
 /// Rang, dans `CATEGORY_NAMES`, de la catégorie d'un bâtiment.
 fn category_of(function: Function) -> usize {
@@ -474,6 +484,7 @@ fn category_of(function: Function) -> usize {
         Function::Sanctuary { .. } | Function::HeroHall(_) | Function::Monument { .. } => 7,
         Function::Wharf | Function::Tower | Function::Gatehouse => 9,
         Function::Racetrack => 5,
+        Function::Commemorative(_) => COMMEMORATIVE_CATEGORY,
         // Le barrage se pose avec son bouton rond, sous les onglets.
         Function::Roadblock => usize::MAX,
         Function::None => 8,
@@ -609,7 +620,11 @@ fn category_tools(world: &World, category: usize) -> Vec<Tool> {
         MILITARY_CATEGORY => Some(Tool::Wall),
         _ => None,
     };
-    let offered = |k: &usize| world.locked.get(*k) != Some(&true);
+    // Un monument commémoratif n'est proposé que s'il a été gagné.
+    let offered = |k: &usize| {
+        world.locked.get(*k) != Some(&true)
+            && !matches!(world.kinds[*k].function, Function::Commemorative(model) if !world.commemoratives.contains(&model))
+    };
     let kinds = (0..world.kinds.len()).filter(|&k| category_of(world.kinds[k].function) == category).filter(offered).map(Tool::Build);
     road.into_iter().chain(kinds).collect()
 }
@@ -1707,6 +1722,14 @@ fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, V
             let mean = if appeal.is_empty() { 0 } else { appeal.iter().sum::<i32>() / appeal.len() as i32 };
             (vec![format!("Attrait moyen des maisons : {mean}")], vec![("Voir l'attrait", Overlay::Appeal)])
         }
+        COMMEMORATIVE_CATEGORY => (
+            vec![match world.commemoratives.len() {
+                0 => "Aucun monument à ériger. La cité en gagne par ses exploits.".to_string(),
+                1 => "Un monument à ériger".to_string(),
+                n => format!("{n} monuments à ériger"),
+            }],
+            Vec::new(),
+        ),
         _ => (
             vec![
                 format!("Force de l'armée : {}", world.army()),
@@ -3104,6 +3127,13 @@ fn run(
         (entry.fire_risk, entry.damage_risk) = (rules(kind)?.fire_risk, rules(kind)?.damage_risk);
         kinds.push(entry);
     }
+    // Monuments commémoratifs, ajoutés après les autres pour la même raison.
+    for model in 0..zeus::world::COMMEMORATIVES {
+        let name = format!("{}, {}", text.get(TEXT_BUILDINGS, TYPE_COMMEMORATIVE), COMMEMORATIVE_SUBJECTS[model]);
+        let mut monument = Kind::simple(name, rules(TYPE_COMMEMORATIVE)?.cost, 3, COMMEMORATIVE_IMAGE + model, Function::Commemorative(model as u8), 0);
+        monument.appeal = appeal_of(TYPE_COMMEMORATIVE)?;
+        kinds.push(monument);
+    }
     // Barrage routier, ajouté après les autres pour la même raison.
     let mut roadblock = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_ROADBLOCK), rules(TYPE_ROADBLOCK)?.cost, 1, ROADBLOCK_IMAGE, Function::Roadblock, 0);
     roadblock.appeal = appeal_of(TYPE_ROADBLOCK)?;
@@ -3282,12 +3312,20 @@ fn run(
         // Vue en surimpression (touche V).
         let mut overlay = Overlay::None;
         // Description de chaque type de bâtiment, pour sa fiche.
-        let descriptions = building_descriptions(&text, &world.kinds);
+        let mut descriptions = building_descriptions(&text, &world.kinds);
+        // Chaque monument commémoratif dit ce qu'il célèbre.
+        for (kind, description) in world.kinds.iter().zip(descriptions.iter_mut()) {
+            if let Function::Commemorative(model) = kind.function {
+                *description = Some(text.get(TEXT_COMMEMORATIVES, 1 + model as usize));
+            }
+        }
         // Journal des annonces (touche J) : date et texte, la plus récente en dernier.
         let mut journal: Vec<(String, String)> = Vec::new();
         let (mut journal_panel, mut logged) = (false, notice.clone());
         // Annonces arrivées depuis la dernière ouverture du journal.
         let mut unread = 0usize;
+        // Monuments commémoratifs à poser : un de plus s'annonce.
+        let mut commemoratives = world.commemoratives.len();
         let mut speed = NORMAL_SPEED;
         graphics.set_ground(plain_ground(&world));
         // Mini-carte : texture, emplacement à l'écran (x, y) et images écoulées depuis sa mise à jour.
@@ -3869,6 +3907,11 @@ fn run(
             }
 
             // Les annonces de la cité entrent au journal ; pas les réponses aux commandes.
+            if world.commemoratives.len() > commemoratives {
+                let model = *world.commemoratives.last().unwrap() as usize;
+                notice = (format!("Un monument commémoratif est disponible (onglet ailé) : {}", text.get(TEXT_COMMEMORATIVES, 1 + model)), now);
+            }
+            commemoratives = world.commemoratives.len();
             if notice != logged {
                 logged = notice.clone();
                 if !JOURNAL_SKIPS.iter().any(|skip| notice.0.starts_with(skip)) {
@@ -4584,8 +4627,6 @@ fn run(
                     menu_rows.push((slot, MenuRow::Key(key)));
                 }
             }
-            // Onzième case de la colonne : l'onglet ailé du jeu, sans catégorie ici.
-            graphics.blit(UI_TABS + UI_TAB_STATES * WINGED_TAB, side + TAB_LEFT, TAB_TOP + TAB_STEP * CATEGORY_TABS.len() as f32);
             // Rangée des boutons ronds : route et dégager, comme dans le jeu.
             sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
             let road_slot = (side + ROAD_SLOT.0, ROAD_SLOT.1, ROAD_SLOT.2, ROAD_SLOT.3);

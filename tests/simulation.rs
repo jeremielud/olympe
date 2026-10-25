@@ -1285,3 +1285,23 @@ fn a_dragged_road_goes_around_obstacles() {
     let turns = line.windows(3).filter(|w| (w[1].0 - w[0].0, w[1].1 - w[0].1) != (w[2].0 - w[1].0, w[2].1 - w[1].1)).count();
     assert_eq!((line.len(), turns), (13, 1));
 }
+
+#[test]
+fn a_commemorative_monument_is_built_once_earned() {
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    let first = world.kinds.len();
+    for model in 0..zeus::world::COMMEMORATIVES as u8 {
+        world.kinds.push(Kind::simple("monument commémoratif".into(), 0, 3, 225 + model as usize, Function::Commemorative(model), 0));
+    }
+    let victory = first + zeus::world::COMMEMORATIVE_VICTORY as usize;
+    assert!(!world.place_building(victory, x, y), "un monument qui n'a pas été gagné");
+    // Une victoire gagnée, gardée par la sauvegarde.
+    let saved = world.save().replace("commemoratifs 0 \n", "commemoratifs 0 1\n");
+    world.load(&saved).unwrap();
+    assert_eq!(world.commemoratives, vec![zeus::world::COMMEMORATIVE_VICTORY]);
+    assert!(!world.place_building(first, x, y), "un autre modèle");
+    assert!(world.place_building(victory, x, y));
+    assert!(world.commemoratives.is_empty());
+    assert!(!world.place_building(victory, x + 4, y), "un seul par victoire");
+}
