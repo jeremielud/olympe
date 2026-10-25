@@ -391,12 +391,13 @@ const UI_TABS: usize = 1319;
 const UI_TAB_STATES: usize = 4;
 /// Icône d'onglet de l'armée (grisée).
 const MILITARY_TAB: usize = 9;
+/// Icône ailée, onzième onglet de la colonne d'origine.
+const WINGED_TAB: usize = 0;
 /// Réserves transparentes du panneau latéral, relevées sur son image : (x, y,
 /// largeur, hauteur, premier état du bouton qui s'y loge, touche qu'il remplace).
-/// Grande réserve sous les onglets : « Dégager ». Puis l'aide, la mise de côté, un
-/// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
-/// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
-const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+/// Barrage routier, réserve de la pelle, rotation ; le parchemin des messages ; la
+/// coche des objectifs, les conseillers et la carte du monde (globe). Sans touche, le
+/// bouton est inactif.
 /// Rangée des boutons ronds sous les onglets, comme dans le jeu : route, barrage
 /// routier (non simulé), dégager (la pelle), rotation de la vue (non simulée) ; quatre
 /// états par bouton (repos, survol, enfoncé, inactif).
@@ -418,8 +419,8 @@ const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
     (85.0, 435.0, 32.0, 37.0, Some(ROADBLOCK_BUTTON), None),
     (118.0, 435.0, 32.0, 37.0, None, None),
     (151.0, 435.0, 35.0, 37.0, Some(ROTATE_BUTTON), None),
-    (146.0, 483.0, 33.0, 28.0, None, None),
-    (11.0, 565.0, 33.0, 33.0, Some(1291), Some(sdl::KEY_O)),
+    (146.0, 483.0, 33.0, 28.0, Some(1291), Some(sdl::KEY_J)),
+    (11.0, 565.0, 33.0, 33.0, Some(1267), Some(sdl::KEY_O)),
     (45.0, 565.0, 69.0, 33.0, Some(1263), Some(sdl::KEY_A)),
     (115.0, 565.0, 67.0, 33.0, Some(1271), Some(sdl::KEY_C)),
 ];
@@ -4518,6 +4519,7 @@ fn run(
                     Some(sdl::KEY_C) => cities_panel,
                     Some(sdl::KEY_A) => advisor_panel,
                     Some(sdl::KEY_H) => help,
+                    Some(sdl::KEY_J) => journal_panel,
                     _ => false,
                 };
                 let state = match key {
@@ -4531,9 +4533,10 @@ fn run(
                     menu_rows.push((slot, MenuRow::Key(key)));
                 }
             }
+            // Onzième case de la colonne : l'onglet ailé du jeu, sans catégorie ici.
+            graphics.blit(UI_TABS + UI_TAB_STATES * WINGED_TAB, side + TAB_LEFT, TAB_TOP + TAB_STEP * CATEGORY_TABS.len() as f32);
             // Rangée des boutons ronds : route et dégager, comme dans le jeu.
             sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
-            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: side + CLEAR_SLOT.0, y: CLEAR_SLOT.1, w: ROAD_SLOT.0 - CLEAR_SLOT.0, h: CLEAR_SLOT.3 });
             let road_slot = (side + ROAD_SLOT.0, ROAD_SLOT.1, ROAD_SLOT.2, ROAD_SLOT.3);
             let clear_slot = (side + CLEAR_BUTTON_SLOT.0, CLEAR_BUTTON_SLOT.1, CLEAR_BUTTON_SLOT.2, CLEAR_BUTTON_SLOT.3);
             for (slot, image, held, picked) in [(road_slot, ROAD_BUTTON, Tool::Road, Tool::Road), (clear_slot, CLEAR_BUTTON, Tool::Demolish, Tool::Demolish)] {
@@ -5117,6 +5120,7 @@ fn run(
                     MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
                     MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
                     MenuRow::Key(sdl::KEY_O) => Some("Objectifs de l'épisode (O)".to_string()),
+                    MenuRow::Key(sdl::KEY_J) => Some("Journal des messages (J)".to_string()),
                     MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
                     MenuRow::Key(sdl::KEY_C) => Some("Cités du monde (C)".to_string()),
                     MenuRow::SidebarMap(true) => Some("Carte générale".to_string()),
