@@ -367,7 +367,7 @@ const HELP: [&str; 18] = [
     "Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets)",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
-    "Espace : pause",
+    "Espace ou P : pause",
     "Page préc. et Page suiv. : vitesse du jeu",
     "F5 : enregistrer ; F9 : recharger",
     "F : plein écran",
@@ -398,6 +398,8 @@ const CLEAR_TAB: usize = 1753;
 /// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
 /// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
 const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+/// Zone des messages, sous les boutons (relevée sur l'image du panneau).
+const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
 /// Tuile de route droite (catalogue du terrain), qui sert d'icône au bouton des routes.
 const ROAD_ICON_IMAGE: usize = 897;
 const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
@@ -604,6 +606,10 @@ enum MenuRow {
     Fulfil(usize),
     /// Change ce que le commerce peut faire de cette ressource.
     Policy(usize),
+    /// Bascule une vue en surimpression (boutons « Voir… » du panneau).
+    Overlay(Overlay),
+    /// Zone des messages du panneau : ouvre le journal.
+    Journal,
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -1554,6 +1560,83 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
     pages
 }
 
+/// Qualité d'une couverture, comme les appréciations du jeu.
+fn coverage_word(percent: usize) -> &'static str {
+    match percent {
+        0 => "aucune",
+        1..20 => "très faible",
+        20..40 => "faible",
+        40..60 => "moyenne",
+        60..80 => "bonne",
+        80..100 => "très bonne",
+        _ => "parfaite",
+    }
+}
+
+/// Ce que le panneau latéral dit d'une catégorie, comme le jeu sous ses onglets : des
+/// lignes courtes, et les vues en surimpression qu'elle propose (« Voir… »).
+fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, Vec<(&'static str, Overlay)>) {
+    let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
+    let cover = |service: Service| {
+        let percent = if houses.is_empty() { 0 } else { houses.iter().filter(|h| h.has(service, world.ticks)).count() * 100 / houses.len() };
+        format!("{} : {}", service_label(world, text, service), coverage_word(percent))
+    };
+    let count = |f: &dyn Fn(Function) -> bool| world.buildings.iter().flatten().filter(|b| f(world.kinds[b.kind].function)).count();
+    match category {
+        0 => {
+            let room: i32 = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).map(|h| (world.capacity(h) - h.population).max(0)).sum();
+            let limit = if world.sentiment < 50 {
+                "Immigration freinée : la cité est mal aimée"
+            } else if room == 0 {
+                "Immigration limitée : pas de logement libre"
+            } else {
+                "Des gens veulent venir dans la cité"
+            };
+            (vec![format!("Logements pour {room} habitants de plus"), limit.to_string()], vec![("Voir l'attrait", Overlay::Appeal)])
+        }
+        1 => (
+            vec![
+                format!("Vivres aux greniers : {}", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()),
+                format!("Exploitations : {}", count(&|f| matches!(f, Function::Farm | Function::Fishery | Function::Producer(Good::Food)))),
+            ],
+            Vec::new(),
+        ),
+        2 => {
+            let idle = world.buildings.iter().flatten().filter(|b| category_of(world.kinds[b.kind].function) == 2 && !b.staffed).count();
+            (vec![format!("Ateliers à l'arrêt : {idle}")], Vec::new())
+        }
+        3 => {
+            let fed = if houses.is_empty() { 0 } else { houses.iter().filter(|h| h.ate).count() * 100 / houses.len() };
+            (vec![format!("Agoras : {}", count(&|f| matches!(f, Function::Agora { .. }))), format!("Maisons nourries : {fed} %")], Vec::new())
+        }
+        4 => (
+            vec![cover(Service::Water), cover(Service::Maintenance), cover(Service::Health), cover(Service::Security), format!("Santé : {} sur 100", world.health)],
+            vec![("Voir l'eau", Overlay::Water), ("Voir le feu", Overlay::Fire), ("Voir les dégâts", Overlay::Damage), ("Voir la santé", Overlay::Health), ("Voir le crime", Overlay::Crime)],
+        ),
+        5 => (
+            vec![format!("Trésor : {} dr.", world.money), cover(Service::Tax), format!("Humeur : {} sur 100", world.sentiment)],
+            vec![("Voir les impôts", Overlay::Tax)],
+        ),
+        6 => (vec![cover(Service::Philosophy), cover(Service::Athletics), cover(Service::Drama)], vec![("Voir la culture", Overlay::Culture)]),
+        7 => (vec![format!("Sanctuaires : {}", world.sanctuaries().len()), format!("Monstres : {}", world.monsters.iter().filter(|m| !m.slain).count())], Vec::new()),
+        8 => {
+            let appeal = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| world.appeal(b.x as i32, b.y as i32)).collect::<Vec<_>>();
+            let mean = if appeal.is_empty() { 0 } else { appeal.iter().sum::<i32>() / appeal.len() as i32 };
+            (vec![format!("Attrait moyen des maisons : {mean}")], vec![("Voir l'attrait", Overlay::Appeal)])
+        }
+        _ => (
+            vec![
+                format!("Force de l'armée : {}", world.army()),
+                match world.raid {
+                    Some(raid) => format!("Invasion : {} soldats", raid.soldiers),
+                    None => "Aucune invasion".to_string(),
+                },
+            ],
+            Vec::new(),
+        ),
+    }
+}
+
 /// Nom d'une cité du monde.
 fn city_name(text: &Text, world: &World, city: usize) -> String {
     world.cities.get(city).map_or(String::new(), |c| text.get(TEXT_CITIES, c.name as usize))
@@ -1910,6 +1993,10 @@ const FONT_TEXT: Font = Font(335);
 const FONT_TITLE: Font = Font(871);
 /// Police du texte posé sur l'habillage, et teinte bleu nuit qu'on lui donne.
 const FONT_CHROME: Font = Font(335);
+/// Petites polices du panneau latéral : blanche pour les libellés, dorée pour les
+/// appréciations, comme sous les onglets du jeu.
+const FONT_SMALL: Font = Font(1809);
+const FONT_SMALL_GOLD: Font = Font(1943);
 const CHROME_INK: (u8, u8, u8) = (20, 40, 90);
 
 impl Graphics {
@@ -2084,6 +2171,21 @@ fn building_descriptions(text: &Text, kinds: &[Kind]) -> Vec<Option<String>> {
             exact.or_else(|| heads.iter().find(|(title, _)| title.ends_with(&format!(" {name}")))).map(|(_, line)| line.clone())
         })
         .collect()
+}
+
+/// Coupe un texte en lignes d'au plus `width` points dans la police du texte.
+fn wrap_width(graphics: &Graphics, font: Font, text: &str, width: f32) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in text.split_whitespace() {
+        let line = lines.last_mut().unwrap();
+        let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+        if !line.is_empty() && graphics.text_width(font, &candidate) > width {
+            lines.push(word.to_string());
+        } else {
+            *line = candidate;
+        }
+    }
+    lines
 }
 
 /// Coupe un texte en lignes d'au plus `width` caractères, entre les mots.
@@ -3595,7 +3697,7 @@ fn run(
                         }
                         sdl::KEY_ESCAPE if open_category.is_some() => open_category = None,
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
-                        sdl::KEY_SPACE => paused = !paused,
+                        sdl::KEY_SPACE | sdl::KEY_P => paused = !paused,
                         sdl::KEY_V => {
                             let next = (OVERLAYS.iter().position(|&(o, _)| o == overlay).unwrap_or(0) + 1) % OVERLAYS.len();
                             overlay = OVERLAYS[next].0;
@@ -3750,6 +3852,14 @@ fn run(
                                     Some(r) => (format!("Pas assez de {} : {} sur {}", request_good(&text, r.resource), world.available_for(r.resource), r.amount), now),
                                     None => continue,
                                 };
+                                continue;
+                            }
+                            Some(MenuRow::Overlay(wanted)) => {
+                                overlay = if overlay == wanted { Overlay::None } else { wanted };
+                                continue;
+                            }
+                            Some(MenuRow::Journal) => {
+                                journal_panel = !journal_panel;
                                 continue;
                             }
                             Some(MenuRow::Policy(resource)) => {
@@ -4203,13 +4313,64 @@ fn run(
             if named.is_none() && (tool == Tool::Demolish || inside(clear_slot)) {
                 graphics.draw_text(FONT_CHROME, &demolish_name, side + PANEL_LEFT, TAB_TOP + 6.0);
             }
+            let small_line = graphics.line_height(FONT_SMALL) + 1.0;
             if let Some(index) = named {
                 let mut top = TAB_TOP + 6.0;
                 for word in category_names[index].split(' ') {
                     graphics.draw_text(FONT_CHROME, word, side + PANEL_LEFT, top);
                     top += row;
                 }
+                // Ce que la catégorie dit de la cité, puis ses vues en surimpression.
+                let (lines, views) = category_info(&world, &text, index);
+                let width = SIDEBAR_WIDTH - PANEL_LEFT - 6.0;
+                top += 6.0;
+                for (label, wanted) in views {
+                    let slot = (side + PANEL_LEFT - 2.0, top, width, small_line + 8.0);
+                    let lit = overlay == wanted || inside(slot);
+                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                    sdl::SDL_SetRenderDrawColor(renderer, 10, 40, 80, if lit { 220 } else { 140 });
+                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                    graphics.ink = (255, 255, 255);
+                    let font = if overlay == wanted { FONT_SMALL_GOLD } else { FONT_SMALL };
+                    let label_width = graphics.text_width(font, label);
+                    graphics.draw_text(font, label, slot.0 + (slot.2 - label_width) / 2.0, slot.1 + (slot.3 - small_line) / 2.0);
+                    graphics.ink = CHROME_INK;
+                    menu_rows.push((slot, MenuRow::Overlay(wanted)));
+                    top += slot.3 + 3.0;
+                }
+                top += 6.0;
+                // « Libellé : valeur » : le libellé en blanc, la valeur en doré dessous.
+                graphics.ink = (255, 255, 255);
+                for text_line in lines {
+                    let (label, value) = text_line.split_once(" : ").map_or((text_line.as_str(), None), |(l, v)| (l, Some(v)));
+                    let pieces: Vec<(Font, String)> = wrap_width(&graphics, FONT_SMALL, label, width)
+                        .into_iter()
+                        .map(|p| (FONT_SMALL, p))
+                        .chain(value.into_iter().flat_map(|v| wrap_width(&graphics, FONT_SMALL_GOLD, v, width).into_iter().map(|p| (FONT_SMALL_GOLD, p))))
+                        .collect();
+                    for (font, piece) in pieces {
+                        if top + small_line > SIDEBAR_BUTTONS[0].1 - 4.0 {
+                            break;
+                        }
+                        graphics.draw_text(font, &piece, side + PANEL_LEFT, top);
+                        top += small_line;
+                    }
+                    top += 4.0;
+                }
+                graphics.ink = CHROME_INK;
             }
+            // Zone des messages : la dernière annonce ; un clic ouvre le journal.
+            let message_slot = (side + MESSAGE_SLOT.0, MESSAGE_SLOT.1, MESSAGE_SLOT.2, MESSAGE_SLOT.3);
+            if let Some((_, last)) = journal.last() {
+                let mut top = message_slot.1 + 4.0;
+                graphics.ink = (255, 255, 255);
+                for piece in wrap_width(&graphics, FONT_SMALL, last, message_slot.2 - 8.0).into_iter().take(((message_slot.3 - 4.0) / small_line) as usize) {
+                    graphics.draw_text(FONT_SMALL, &piece, message_slot.0 + 4.0, top);
+                    top += small_line;
+                }
+                graphics.ink = CHROME_INK;
+            }
+            menu_rows.push((message_slot, MenuRow::Journal));
             graphics.ink = (255, 255, 255);
             if let Some(index) = open_category {
                 let tools = category_tools(&world, index);
@@ -4587,6 +4748,13 @@ fn run(
                 }
             }
 
+            // Bandeau de pause, en haut de la carte comme dans le jeu.
+            if paused {
+                let banner = text.get(13, 2);
+                let width = graphics.text_width(FONT_TEXT, &banner) + 48.0;
+                graphics.panel((side - width) / 2.0, TOP_BAR_HEIGHT + 12.0, width, row + 12.0);
+                graphics.draw_text(FONT_TEXT, &banner, (side - width) / 2.0 + 24.0, TOP_BAR_HEIGHT + 18.0);
+            }
             if !notice.0.is_empty() && now - notice.1 < NOTICE_MS {
                 let width = graphics.text_width(FONT_TEXT, &notice.0) + 32.0;
                 graphics.panel((w - width) / 2.0, h - row - 28.0, width, row + 12.0);
