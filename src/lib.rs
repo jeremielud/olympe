@@ -26,5 +26,7 @@ pub mod sanctuary;
 pub mod sdl;
 pub mod sg;
 pub mod text;
+pub mod tiling;
+mod tiling_tables;
 pub mod wise;
 pub mod world;

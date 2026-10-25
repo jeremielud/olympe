@@ -320,3 +320,44 @@ fn some_episodes_hold_panhellenic_games() {
     }
     assert_eq!(with_games.len(), 47);
 }
+
+#[test]
+fn terrain_tiling_matches_the_maps() {
+    let Some(data) = data() else { return };
+    let groups = |file: &str| zeus::sg::Catalog::load(&data.join("data").join(file)).unwrap().groups;
+    let (terrain, poseidon) = (groups("zeus_terrain.sg3"), groups("poseidon_loaded.sg3"));
+    // Cartes isolées : comparaison stricte. Celles des aventures ont parfois une
+    // grille d'aléa qui ne correspond plus aux variantes stockées, et les cartes de Zeus
+    // 1.0 d'autres variantes de couleur : on ne fait qu'en rendre compte.
+    let mut strict: Vec<Map> = files(&data.join("adventures"), "map").iter().map(|f| Map::parse(&fs::read(f).unwrap()).unwrap()).collect();
+    let mut others = Vec::new();
+    for file in files(&data.join("adventures"), "pak") {
+        let campaign = Campaign::parse(&fs::read(&file).unwrap()).unwrap();
+        others.push(campaign.parent().clone());
+        others.extend(campaign.colonies().iter().cloned());
+    }
+    let count = |maps: &mut Vec<Map>| {
+        let (mut same, mut total) = (0, 0);
+        for map in maps.drain(..) {
+            let tiling = zeus::tiling::tile(&map, &terrain, &poseidon, 0);
+            let zeus = map.version < 318;
+            for i in 0..zeus::map::GRID * zeus::map::GRID {
+                let (x, y) = (i % zeus::map::GRID, i / zeus::map::GRID);
+                // Terrain nu, hors routes et zones de catastrophe peintes par l'éditeur.
+                if map.terrain(x, y) & (0x8c008 | 0x40 | 0x2000010) != 0 || tiling.images[i] == 0 {
+                    continue;
+                }
+                let stored = map.image(x, y);
+                let stored = if zeus && (0xC000..0xC000 + 10_000).contains(&stored) { stored - 0xC000 + 0x14000 } else { stored };
+                total += 1;
+                same += (stored == tiling.images[i]) as usize;
+            }
+        }
+        (same, total)
+    };
+    let (same, total) = count(&mut strict);
+    let (all_same, all_total) = count(&mut others);
+    eprintln!("pavage : {same}/{total} cases justes (cartes isolées), {all_same}/{all_total} (aventures)");
+    assert!(total > 250_000, "{total} cases");
+    assert!(same * 1000 >= total * 998, "{same} justes sur {total}");
+}
