@@ -398,6 +398,8 @@ const CLEAR_TAB: usize = 1753;
 /// bouton inactif ; une petite réserve vide ; les objectifs (parchemin), un bouton
 /// inactif et la carte du monde (globe). Sans touche, le bouton est inactif.
 const CLEAR_SLOT: (f32, f32, f32, f32) = (6.0, 432.0, 78.0, 40.0);
+/// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
+const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0, 2.0, 63.0, 19.0)];
 /// Zone des messages, sous les boutons (relevée sur l'image du panneau).
 const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
 /// Tuile de route droite (catalogue du terrain), qui sert d'icône au bouton des routes.
@@ -534,6 +536,8 @@ struct Minimap {
     x: f32,
     y: f32,
     scale: f32,
+    /// Échelle de la mini-carte flottante, en bas à gauche.
+    base: f32,
     /// Zone jouable dans la texture : coin et taille.
     left: f32,
     top: f32,
@@ -555,7 +559,7 @@ impl Minimap {
         }
         let (width, height) = (x1.saturating_sub(x0).max(1) as f32, y1.saturating_sub(y0).max(1) as f32);
         let scale = (MINIMAP_MAX_WIDTH / width).min(MINIMAP_MAX_HEIGHT / height);
-        Minimap { x: 0.0, y: 0.0, scale, left: x0 as f32, top: y0 as f32, width, height }
+        Minimap { x: 0.0, y: 0.0, scale, base: scale, left: x0 as f32, top: y0 as f32, width, height }
     }
 
     /// Taille à l'écran.
@@ -612,6 +616,8 @@ enum MenuRow {
     Journal,
     /// Menu du bandeau (Fichier, Options, Aide) : l'ouvre ou le referme.
     TopMenu(usize),
+    /// Onglets du haut du panneau : constructions, ou carte générale.
+    SidebarMap(bool),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -3117,6 +3123,8 @@ fn run(
         let mut help = false;
         // Menu du bandeau ouvert (0 Fichier, 1 Options, 2 Aide).
         let mut top_menu: Option<usize> = None;
+        // Second onglet du panneau : la carte générale y remplace les informations.
+        let mut sidebar_map = false;
         // Images dessinées, et instant de la première, pour `--mesure`.
         let (mut frames, mut measure_start, mut slowest, mut previous_frame) = (0u32, 0u64, 0u64, 0u64);
         // Récit d'ouverture, affiché jusqu'au premier clic ou à la première touche. Pas
@@ -3844,6 +3852,10 @@ fn run(
                                 hovered = (-1, -1);
                                 continue;
                             }
+                            Some(MenuRow::SidebarMap(wanted)) => {
+                                sidebar_map = wanted;
+                                continue;
+                            }
                             Some(MenuRow::TopMenu(index)) => {
                                 top_menu = if top_menu == Some(index) { None } else { Some(index) };
                                 continue;
@@ -4339,6 +4351,17 @@ fn run(
                 graphics.draw_text(FONT_CHROME, &demolish_name, side + PANEL_LEFT, TAB_TOP + 6.0);
             }
             let small_line = graphics.line_height(FONT_SMALL) + 1.0;
+            // Onglets du haut du panneau ; l'onglet inactif est assombri.
+            for (wanted, slot) in [(false, SIDEBAR_TABS[0]), (true, SIDEBAR_TABS[1])] {
+                let slot = (side + slot.0, slot.1, slot.2, slot.3);
+                if sidebar_map != wanted {
+                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                    sdl::SDL_SetRenderDrawColor(renderer, 0, 20, 40, if inside(slot) { 60 } else { 110 });
+                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                }
+                menu_rows.push((slot, MenuRow::SidebarMap(wanted)));
+            }
+            let named = if sidebar_map { None } else { named };
             if let Some(index) = named {
                 let mut top = TAB_TOP + 6.0;
                 for word in category_names[index].split(' ') {
@@ -4436,8 +4459,11 @@ fn run(
                     let pixels = minimap_pixels(&world);
                     sdl::SDL_UpdateTexture(minimap, null(), pixels.as_ptr() as *const c_void, (MINIMAP_WIDTH * 4) as i32);
                 }
+                // Dans le panneau (carte générale) ou flottante en bas à gauche.
+                let area = (side + PANEL_LEFT - 2.0, TAB_TOP + 4.0, SIDEBAR_WIDTH - PANEL_LEFT - 2.0, SIDEBAR_BUTTONS[0].1 - TAB_TOP - 12.0);
+                minimap_at.scale = if sidebar_map { (area.2 / minimap_at.width).min(area.3 / minimap_at.height) } else { minimap_at.base };
                 let (mw, mh) = minimap_at.size();
-                (minimap_at.x, minimap_at.y) = (12.0, h - mh - 12.0);
+                (minimap_at.x, minimap_at.y) = if sidebar_map { (area.0 + (area.2 - mw) / 2.0, area.1 + (area.3 - mh) / 2.0) } else { (12.0, h - mh - 12.0) };
                 graphics.panel(minimap_at.x - 4.0, minimap_at.y - 4.0, mw + 8.0, mh + 8.0);
                 let part = sdl::FRect { x: minimap_at.left, y: minimap_at.top, w: minimap_at.width, h: minimap_at.height };
                 let place = sdl::FRect { x: minimap_at.x, y: minimap_at.y, w: mw, h: mh };
