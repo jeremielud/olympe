@@ -1464,3 +1464,18 @@ fn a_chariot_factory_turns_wood_and_horses_into_chariots() {
     other.load(&saved).unwrap();
     assert_eq!(other.stored(22), world.stored(22));
 }
+
+#[test]
+fn a_footprint_starts_on_the_hovered_tile_in_every_orientation() {
+    use zeus::world::{rotate, unrotate};
+    for orientation in [0u8, 2, 4, 6] {
+        let at = (100, 80);
+        assert_eq!(unrotate(orientation, rotate(orientation, at.0, at.1).0, rotate(orientation, at.0, at.1).1), at);
+        for (w, d) in [(3, 3), (6, 9)] {
+            let corner = World::footprint_corner(orientation, at, w, d);
+            let tiles: Vec<(i32, i32)> = (0..d).flat_map(|y| (0..w).map(move |x| rotate(orientation, corner.0 + x, corner.1 + y))).collect();
+            let start = (tiles.iter().map(|t| t.0).min().unwrap(), tiles.iter().map(|t| t.1).min().unwrap());
+            assert_eq!(start, rotate(orientation, at.0, at.1), "orientation {orientation}, {w}×{d}");
+        }
+    }
+}
