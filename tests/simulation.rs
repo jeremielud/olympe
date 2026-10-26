@@ -1466,6 +1466,29 @@ fn a_roadblock_turns_back_the_rounds() {
 }
 
 #[test]
+fn a_roadblock_can_be_placed_on_a_map_road() {
+    let Some(data) = data() else { return };
+    // Le bac à sable a des routes déjà présentes sur la carte, sans cellule `Cell::Road`.
+    let map = Map::parse(&fs::read(data.join("adventures/jeu ouvert - bac à sable 2/jeu ouvert - bac à sable 2p.map")).unwrap()).unwrap();
+    let model = Model::parse(&fs::read(data.join("model/zeus_model_normal.txt")).unwrap()).unwrap();
+    let mut world = World::new(map, Vec::new(), model.houses.clone(), WalkerImages::default(), 10_000);
+    let roadblock = world.kinds.len();
+    world.kinds.push(Kind::simple("barrage routier".into(), 4, 1, 1150, Function::Roadblock, 0));
+    let (x, y) = (122, 9);
+    assert!(world.is_road(x, y));
+    // Une route neuve qui arrive par la gauche change l'image de la route de la carte :
+    // les deux se dessinent jointes.
+    let before = world.draw(x as usize, y as usize).unwrap().image;
+    assert!(world.place_road(x - 1, y, 0));
+    let after = world.draw(x as usize, y as usize).unwrap().image;
+    assert_ne!(before, after);
+    assert!(world.can_place(roadblock, x, y));
+    assert!(world.place_building(roadblock, x, y));
+    assert!(world.demolish(x, y));
+    assert!(world.is_road(x, y));
+}
+
+#[test]
 fn a_dragged_road_goes_around_obstacles() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);

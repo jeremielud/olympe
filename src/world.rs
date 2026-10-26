@@ -1992,9 +1992,13 @@ impl World {
                 let any = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Racetrack);
                 self.can_build(x, y, k.size) && (!any || self.racetrack_links(x, y) != 0)
             }
-            // Sur une route, qu'il recouvre : chaque case est libre ou de la route.
-            // Sur une route existante, exactement.
-            Function::Roadblock => Self::in_grid(x, y) && self.cell(x as usize, y as usize) == Cell::Road,
+            // Sur une route, qu'il recouvre : route posée par le joueur, ou route déjà
+            // présente sur la carte (bit de terrain, sans cellule `Cell::Road`).
+            Function::Roadblock => {
+                Self::in_grid(x, y)
+                    && (self.cell(x as usize, y as usize) == Cell::Road
+                        || (self.cell(x as usize, y as usize) == Cell::Terrain && self.map.terrain(x as usize, y as usize) & TERRAIN_ROAD != 0))
+            }
             Function::Gatehouse => {
                 let tiles: Vec<(i32, i32)> = (0..size).flat_map(|dy| (0..size).map(move |dx| (x + dx, y + dy))).collect();
                 tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || (matches!(self.cell(tx as usize, ty as usize), Cell::Road) && Self::in_grid(tx, ty)))
@@ -2331,8 +2335,11 @@ impl World {
         match self.cell(x, y) {
             Cell::Terrain => {
                 let (id, edge) = self.terrain_at(x, y);
-                // Route de la carte dans une vue tournée : le repavage ne la dessine pas.
-                if id == 0 && self.orientation != 0 && self.map.terrain(x, y) & TERRAIN_ROAD != 0 {
+                // Route déjà présente sur la carte : son image est recalculée d'après ses
+                // voisines, comme une route posée par le joueur, sinon une route nouvelle
+                // qui s'y raccorde ne paraît pas jointe (et le repavage d'une vue tournée
+                // ne la dessine pas).
+                if self.map.terrain(x, y) & TERRAIN_ROAD != 0 {
                     return Some(self.road_draw(x, y));
                 }
                 if id == 0 || edge & EDGE_DRAW_TILE == 0 {
