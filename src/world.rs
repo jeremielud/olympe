@@ -580,7 +580,7 @@ pub enum Conquest {
     AlreadyRuled,
     Away,
     NoArmy,
-    /// La compagnie demandée dépasse les soldats ou les trières présents.
+    /// La compagnie demandée dépasse les soldats ou les navires présents.
     TooMany,
 }
 
@@ -796,7 +796,7 @@ const BOAT_TILES: u64 = 33;
 const BOAT_DAYS: u64 = 9;
 const FISHING_TICKS: u64 = 8 * TICKS_PER_DAY;
 const UNLOADING_TICKS: u64 = 4 * TICKS_PER_DAY;
-/// Quai des trières (`Zeus.exe`, 0x4901ea) : le chantier commence quand le quai a 200
+/// Quai des navires (`Zeus.exe`, 0x4901ea) : le chantier commence quand le quai a 200
 /// unités de bois et 200 d'armement (deux charges de chaque) ; sa progression gagne 10
 /// par jour à effectif complet et la trière est lancée à 320, soit au bout de 32 jours,
 /// en consommant ces matériaux.
@@ -1125,7 +1125,7 @@ pub enum Function {
     HeroHall(u8),
     /// Section de l'hippodrome (4 × 4 cases), raccordée aux sections voisines.
     Racetrack,
-    /// Quai des trières : posé au bord de l'eau, il arme une trière avec le bois de
+    /// Quai des navires : posé au bord de l'eau, il arme un navire avec le bois de
     /// l'entrepôt.
     Wharf,
     /// Tour : ses sentinelles tirent sur les envahisseurs à portée.
@@ -1361,7 +1361,7 @@ enum Role {
     /// Porteur qui livre des chargements à un bâtiment.
     Deliver { to: u16, load: i32, from: u16 },
     /// Porteur parti de l'entrepôt avec des matériaux pour un chantier (sanctuaire,
-    /// monument, quai des trières).
+    /// monument, quai des navires).
     Supply { to: u16, good: Good, load: i32 },
     /// Acheteuse en route vers un fournisseur pour le compte d'une échoppe.
     Fetch { source: u16, vendor: u16 },
@@ -3211,7 +3211,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
                 self.bury_soldiers(rank, dead);
                 expedition.soldiers[rank] -= dead;
             }
-            // Les trières coulées laissent leur quai libre pour en bâtir d'autres.
+            // Les navires coulés laissent leur quai libre pour en bâtir d'autres.
             let sunk = expedition.triremes * ours / 100;
             self.moor(sunk, -1, 0);
             expedition.triremes -= sunk;
@@ -4045,7 +4045,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
     }
 
     /// Ce qui manque encore à un chantier : sanctuaire ou monument inachevé (s'il a ses
-    /// ouvriers), quai des trières sans trière.
+    /// ouvriers), quai des navires sans navire.
     fn site_needs(&self, building: &Building) -> Vec<(Good, i32)> {
         let wanted: Vec<(Good, i32)> = match self.kinds[building.kind].function {
             Function::Sanctuary { needs, .. } | Function::Monument { needs, .. } if building.staffed => {

@@ -716,7 +716,7 @@ enum MenuRow {
     Pick(Tool),
     /// Prépare la compagnie à envoyer soumettre cette cité du monde, ou à la piller.
     Conquer(usize, bool),
-    /// Change l'effectif d'un rang (0 à 2) ou des trières (3) de la compagnie préparée.
+    /// Change l'effectif d'un rang (0 à 2) ou des navires (3) de la compagnie préparée.
     CompanyCount(usize, i32),
     /// Remplit la compagnie préparée avec tout ce qui reste à la cité.
     CompanyAll,
@@ -3180,7 +3180,7 @@ fn run(
     tower.employees = rules(TYPE_TOWER)?.employees;
     tower.appeal = appeal_of(TYPE_TOWER)?;
     (tower.fire_risk, tower.damage_risk) = (rules(TYPE_TOWER)?.fire_risk, rules(TYPE_TOWER)?.damage_risk);
-    // Quai des trières : le jeu n'en a pas d'image reconnue ; Olympe prend celle d'une
+    // Quai des navires : le jeu n'en a pas d'image reconnue ; Olympe prend celle d'une
     // pêcherie.
     let mut wharf = Kind::simple(text.get(TEXT_BUILDINGS, TYPE_WHARF), rules(TYPE_WHARF)?.cost, 3, WHARF_IMAGE, Function::Wharf, 0);
     wharf.employees = rules(TYPE_WHARF)?.employees;
@@ -5466,7 +5466,7 @@ fn run(
                 graphics.panel((side - width) / 2.0, TOP_BAR_HEIGHT + 12.0, width, row + 12.0);
                 graphics.draw_text(FONT_TEXT, &banner, (side - width) / 2.0 + 24.0, TOP_BAR_HEIGHT + 18.0);
             }
-            // Composition d'une campagne : les compagnies et les trières à envoyer.
+            // Composition d'une campagne : les compagnies et les navires à envoyer.
             if let Some(mut draft) = company {
                 let ranks = world.ranks();
                 let ships = world.triremes();
