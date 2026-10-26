@@ -125,7 +125,8 @@ const TYPE_FOUNDRY: usize = 50;
 /// planche de l'élevage ; les pontons voisins (544 à 551) sont les quais à oursins.
 const DAIRY_IMAGE: usize = 565;
 const HUNTING_LODGE_IMAGE: usize = 528;
-/// Quai des trières, et l'image de pêcherie qui le représente.
+/// Quai des navires de guerre (trières ou frégates), et l'image de pêcherie qui le
+/// représente.
 const TYPE_WHARF: usize = 136;
 /// Section d'hippodrome, et sa première image (droite) dans `poseidon_loaded.sg3`.
 const TYPE_RACETRACK: usize = 199;
@@ -157,9 +158,10 @@ const SCIENCE_KINDS: [(usize, usize, usize, Function, usize); 6] = [
     (207, 597, 6, Function::Museum, 0),
 ];
 /// Types que seule une cité grecque peut bâtir, et que seule une cité atlante peut
-/// bâtir (guide de l'éditeur de Poséidon, annexe 7). Le quai des trières et le
-/// dresseur de chevaux restent ouverts aux cités atlantes : ils y tiennent lieu du
-/// quai à frégates et du marchand de chars, qu'Olympe n'a pas.
+/// bâtir (guide de l'éditeur de Poséidon, annexe 7). Le quai des navires et le
+/// dresseur de chevaux restent ouverts aux cités atlantes : le quai y arme des
+/// frégates, avec les règles de la trière (son image propre reste à identifier), et
+/// le dresseur y tient lieu du marchand de chars, qu'Olympe n'a pas.
 const GREEK_ONLY: [usize; 6] = [77, 78, 79, 80, 81, 82];
 const ATLANTEAN_ONLY: [usize; 8] = [202, 203, 204, 205, 206, 207, TYPE_CHARIOT_WORKSHOP, TYPE_CHARIOT_VENDOR];
 const SIMPLE_KINDS: [(usize, usize, Function, usize); 37] = [
@@ -1694,7 +1696,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
                 None => format!("{rivals} cités rivales"),
             },
             format!("{} partenaires commerciaux, {} demandes en attente", world.partners(), world.requests.len()),
-            format!("Trières à quai : {}", world.triremes()),
+            format!("{} à quai : {}", capitalized(world.ship_plural()), world.triremes()),
         ],
     ));
     pages
@@ -1994,7 +1996,7 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
             format!("{} {}{alternative} en réserve", a / unit, resource(b))
         }
         1 if b == 43 => format!("{a} {} {}", resource(15).to_lowercase(), hall(34)),
-        1 => format!("{a} trières"),
+        1 => format!("{a} {}", if atlantean { "frégates" } else { "trières" }),
         2 => format!("{a} manoirs ou mieux"),
         10 => format!("{a} {}", hall(35)),
         3 => {
@@ -4391,7 +4393,7 @@ fn run(
                                 notice = match world.conquer_with(draft.city, draft.raid, draft.soldiers, draft.triremes) {
                                     Ok(months) => (format!("La compagnie part {} {name} : {months} mois de marche", if draft.raid { "piller" } else { "attaquer" }), now),
                                     Err(Conquest::NoArmy) => ("Aucune troupe choisie".to_string(), now),
-                                    Err(Conquest::TooMany) => ("Pas assez de soldats ou de trières pour cette compagnie".to_string(), now),
+                                    Err(Conquest::TooMany) => (format!("Pas assez de soldats ou de {} pour cette compagnie", world.ship_plural()), now),
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
                                     Err(_) => (format!("{name} ne peut pas être attaquée"), now),
                                 };
@@ -4445,9 +4447,9 @@ fn run(
                                 let (x, y) = build_corner(&world, kind, (x, y));
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
-                                        notice = (format!("Pas assez de drachmes pour {}", world.kinds[kind].name), now);
+                                        notice = (format!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
                                     } else if let Some(hint) = world.placement_hint(kind, x, y) {
-                                        notice = (format!("{} : {hint}", world.kinds[kind].name), now);
+                                        notice = (format!("{} : {hint}", world.kind_name(kind)), now);
                                     }
                                 }
                             }
@@ -4482,7 +4484,7 @@ fn run(
                     Tool::Road => format!(" — {road_name} ({road_cost})"),
                     Tool::Wall => format!(" — {wall_name} ({wall_cost})"),
                     Tool::Demolish => " — Démolir".to_string(),
-                    Tool::Build(kind) => format!(" — {} ({})", world.kinds[kind].name, world.kinds[kind].cost),
+                    Tool::Build(kind) => format!(" — {} ({})", world.kind_name(kind), world.kinds[kind].cost),
                 };
                 let place = match in_grid(under) {
                     true => format!(
@@ -4997,7 +4999,7 @@ fn run(
                     .map(|&(slot, ref picked)| {
                         let key = if slot < 9 { (slot + 1).to_string() } else { "-".to_string() };
                         match *picked {
-                            Tool::Build(kind) => format!("{key}  {}  ({})", world.kinds[kind].name, world.kinds[kind].cost),
+                            Tool::Build(kind) => format!("{key}  {}  ({})", world.kind_name(kind), world.kinds[kind].cost),
                             Tool::Wall => format!("{key}  {wall_name}  ({wall_cost})"),
                             _ => format!("{key}  {road_name}  ({road_cost})"),
                         }
@@ -5054,7 +5056,7 @@ fn run(
             }
             if let Some(building) = pinned_building.or_else(|| world.building_at(under.0, under.1)) {
                 let full = pinned_building.is_some();
-                let mut lines = vec![world.kinds[building.kind].name.clone()];
+                let mut lines = vec![world.kind_name(building.kind)];
                 if let Some(Some(description)) = descriptions.get(building.kind) {
                     lines.extend(wrap(description, INFO_LINE));
                 }
@@ -5088,14 +5090,15 @@ fn run(
                 if world.kinds[building.kind].function == Function::Wharf {
                     lines.push(match building.stock {
                         0 => format!(
-                            "Trière en chantier : {} {} / 4, {} {} / 1",
+                            "{} en chantier : {} {} / 4, {} {} / 1",
+                            capitalized(world.ship_singular()),
                             good_names[Good::Wood as usize],
                             building.goods[Good::Wood as usize],
                             good_names[Good::Arms as usize],
                             building.goods[Good::Arms as usize]
                         ),
-                        ..0 => "Sa trière est partie en campagne".to_string(),
-                        _ => "Une trière est à quai".to_string(),
+                        ..0 => format!("Sa {} est partie en campagne", world.ship_singular()),
+                        _ => format!("Une {} est à quai", world.ship_singular()),
                     });
                 }
                 // Chantier de sanctuaire ou de monument : matériaux livrés sur demandés.
@@ -5476,7 +5479,8 @@ fn run(
                 let action = if draft.raid { "piller" } else { "soumettre" };
                 let title = format!("Compagnie pour {action} {}", city_name(&text, &world, draft.city));
                 let detail = format!("Défense {} — {} mois de marche", world.defence(draft.city), world.travel_months(draft.city));
-                let units = [("Piétaille", 0), ("Hoplites", 1), ("Cavaliers", 2), ("Trières", 3)];
+                let ships_label = if world.atlantean { "Frégates" } else { "Trières" };
+                let units = [("Piétaille", 0), ("Hoplites", 1), ("Cavaliers", 2), (ships_label, 3)];
                 let lines: Vec<String> = units
                     .iter()
                     .map(|&(name, slot)| {
@@ -5564,7 +5568,7 @@ fn run(
                     MenuRow::Category(index) => Some(category_names[index].clone()),
                     MenuRow::Group(button) => open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button)).map(|(_, tools)| {
                         {
-                        let names: Vec<String> = tools.iter().map(|&(_, t)| match t { Tool::Build(k) => world.kinds[k].name.clone(), Tool::Wall => wall_name.clone(), _ => road_name.clone() }).collect();
+                        let names: Vec<String> = tools.iter().map(|&(_, t)| match t { Tool::Build(k) => world.kind_name(k), Tool::Wall => wall_name.clone(), _ => road_name.clone() }).collect();
                         if names.len() > 2 { format!("{}, {} et {} autres", names[0], names[1], names.len() - 2) } else { names.join(", ") }
                     }
                     }),

@@ -411,6 +411,18 @@ fn a_closed_racetrack_makes_a_hippodrome() {
 }
 
 #[test]
+fn an_atlantean_city_calls_its_warships_frigates() {
+    let Some(data) = data() else { return };
+    let (mut world, ..) = world(&data);
+    assert_eq!((world.ship_singular(), world.ship_plural()), ("trière", "trières"));
+    world.atlantean = true;
+    assert_eq!((world.ship_singular(), world.ship_plural()), ("frégate", "frégates"));
+    let wharf = world.kinds.len();
+    world.kinds.push(Kind::simple("quai des trières".into(), 0, 3, 721, Function::Wharf, 0));
+    assert_eq!(world.kind_name(wharf), "quai à frégates");
+}
+
+#[test]
 fn a_hero_wants_an_active_stadium_or_museum() {
     use zeus::heroes::{Check, Requirement};
     let Some(data) = data() else { return };

@@ -2681,9 +2681,26 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
         (sections.len() as i32, seen.len() == sections.len())
     }
 
-    /// Trières à quai.
+    /// Navires à quai : trières, ou frégates dans une cité atlante.
     pub fn triremes(&self) -> i32 {
         self.buildings.iter().flatten().filter(|b| self.kinds[b.kind].function == Function::Wharf).map(|b| b.stock.clamp(0, 1)).sum()
+    }
+
+    /// Nom d'un navire de guerre, au singulier, selon la nation de la cité.
+    pub fn ship_singular(&self) -> &'static str {
+        if self.atlantean { "frégate" } else { "trière" }
+    }
+
+    /// Nom d'un navire de guerre, au pluriel, selon la nation de la cité.
+    pub fn ship_plural(&self) -> &'static str {
+        if self.atlantean { "frégates" } else { "trières" }
+    }
+
+    /// Nom d'un bâtiment tel que la cité l'appelle : dans une cité atlante, le quai
+    /// des navires est un quai à frégates.
+    pub fn kind_name(&self, kind: usize) -> String {
+        let kind = &self.kinds[kind];
+        if self.atlantean && kind.function == Function::Wharf { "quai à frégates".to_string() } else { kind.name.clone() }
     }
 
     /// Monuments achevés de ce rang, ou de tous les rangs.

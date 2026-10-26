@@ -29,8 +29,9 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 65 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : dans les cités atlantes la frégate
-(la trière en tient lieu).
+Manque encore notamment : l'image et les règles propres de la frégate atlante
+(dans une cité atlante, le quai et le navire portent leur nom atlante, mais gardent
+l'image et les règles de la trière).
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
