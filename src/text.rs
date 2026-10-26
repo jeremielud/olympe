@@ -23,6 +23,9 @@ impl Text {
 
     /// Chaîne numéro `index` du groupe `group`, ou une chaîne vide.
     pub fn get(&self, group: usize, index: usize) -> String {
+        if let Some(text) = crate::lang::game_text_overrides().and_then(|overrides| overrides.get(&(group, index))) {
+            return text.to_string();
+        }
         let Some(&Some(start)) = self.groups.get(group) else { return String::new() };
         let Some(data) = self.data.get(start..) else { return String::new() };
         let bytes = data.split(|&b| b == 0).nth(index).unwrap_or(&[]);

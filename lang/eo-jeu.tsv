@@ -1,0 +1,343 @@
+# Textes du jeu en espéranto : groupe<TAB>numéro<TAB>texte.
+23	0	Nenio
+23	1	Eĥino
+23	2	Fiŝo
+23	3	Viando
+23	4	Fromaĝo
+23	5	Karotoj
+23	6	Cepoj
+23	7	Tritiko
+23	8	Oranĝoj
+23	9	Ligno
+23	10	Bronzo
+23	11	Marmoro
+23	12	Vinberoj
+23	13	Olivoj
+23	14	Lano
+23	15	Ĉevaloj
+23	16	Nigra marmoro
+23	17	Oriĥalko
+23	18	Armilaro
+23	19	Skulptaĵo
+23	20	Olivoleo
+23	21	Vino
+23	22	Ĉaro
+23	23	draĥmoj
+23	24	Trupoj
+23	25	Nutraĵo
+23	26	Heroo
+157	0	Zeŭso
+157	1	Pozidono
+157	2	Demetra
+157	3	Apolono
+157	4	Artemisa
+157	5	Areso
+157	6	Afrodita
+157	7	Hermeso
+157	8	Atena
+157	9	Hefesto
+157	10	Dionizo
+157	11	Hadeso
+157	12	Hera
+157	13	Atlaso
+157	14	Iu ajn dio
+153	0	Agordoj de malfacileco
+153	1	Komencanto
+153	2	Mortemulo
+153	3	Heroo
+153	4	Titano
+153	5	Olimpano
+194	0	Loĝantaro
+194	1	Trezorejo
+194	2	Sanktejo
+194	3	Subteni
+194	4	Serĉo
+194	5	Mortigi
+194	6	Jara produktado
+194	7	Regi
+194	8	Jara profito
+194	9	Loĝejoj
+194	10	Komercaj partneroj
+194	11	Neuzata
+194	12	Templimo
+194	13	Daŭro de travivado
+194	14	Flankenmeti varojn
+194	15	Piramido
+194	16	Hipodromo
+194	17	Loĝantaro de [amount]
+194	18	Trezorejo de [amount]
+194	19	Sanktejo de [god]
+194	20	Sanktejo de iu ajn dio
+194	21	Sanktejo de iu alia dio
+194	22	[amount] sanktejoj
+194	23	[amount] aliaj sanktejoj
+194	24	Subteni [amount] [military_or_better]
+194	25	[god_quest]
+194	26	Plenumi venontan serĉon
+194	27	Mortigi monstron
+194	28	Mortigi [monster]
+194	29	Protekti la urbon kontraŭ [monster]
+194	30	Produkti [amount] [item] en unu jaro
+194	31	Regi [city]
+194	32	Jara profito de [amount]
+194	33	[amount] homoj en [house_level] aŭ pli bona
+194	34	[amount] komercaj partneroj
+194	35	[amount] [item] por la patrina urbo
+194	36	[amount] [item] por la kolonio
+194	37	Travivi ĝis [finish_date]
+194	38	Fini la epizodon antaŭ [finish_date]
+194	39	Iu ajn piramido
+194	40	[amount] piramidoj
+194	41	Hipodromo longa je [amount] stadioj
+194	42	Hipodromo longa je [amount] stadio
+194	43	Loĝantaro [amount]
+194	44	Trezorejo [amount]
+194	45	[percent] finita
+194	46	Sanktejo bezonata
+194	47	Sanktejoj bezonataj
+194	48	[amount] finitaj
+194	49	[amount] finitaj
+253	0	Aliancano
+253	1	Rivalo
+253	2	Vasalo
+253	3	Kolonio
+157	38	Januaro
+157	39	Februaro
+157	40	Marto
+157	41	Aprilo
+157	42	Majo
+157	43	Junio
+157	44	Julio
+157	45	Aŭgusto
+157	46	Septembro
+157	47	Oktobro
+157	48	Novembro
+157	49	Decembro
+4	0	Raportoj
+4	1	Industrio
+4	2	Armeo
+4	5	Distribuado
+4	6	Bredado
+4	7	Higieno kaj sekureco
+4	9	Kulturo
+4	10	Mitologio
+4	11	Administrado
+4	12	Resumo
+4	14	Eliri
+28	0	Nenie
+28	1	Malfari
+28	2	Modesta loĝejo
+28	3	Kabano
+28	4	Barako
+28	5	Bieneto
+28	6	Loĝdomo
+28	7	Apartamentoj
+28	8	Urbodomo
+28	9	Luksa loĝejo
+28	10	Forlasita rezidejo
+28	11	Rezidejo
+28	12	Domego
+28	13	Grandbieno
+28	14	Bieno
+28	15	Florĝardeno
+28	16	Ĝardenpavilono
+28	17	Labirinto
+28	18	Fiŝlageto
+28	19	Alta obelisko
+28	20	Sunhorloĝo
+28	21	Arbtondaĵo
+28	22	Fonto
+28	23	Ŝtonrondo
+28	24	Malalta obelisko
+28	25	Akvoparko
+28	26	Komerco
+28	27	Teatro
+28	28	Vojo
+28	29	Fosi
+28	30	Farmoj
+28	31	Tritika farmo
+28	32	Cepa farmo
+28	33	Karota farmo
+28	34	Fruktoĝardenoj
+28	35	Vinberujo
+28	36	Olivarbo
+28	37	Domo de kultivistoj
+28	38	Paŝtado
+28	39	Kapro
+28	40	Ŝafo
+28	41	Kardejo
+28	42	Laktejo
+28	43	Tero kaj maro
+28	44	Fiŝkaptejo
+28	45	Kajo de eĥinoj
+28	46	Ĉasejo
+28	47	Krudmaterialoj
+28	48	Monfarejo
+28	49	Masonejo
+28	50	Fandejo
+28	51	Segejo
+28	52	Metiejoj
+28	53	Vinfarejo
+28	54	Olivpremejo
+28	55	Skulptejo
+28	56	Gildo de metiistoj
+28	57	Grenejo
+28	58	Magazeno
+28	59	Magazeno
+28	60	Varfo
+28	61	Varfo
+28	62	Komercejo
+28	63	Ordinara agoro
+28	64	Granda agoro
+28	65	Agora vojo
+28	66	Malplena budo
+28	67	Agoroj
+28	68	Nutraĵvendisto
+28	69	Lanvendisto
+28	70	Oleovendisto
+28	71	Vinvendisto
+28	72	Armilvendisto
+28	73	Ĉevaltrejnisto
+28	74	Fontano
+28	75	Fontano
+28	76	Malsanulejo
+28	77	Kolegio
+28	78	Dramlernejo
+28	79	Gimnazio
+28	80	Stadiono
+28	81	Podio
+28	82	Teatro
+28	83	Sanktejoj
+28	84	Fortikaĵo de Zeŭso
+28	85	Promontoro de Pozidono
+28	86	Ĝardeno de Demetra
+28	87	Orakolo de Apolono
+28	88	Bestejo de Artemisa
+28	89	Fortreso de Areso
+28	90	Rifuĝejo de Afrodita
+28	91	Azilo de Hermeso
+28	92	Laŭbo de Atena
+28	93	Forĝejo de Hefesto
+28	94	Arbareto de Dionizo
+28	95	Pordegoj de Hadeso
+28	96	Fruktoĝardeno de Hera
+28	97	Kolono de Atlaso
+28	98	Citadelo de Pozidono
+28	99	Piramido de Pozidono
+28	100	Modesta piramido
+28	101	Piramido
+28	102	Granda piramido
+28	103	Majesta piramido
+28	104	Malgranda monumento al la ĉielo
+28	105	Monumento al la ĉielo
+28	106	Granda monumento al la ĉielo
+28	107	Malgranda sanktejeto
+28	108	Sanktejeto
+28	109	Granda sanktejeto
+28	110	Piramido de la Panteono
+28	111	Altaro de Olimpo
+28	112	Templo de Olimpo
+28	113	Observatorio Kosmika
+28	114	Muzeo Atlantika
+28	115	Orakolo
+28	116	Altaro
+28	117	Palaco
+28	118	Aleo
+28	119	Memormonumento
+28	120	Akvotransiro
+28	121	Prizorga oficejo
+28	122	Imposta oficejo
+28	123	Vojbaro
+28	124	Gardposteno
+28	125	Halo de heroo
+28	126	Bulvardo
+28	127	Benko
+28	128	Parko
+28	129	Dorika kolono
+28	130	Muro
+28	131	Pordodomo
+28	132	Turo
+28	133	Ĉevalbieno
+28	134	Bieno-domo
+28	135	Armilejo
+28	136	Kajo de triremoj
+28	137	Filozofio
+28	138	Atletiko
+28	139	Fortikaĵoj
+28	140	Militaj metiejoj
+28	141	Distraj lokoj
+28	142	Beligo
+28	143	Halo de heroo
+28	144	Ŝtonminejo
+28	145	Ionika kolono
+28	146	Korinta kolono
+28	147	Fulmo
+28	148	Skulptaĵo de delfeno
+28	149	Planetario
+28	150	Konka ĝardeno
+28	151	Banejo
+28	152	Birdobanejo
+28	157	Monumentoj
+28	164	Kajo de fregatoj
+28	169	Ruino
+28	192	Ordinara roko
+28	193	Kupra roko
+28	194	Arĝenta roko
+28	195	Klifo
+28	199	Hipodromo
+28	200	Hipodromo
+28	201	Transirejo
+28	202	Biblioteko
+28	203	Observatorio
+28	204	Universitato
+28	205	Laboratorio
+28	206	Metiejo de inventistoj
+28	207	Muzeo
+28	208	Astronomio
+28	209	Teknologio
+28	211	Rafinejo
+28	212	Ĉarfabriko
+28	213	Metiejo de nigra marmoro
+28	214	Domo de oranĝistoj
+28	215	Ĉarvendisto
+28	216	Korto
+28	217	Oranĝarbo
+28	218	Kuŝejo de nigra marmoro
+28	219	Oriĥalka roko
+28	220	Brutaro
+28	221	kabano
+28	222	barako
+28	223	bieneto
+28	224	loĝdomo
+28	225	apartamentoj
+28	226	urbodomo
+28	227	vaka rezidejo
+28	228	forlasita rezidejo
+28	229	rezidejo
+28	230	domego
+28	231	grandbieno
+28	232	bieno
+28	234	kabanoj
+28	235	barakoj
+28	236	bienetoj
+28	237	loĝdomoj
+28	238	apartamentoj
+28	239	urbodomoj
+28	240	vakaj rezidejoj
+28	241	forlasitaj rezidejoj
+28	242	rezidejoj
+28	243	domegoj
+28	244	grandbienoj
+28	245	bienoj
+28	247	kabanoj:
+28	248	barakoj:
+28	249	bienetoj:
+28	250	loĝdomoj:
+28	251	apartamentoj:
+28	252	urbodomoj:
+28	253	vakaj rezidejoj:
+28	254	forlasitaj rezidejoj:
+28	255	rezidejoj:
+28	256	domegoj:
+28	257	grandbienoj:
+28	258	bienoj:

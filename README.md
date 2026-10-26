@@ -27,11 +27,11 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Commerce et cités du monde | 70 % |
 | Mythologie (dieux, héros, monstres, quêtes) | 70 % |
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 70 % |
-| Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
+| Langues (anglais, espéranto) et menu de triche | 30 % (choix de langue, textes du jeu et une partie de l'interface ; traduction complète à finir) |
 
 Manque encore notamment : l'image et les règles propres de la frégate atlante
 (dans une cité atlante, le quai et le navire portent leur nom atlante, mais gardent
-l'image et les règles de la trière).
+l'image et les règles de la trière), et la traduction complète de l'interface.
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -325,6 +325,11 @@ olympe chemin/vers/carte.map    # une carte précise
 ```
 
 En jeu, la touche `H` affiche les commandes. `olympe --aide` liste les options.
+
+La langue se choisit avec `--langue en` ou `--langue eo` (ou avec `L` sur l'écran des
+aventures) ; le choix est retenu dans le fichier `langue` des données. Les textes du
+jeu viennent du sous-dossier de la langue (`en`) quand il existe ; l'espéranto a ses
+propres traductions. Une partie de l'interface reste à traduire.
 
 Les parties s'enregistrent avec `F5` et se rechargent avec `F9` ; elles sont rangées
 dans le sous-dossier `sauvegardes` des données.

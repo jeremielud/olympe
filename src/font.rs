@@ -36,6 +36,33 @@ impl Font {
     }
 }
 
+/// Lettres de l'espéranto, que les polices n'ont pas : la lettre de base et l'accent à
+/// poser dessus (le circonflexe de la police, retourné pour la brève du « ŭ »).
+pub fn esperanto(c: char) -> Option<(char, Accent)> {
+    let base = match c {
+        'ĉ' => 'c',
+        'ĝ' => 'g',
+        'ĥ' => 'h',
+        'ĵ' => 'j',
+        'ŝ' => 's',
+        'Ĉ' => 'C',
+        'Ĝ' => 'G',
+        'Ĥ' => 'H',
+        'Ĵ' => 'J',
+        'Ŝ' => 'S',
+        'ŭ' => return Some(('u', Accent::Breve)),
+        'Ŭ' => return Some(('U', Accent::Breve)),
+        _ => return None,
+    };
+    Some((base, Accent::Circumflex))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Accent {
+    Circumflex,
+    Breve,
+}
+
 /// Rang du glyphe d'un caractère (0 = « A »).
 fn glyph(c: char) -> Option<usize> {
     const PUNCTUATION: &str = "!\"%*()-+=:;'?\\/,._";
@@ -85,5 +112,13 @@ mod tests {
         let font = Font(201);
         assert_eq!(font.image('’'), font.image('\''));
         assert_eq!(font.image('«'), font.image('"'));
+    }
+
+    #[test]
+    fn esperanto_letters_are_composed() {
+        use super::{Accent, esperanto};
+        assert_eq!(esperanto('ĉ'), Some(('c', Accent::Circumflex)));
+        assert_eq!(esperanto('Ŭ'), Some(('U', Accent::Breve)));
+        assert_eq!(esperanto('e'), None);
     }
 }

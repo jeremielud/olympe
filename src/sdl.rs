@@ -18,6 +18,9 @@ pub const TEXTUREACCESS_STATIC: c_int = 0;
 pub const TEXTUREACCESS_TARGET: c_int = 2;
 pub const SCALEMODE_NEAREST: c_int = 0;
 pub const SCALEMODE_LINEAR: c_int = 1;
+/// Retournements d'une texture (`SDL_FlipMode`).
+pub const FLIP_NONE: c_int = 0;
+pub const FLIP_VERTICAL: c_int = 2;
 pub const BLENDMODE_BLEND: u32 = 1;
 
 pub const EVENT_QUIT: u32 = 0x100;
@@ -47,6 +50,7 @@ pub const KEY_KP_PLUS: u32 = 0x4000_0057;
 pub const KEY_A: u32 = 0x61;
 pub const KEY_B: u32 = 0x62;
 pub const KEY_D: u32 = 0x64;
+pub const KEY_L: u32 = 0x6c;
 pub const KEY_C: u32 = 0x63;
 pub const KEY_F: u32 = 0x66;
 pub const KEY_H: u32 = 0x68;
@@ -183,6 +187,13 @@ impl Default for Event {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FPoint {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct FRect {
     pub x: f32,
@@ -249,6 +260,15 @@ unsafe extern "C" {
     pub fn SDL_SetRenderDrawBlendMode(renderer: Renderer, mode: u32) -> bool;
     pub fn SDL_RenderClear(renderer: Renderer) -> bool;
     pub fn SDL_RenderTexture(renderer: Renderer, texture: Texture, src: *const FRect, dst: *const FRect) -> bool;
+    pub fn SDL_RenderTextureRotated(
+        renderer: Renderer,
+        texture: Texture,
+        src: *const FRect,
+        dst: *const FRect,
+        angle: f64,
+        center: *const FPoint,
+        flip: c_int,
+    ) -> bool;
     pub fn SDL_RenderFillRect(renderer: Renderer, rect: *const FRect) -> bool;
     pub fn SDL_RenderLine(renderer: Renderer, x1: f32, y1: f32, x2: f32, y2: f32) -> bool;
     pub fn SDL_RenderPresent(renderer: Renderer) -> bool;

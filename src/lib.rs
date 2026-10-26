@@ -9,6 +9,7 @@ pub mod inflate;
 pub mod install;
 pub mod iso;
 pub mod jpeg;
+pub mod lang;
 pub mod letters;
 pub mod map;
 pub mod messages;

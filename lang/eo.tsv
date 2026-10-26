@@ -1,0 +1,244 @@
+# Espéranto : texte français<TAB>traduction.
+difficulté inconnue : {} (debutant, mortel, heros, titan, olympien)	nekonata malfacileco: {} (debutant, mortel, heros, titan, olympien)
+Les données du jeu ne sont pas installées dans {}.	La datumoj de la ludo ne estas instalitaj en {}.
+Installez-les depuis votre exemplaire du jeu : un dossier où il est installé,	Instalu ilin el via ekzemplero de la ludo: dosierujo, kie ĝi estas instalita,
+ou les images (ou le contenu) des CD de Zeus puis de Poséidon :	aŭ la bildoj (aŭ la enhavo) de la KD-oj de Zeŭso kaj poste de Pozidono:
+    olympe installer <source> [<source>…]	    olympe installer <fonto> [<fonto>…]
+erreur : {}	eraro: {}
+non suivi	ne sekvata
+aucun bâtiment permis ne le produit	neniu permesita konstruaĵo produktas ĝin
+aucun emplacement pour le produire	nenie eblas produkti ĝin
+ni produit ni vendu par une cité	nek produktata nek vendata de urbo
+sanctuaire non permis	sanktejo ne permesata
+monument non permis	monumento ne permesata
+hippodrome non permis	hipodromo ne permesata
+quai non permis	kajo ne permesata
+aucun temple de héros permis	neniu heroa halo permesata
+{} épisodes sur {} ont tous leurs objectifs suivis et réalisables	{} el {} epizodoj havas ĉiujn celojn sekvatajn kaj atingeblajn
+partie enregistrée au niveau {}, relancez avec --difficulte {}	ludo konservita je nivelo {}, relanĉu kun --difficulte {}
+Débutant	Komencanto
+Mortel	Mortemulo
+Héros	Heroo
+Titan	Titano
+Olympien	Olimpano
+carte de colonie absente	mankas mapo de kolonio
+{} {} mis de côté	{} {} flankenmetitaj
+{} : {} en stock sur {}	{}: {} en stoko el {}
+Rien à mettre de côté	Nenio flankenmetenda
+ : les habitants s'en vont	: la loĝantoj foriras
+ : les immigrants ne viennent plus	: enmigrantoj ne plu venas
+ : mécontentement	: malkontento
+{} habitants dans {} maisons	{} loĝantoj en {} domoj
+{} : {} ({} habitants)	{}: {} ({} loĝantoj)
+Population	Loĝantaro
+{} postes pour {} travailleurs ; {} sans emploi	{} postenoj por {} laboristoj; {} senlaboraj
+{} postes pour {} travailleurs ; il manque {} ouvriers	{} postenoj por {} laboristoj; mankas {} laboristoj
+{} : {} postes, {} bâtiments, {} à l'arrêt	{}: {} postenoj, {} konstruaĵoj, {} haltigitaj
+Emploi	Dungado
+Finances	Financoj
+Trésor : {} dr.	Trezorejo: {} dr.
+Dernier mois : impôts {} dr., salaires {} dr.	Lasta monato: impostoj {} dr., salajroj {} dr.
+Imposition (+ et -) : {}	Imposto (+ kaj -): {}
+Humeur de la cité : {} sur 100{}	Humoro de la urbo: {} el 100{}
+Bénéfice de l'année en cours : {} dr.	Profito de la nuna jaro: {} dr.
+Meilleure année achevée : {} dr.	Plej bona finita jaro: {} dr.
+Aucune année achevée	Neniu finita jaro
+Commerce depuis le début : ventes {} dr., achats {} dr.	Komerco ĝis nun: vendoj {} dr., aĉetoj {} dr.
+{} : {} maisons sur {} ({} %)	{}: {} domoj el {} ({} %)
+Santé de la cité : {} sur 100	Sano de la urbo: {} el 100
+Vivres aux greniers : {} chargements	Nutraĵo en grenejoj: {} ŝarĝoj
+Entrepôts : vides	Magazenoj: malplenaj
+Entrepôts : {}	Magazenoj: {}
+Services et réserves	Servoj kaj rezervoj
+Sanctuaire de {}	Sanktejo de {}
+Aucun sanctuaire achevé	Neniu finita sanktejo
+{} est dans la cité	{} estas en la urbo
+Quête en attente de {}	Serĉo atendanta {}
+{} est parti en quête	{} foriris serĉe
+Quête de {} accomplie	Serĉo de {} plenumita
+Monstres encore à vaincre : {}	Monstroj ankoraŭ venkendaj: {}
+Mythologie	Mitologio
+Armée et commerce	Armeo kaj komerco
+Force de l'armée : {}	Forto de la armeo: {}
+Invasion en cours : {} soldats de {}	Invado okazas: {} soldatoj de {}
+{} cités rivales	{} rivalaj urboj
+{} partenaires commerciaux, {} demandes en attente	{} komercaj partneroj, {} atendantaj petoj
+Trières à quai : {}	Triremoj ĉe la kajo: {}
+{} part : {}	{} foriras: {}
+Quête accomplie : {}	Serĉo plenumita: {}
+Un héros affronte {}	Heroo alfrontas {}
+{} est vaincu	{} estas venkita
+{} entre dans la cité !	{} eniras la urbon!
+{} {}{} en réserve	{} {}{} en rezervo
+{} trières	{} triremoj
+{} manoirs ou mieux	{} grandbienoj aŭ pli bonaj
+{} sanctuaires : {}	{} sanktejoj: {}
+Condition particulière	Aparta kondiĉo
+{} % sur {} %	{} % el {} %
+pas encore	ankoraŭ ne
+non simulé, tenu pour rempli	ne simulata, konsiderata plenumita
+démo : pas de place pour « {} » en ({}, {})	demonstro: neniu loko por «{}» ĉe ({}, {})
+Installation dans {}	Instalado en {}
+{} fichiers installés ({} Mo).	{} dosieroj instalitaj ({} MB).
+{} fichiers mis à jour par un correctif.	{} dosieroj ĝisdatigitaj per flikaĵo.
+{} fichiers audio convertis en Opus.	{} sondosieroj konvertitaj al Opus.
+{} fichiers audio laissés en MP3 (non lus par le jeu).	{} sondosieroj restis MP3 (ne ludataj de la ludo).
+Lancez le jeu avec : olympe	Lanĉu la ludon per: olympe
+aucune aventure dans le dossier de données	neniu aventuro en la datuma dosierujo
+Choisissez une aventure	Elektu aventuron
+Langue	Lingvo
+type {} absent des règles	tipo {} mankas en la reguloj
+image {} absente	bildo {} mankas
+règles des personnages : {}	reguloj de la figuroj: {}
+impôts : {}	impostoj: {}
+Zeus — {}{}	Zeŭso — {}{}
+H : aide	H: helpo
+pas de musique : {}	neniu muziko: {}
+sauvegarde : {} octets, aller-retour {}	konservo: {} bajtoj, iro-reveno {}
+par niveau {}, réserves totales {}	laŭ nivelo {}, totalaj rezervoj {}
+maisons : {} | attrait {} | stocks : {}	domoj: {} | allogo {} | stokoj: {}
+bâtiments debout : {} | sauvegarde : {} cases en ruine, {} en feu	starantaj konstruaĵoj: {} | konservo: {} kaheloj ruinaj, {} brulantaj
+drachmes {} | dernier mois : impôts {}, salaires {} | employés {} demandés, {} disponibles | humeur {}	draĥmoj {} | lasta monato: impostoj {}, salajroj {} | laboristoj {} bezonataj, {} disponeblaj | humoro {}
+après {} pas : population {}, {} maisons desservies [{}], {} personnages {}, scène en {}	post {} paŝoj: loĝantaro {}, {} domoj servataj [{}], {} figuroj {}, sceno en {}
+pas d'ambiance : {}	neniu etoso: {}
+pas de narration : {}	neniu rakontado: {}
+étape de script inconnue : {}	nekonata skripta paŝo: {}
+script terminé : population {}, drachmes {}, {} cases en feu, {} en ruine, bâtiments [{}]	skripto finita: loĝantaro {}, draĥmoj {}, {} kaheloj brulantaj, {} ruinaj, konstruaĵoj [{}]
+Sanctuaire de {} achevé : {} vous offre {}	Sanktejo de {} finita: {} donacas al vi {}
+Sanctuaire de {} achevé	Sanktejo de {} finita
+{} demande davantage de {}	{} petas pli da {}
+{} demande moins de {}	{} petas malpli da {}
+{} vend davantage de {}	{} vendas pli da {}
+{} vend moins de {}	{} vendas malpli da {}
+Le prix de {} monte : {} dr.	La prezo de {} altiĝas: {} dr.
+Le prix de {} baisse : {} dr.	La prezo de {} malaltiĝas: {} dr.
+Cadeaux reçus : {}	Donacoj ricevitaj: {}
+Invasion ! L'armée de {} ({} soldats) marche sur la cité ; {} hoplites la défendent	Invado! La armeo de {} ({} soldatoj) marŝas kontraŭ la urbo; {} hoplitoj defendas ĝin
+L'armée de {} ({} soldats) est repoussée	La armeo de {} ({} soldatoj) estas repuŝita
+L'armée de {} pille la cité : {} drachmes et {} bâtiments perdus	La armeo de {} prirabas la urbon: perditaj {} draĥmoj kaj {} konstruaĵoj
+{} vous rend visite et vous offre {} {}	{} vizitas vin kaj donacas al vi {} {}
+Tributs reçus : {}	Tributoj ricevitaj: {}
+{} s'abat sur la cité !	{} falas sur la urbon!
+{} s'abat sur la cité, mais {} le chassera bientôt	{} falas sur la urbon, sed {} baldaŭ forpelos lin
+{} quitte la cité	{} forlasas la urbon
+{} demande {} {} (touche C)	{} petas {} {} (klavo C)
+La demande de {} n'a pas été satisfaite	La peto de {} ne estis plenumita
+Tremblement de terre ! La terre s'ouvre	Tertremo! La tero malfermiĝas
+Éruption ! La lave recouvre le pays	Erupcio! Lafo kovras la landon
+Raz-de-marée ! Les eaux envahissent la côte	Cunamo! La akvoj inundas la marbordon
+Glissement de terrain ! Des éboulis dévalent la pente	Terglito! Rokaĵoj ruliĝas laŭ la deklivo
+Inondation ! La mer engloutit la côte pour toujours	Inundo! La maro englutas la marbordon por ĉiam
+ : un bâtiment détruit	: unu konstruaĵo detruita
+ : {} bâtiments détruits	: {} konstruaĵoj detruitaj
+Les salaires {} de {} dr. : {} dr. par an pour dix ouvriers	Salajroj {} je {} dr.: {} dr. jare por dek laboristoj
+{} redevient votre alliée	{} denove estas via aliancano
+{} devient votre rivale	{} fariĝas via rivalo
+{} devient votre vassale	{} fariĝas via vasalo
+{} se rebelle	{} ribelas
+{} renforce son armée	{} plifortigas sian armeon
+L'armée de {} s'affaiblit	La armeo de {} malfortiĝas
+{} cesse de commercer avec vous	{} ĉesas komerci kun vi
+{} ouvre son commerce avec vous	{} malfermas komercon kun vi
+L'armée de {} part en campagne : la cité est vulnérable	La armeo de {} ekmilitiras: la urbo estas vundebla
+{} se retire du monde	{} retiriĝas el la mondo
+{} reparaît dans le monde	{} reaperas en la mondo
+Des voleurs ont pillé une maison luxueuse : postez des gardes	Ŝtelistoj prirabis luksan domon: starigu gardistojn
+Un voleur a dérobé {} dr. au trésor : postez des gardes	Ŝtelisto ŝtelis {} dr. el la trezorejo: starigu gardistojn
+Une épidémie a emporté {} habitants : bâtissez des infirmeries	Epidemio forprenis {} loĝantojn: konstruu malsanulejojn
+Incendie	Brulo
+Effondrement	Disfalo
+épisode suivant : {}	sekva epizodo: {}
+Aventure terminée : la partie continue sans objectif	Aventuro finita: la ludo daŭras sen celoj
+aventure terminée	aventuro finita
+Épisode terminé	Epizodo finita
+Tous les objectifs de l'épisode sont atteints.	Ĉiuj celoj de la epizodo estas atingitaj.
+Partie enregistrée : {}	Ludo konservita: {}
+Enregistrement impossible : {}	Ne eblas konservi: {}
+Partie chargée	Ludo ŝargita
+Chargement impossible : {}	Ne eblas ŝargi: {}
+Musique : {}	Muziko: {}
+Imposition : {}	Imposto: {}
+Bruitages : {}	Sonefektoj: {}
+Vitesse : {} %	Rapido: {} %
+Demande de {} satisfaite	Peto de {} plenumita
+Pas assez de {} : {} sur {}	Ne sufiĉe da {}: {} el {}
+Route commerciale ouverte avec {}	Komerca vojo malfermita kun {}
+Pas de route possible avec {}	Neniu vojo eblas kun {}
+{} devient vassale	{} fariĝas vasalo
+Armée trop faible contre {} : {} sur {}	Armeo tro malforta kontraŭ {}: {} el {}
+L'armée est déjà en campagne	La armeo jam militiras
+{} ne peut pas être soumise	{} ne povas esti subigita
+Pas assez de drachmes pour {}	Ne sufiĉe da draĥmoj por {}
+ — Démolir	 — Malkonstrui
+ — case {},{} terrain {}	 — kahelo {},{} tereno {}
+Risques : feu {} %, dégâts {} %	Riskoj: brulo {} %, difekto {} %
+Hippodrome : {} stades, {}	Hipodromo: {} stadioj, {}
+les courses ont lieu	vetkuroj okazas
+piste pas encore fermée	kurejo ankoraŭ ne fermita
+Trière en chantier : {} {} / 2, {} {} / 2	Triremo konstruata: {} {} / 2, {} {} / 2
+Une trière est à quai	Triremo estas ĉe la kajo
+Chantier : {}	Konstruejo: {}
+Attrait : {}	Allogo: {}
+{} mis de côté, {} en stock	{} flankenmetitaj, {} en stoko
+pas encore simulé par Olympe	ankoraŭ ne simulata de Olympe
+R : mettre de côté ce qui est en stock	R: flankenmeti tion, kio estas en stoko
+Conseiller : {} ({}/{}, Tab)	Konsilisto: {} ({}/{}, Tab)
+Cités du monde	Urboj de la mondo
+, soumettre : {} sur {}	, subigi: {} el {}
+  vend {} ; achète {} (ventes {} dr., achats {} dr.)	  vendas {}; aĉetas {} (vendoj {} dr., aĉetoj {} dr.)
+  [ouvrir le commerce : {} dr.]	  [malfermi komercon: {} dr.]
+{} ({}, faveur {}, force {}{}{})	{} ({}, favoro {}, forto {}{}{})
+, armée partie	, armeo for
+Aucune cité étrangère	Neniu fremda urbo
+{} demande {} {} (vous avez {}, encore {} mois) [envoyer]	{} petas {} {} (vi havas {}, restas {} monatoj) [sendi]
+mesure : {} images en {} ms, soit {} images/s ({} ms par image, la plus lente {} ms) ; {} × {} pixels, interface × {}, affichage « {} », rendu « {} », {} sprites en mémoire	mezuro: {} bildoj en {} ms, do {} bildoj/s ({} ms po bildo, la plej malrapida {} ms); {} × {} rastrumeroj, interfaco × {}, ekrano «{}», bildigilo «{}», {} spritoj en memoro
+il faut des arbres à moins de huit cases	ĝi bezonas arbojn je malpli ol ok kaheloj
+il faut une carrière de marbre à moins de huit cases	ĝi bezonas marmoran ŝtonminejon je malpli ol ok kaheloj
+il faut des rochers de cuivre à moins de huit cases	ĝi bezonas kuprajn rokojn je malpli ol ok kaheloj
+il faut un gisement de marbre noir à moins de huit cases	ĝi bezonas kuŝejon de nigra marmoro je malpli ol ok kaheloj
+il faut un gisement d'orichalque à moins de huit cases	ĝi bezonas kuŝejon de oriĥalko je malpli ol ok kaheloj
+il se pose au bord de l'eau, sur un terrain dégagé	ĝi staru ĉe la akvo, sur libera tereno
+elle se pose sur un pré fleuri	ĝi staru sur flora herbejo
+une section se pose dans le prolongement de la piste	sekcio staru en la daŭrigo de la kurejo
+soldats ou mieux	soldatoj aŭ pli bonaj
+hoplites ou mieux	hoplitoj aŭ pli bonaj
+cavaliers	rajdantoj
+trières	triremoj
+Clic droit ou flèches : déplacer la vue	Dekstra klako aŭ sagoj: movi la vidon
+Molette : zoom	Rado: zomo
+Mini-carte : clic pour s'y rendre	Etmapo: klaku por iri tien
+1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment	1 ĝis 9 kaj 0: malfermi kategorion, poste elekti konstruaĵon
+Clic gauche : bâtir ; glisser pour tracer une route	Maldekstra klako: konstrui; treni por fari vojon
+X : dégager	X: malplenigi
+Echap : lâcher l'outil, refermer la catégorie, quitter	Esk: demeti la ilon, fermi la kategorion, eliri
+Espace : pause	Spaceto: paŭzo
+Page préc. et Page suiv. : vitesse du jeu	Paĝo supren kaj Paĝo malsupren: rapido de la ludo
+F5 : enregistrer ; F9 : recharger	F5: konservi; F9: reŝargi
+F : plein écran	F: plenekrane
+M : musique ; B : bruitages	M: muziko; B: sonefektoj
+O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)	O: celoj de la epizodo; C: urboj de la mondo (klako: subigi); A: konsilistoj (Tab: paĝo)
+R : mettre de côté les marchandises demandées	R: flankenmeti la petitajn varojn
++ et - : taux d'imposition	+ kaj -: impostokvoto
+Survoler un bâtiment : ses informations ; clic sur un passant : il parle	Ŝvebi super konstruaĵo: ĝiaj informoj; klaki preterpasanton: li parolas
+H : refermer cette aide	H: fermi ĉi tiun helpon
+Agriculture	Agrikulturo
+Industrie	Industrio
+Distribution	Distribuado
+Hygiène et sécurité	Higieno kaj sekureco
+Administration	Administrado
+Culture	Kulturo
+Embellissement	Beligo
+Armée	Armeo
+aucun	neniu
+très bas	tre malalta
+bas	malalta
+normal	normala
+haut	alta
+très haut	tre alta
+scandaleux	skandala
+usage :\n  olympe                              lance le jeu (écran de choix d'aventure)\n  olympe <aventure.pak | carte.map>   lance directement une aventure ou une carte\n  olympe installer <source>…          installe les données du jeu d'origine ; une source\n                                      est un dossier où le jeu est installé, le contenu\n                                      d'un CD, une image de CD (Zeus, puis Poséidon), ou\n                                      le programme d'un correctif officiel, donné en dernier\noptions :\n  --donnees DOSSIER  dossier des données (par défaut celui de l'installateur)\n  --vers DOSSIER     avec « installer » : où ranger les données\n  --langue LANGUE    fr, en ou eo (par défaut celle choisie la dernière fois, ou celle du système)\n  --size LxH         taille de la fenêtre (1600x900 par défaut)\n  --demo             bâtit une cité de démonstration (carte « Les plus jeunes jumeaux »)\n  --mesure N         dessine N images, affiche la cadence obtenue et quitte\n  --capture IMAGE    enregistre la première image rendue et quitte\n  --sans-intro       ne joue pas la vidéo d'introduction\n  --bilan            vérifie, pour chaque épisode de chaque aventure installée, que\n                     ses objectifs sont suivis et réalisables, puis quitte\n  --difficulte NIVEAU debutant, mortel, heros (par défaut), titan ou olympien\n  --ticks N          nombre de pas de simulation joués avant la capture (1500 par défaut)\n  --script "…"      essai scripté, une étape par image, avant la capture : m:x,y (pointeur),\n                     d / u (bouton gauche), w:n (molette), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,\n                     t:n (pas), p:ms (pause), fin (termine l'épisode en cours)\nen jeu : H affiche l'aide	uzado:\n  olympe                              lanĉas la ludon (ekrano por elekti aventuron)\n  olympe <aventuro.pak | mapo.map>    rekte lanĉas aventuron aŭ mapon\n  olympe installer <fonto>…           instalas la datumojn de la originala ludo; fonto\n                                      estas dosierujo, kie la ludo estas instalita, la enhavo\n                                      de KD, KD-bildo (Zeŭso, poste Pozidono), aŭ\n                                      programo de oficiala flikaĵo, donita laste\nopcioj:\n  --donnees DOSIERUJO datuma dosierujo (defaŭlte tiu de la instalilo)\n  --vers DOSIERUJO   kun «installer»: kien meti la datumojn\n  --langue LINGVO    fr, en aŭ eo (defaŭlte la laste elektita, aŭ tiu de la sistemo)\n  --size LxA         grandeco de la fenestro (defaŭlte 1600x900)\n  --demo             konstruas pruvan urbon (mapo «La plej junaj ĝemeloj»)\n  --mesure N         desegnas N bildojn, montras la bildrapidon kaj eliras\n  --capture BILDO    konservas la unuan bildon kaj eliras\n  --sans-intro       ne ludas la enkondukan filmon\n  --bilan            kontrolas, por ĉiu epizodo de ĉiu instalita aventuro, ke\n                     ĝiaj celoj estas sekvataj kaj atingeblaj, poste eliras\n  --difficulte NIVELO debutant, mortel, heros (defaŭlte), titan aŭ olympien\n  --ticks N          simulaj paŝoj ludataj antaŭ la kapto (defaŭlte 1500)\n  --script "…"      skriptita provo, unu paŝo po bildo, antaŭ la kapto: m:x,y (montrilo),\n                     d / u (maldekstra butono), w:n (rado), k:1..9 | x | esc | espace | f5 | f9 | h | o | r | a | c | tab,\n                     t:n (paŝoj), p:ms (paŭzo), fin (finas la nunan epizodon)\nen la ludo: H montras la helpon
+Glisser avec le clic droit ou flèches : déplacer la vue	Treni per la dekstra butono aŭ sagoj: movi la vidon
+Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets)	Maldekstra klako: konstrui; treni por fari vojon (butono vojo sub la langetoj)
+V : vues (eau, risques, attrait, criminalité, culture, santé, impôts) ; J : journal	V: supermetaĵoj (akvo, riskoj, allogeco, krimo, kulturo, sano, impostoj); J: ĵurnalo
+O : objectifs de l'épisode ; C : cités du monde (clic : choisir la compagnie) ; A : conseillers (Tab : page)	O: celoj de la epizodo; C: urboj de la mondo (klako: elekti la kompanion); A: konsilistoj (Tab: paĝo)
+Survoler un bâtiment : son résumé ; clic droit : sa fiche ; clic sur un passant : il parle	Ŝvebi super konstruaĵo: ĝia resumo; dekstra klako: ĝia slipo; klaki preterpasanton: li parolas

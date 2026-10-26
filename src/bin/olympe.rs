@@ -14,6 +14,8 @@ use std::ptr::{null, null_mut};
 use zeus::font::Font;
 use zeus::goals::{Goal, Kind as GoalKind, Status};
 use zeus::jpeg;
+use zeus::lang::{self, Lang, tr};
+use zeus::trf;
 use zeus::messages::{self, Messages};
 use zeus::map::{GRID, Map, Source};
 use zeus::model::Model;
@@ -40,6 +42,7 @@ const USAGE: &str = "usage :
                                       le programme d'un correctif officiel, donné en dernier
 options :
   --donnees DOSSIER  dossier des données (par défaut celui de l'installateur)
+  --langue LANGUE    fr, en ou eo (par défaut celle choisie la dernière fois, ou celle du système)
   --vers DOSSIER     avec « installer » : où ranger les données
   --size LxH         taille de la fenêtre (1600x900 par défaut)
   --demo             bâtit une cité de démonstration (carte « Les plus jeunes jumeaux »)
@@ -791,6 +794,7 @@ fn main() {
     let mut measure = 0u32;
     let mut data = paths::data_dir();
     let mut map = None;
+    let mut language = None;
     let mut options = args.iter();
     while let Some(option) = options.next() {
         match (option.as_str(), options.clone().next()) {
@@ -814,6 +818,16 @@ fn main() {
                     }
                 }
             }
+            ("--langue" | "--language" | "--lingvo", Some(value)) => match Lang::parse(value) {
+                Some(chosen) => {
+                    language = Some(chosen);
+                    options.next();
+                }
+                None => {
+                    eprintln!("langue inconnue : {value} (fr, en, eo)");
+                    std::process::exit(2);
+                }
+            },
             ("--donnees", Some(folder)) => {
                 data = PathBuf::from(folder);
                 options.next();
@@ -848,10 +862,14 @@ fn main() {
         }
     }
     let data = data.as_path();
+    lang::set(language.unwrap_or_else(|| lang::initial(data)));
+    if let Some(chosen) = language {
+        lang::remember(data, chosen);
+    }
     if !data.join("zeus_text.eng").exists() {
-        eprintln!("Les données du jeu ne sont pas installées dans {}.", data.display());
-        eprintln!("Installez-les depuis votre exemplaire du jeu : un dossier où il est installé,");
-        eprintln!("ou les images (ou le contenu) des CD de Zeus puis de Poséidon :");
+        eprintln!("{}", trf!("Les données du jeu ne sont pas installées dans {}.", data.display()));
+        eprintln!("{}", tr("Installez-les depuis votre exemplaire du jeu : un dossier où il est installé,"));
+        eprintln!("{}", tr("ou les images (ou le contenu) des CD de Zeus puis de Poséidon :"));
         eprintln!("    olympe installer <source> [<source>…]");
         std::process::exit(1);
     }
@@ -984,7 +1002,7 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
         Moment::Victory => episode.victory_message,
         Moment::End => return None,
     };
-    let message = Messages::parse(fs::read(data.join("zeus_mm.eng")).ok()?).ok()?.get(usize::try_from(id).ok()?)?;
+    let message = Messages::parse(fs::read(lang::data_file(data, "zeus_mm.eng")).ok()?).ok()?.get(usize::try_from(id).ok()?)?;
     Some((message.title, message.paragraphs))
 }
 
@@ -1467,7 +1485,9 @@ impl Journey {
         // niveau se reprend en relançant à ce niveau. Sans niveau noté : Héros.
         let level = lines.next().and_then(|t| t.parse::<usize>().ok()).unwrap_or(2);
         if level != difficulty() {
-            return Err(format!("partie enregistrée au niveau {}, relancez avec --difficulte {}", ["Débutant", "Mortel", "Héros", "Titan", "Olympien"].get(level).unwrap_or(&"?"), ["debutant", "mortel", "heros", "titan", "olympien"].get(level).unwrap_or(&"heros")));
+            let name = tr(["Débutant", "Mortel", "Héros", "Titan", "Olympien"].get(level).copied().unwrap_or("?"));
+            let flag = ["debutant", "mortel", "heros", "titan", "olympien"].get(level).copied().unwrap_or("heros");
+            return Err(trf!("partie enregistrée au niveau {}, relancez avec --difficulte {}", name, flag));
         }
         // Colonies dans l'ordre choisi par le joueur (absent des anciennes sauvegardes).
         let chosen: Vec<usize> = lines.next().unwrap_or_default().split_whitespace().filter_map(|k| k.parse().ok()).filter(|&k| k < self.colony_maps.len()).collect();
@@ -1610,7 +1630,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         spare if spare >= 0 => format!("{needed} postes pour {available} travailleurs ; {spare} sans emploi"),
         short => format!("{needed} postes pour {available} travailleurs ; il manque {} ouvriers", -short),
     }];
-    let names: Vec<String> = CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
+    let names: Vec<String> = CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| tr(fallback))).collect();
     for (category, name) in names.iter().enumerate() {
         let buildings: Vec<&zeus::world::Building> = world.buildings.iter().flatten().filter(|b| category_of(world.kinds[b.kind].function) == category && world.kinds[b.kind].employees > 0).collect();
         if buildings.is_empty() {
@@ -1618,27 +1638,27 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         }
         let jobs: i32 = buildings.iter().map(|b| world.kinds[b.kind].employees).sum();
         let idle = buildings.iter().filter(|b| !b.staffed).count();
-        employment.push(format!("{name} : {jobs} postes, {} bâtiments, {idle} à l'arrêt", buildings.len()));
+        employment.push(trf!("{} : {} postes, {} bâtiments, {} à l'arrêt", name, jobs, buildings.len(), idle));
     }
-    pages.push(("Emploi".to_string(), employment));
+    pages.push((tr("Emploi"), employment));
     // Finances.
     let (sold, bought): (i32, i32) = world.cities.iter().fold((0, 0), |(s, b), c| (s + c.sold, b + c.bought));
     // Les percepteurs ne sortent pas sans palais.
     let unpaid = world.buildings.iter().flatten().find(|b| world.service_waits_for(b) == Some(Function::Palace));
     let palace_note = unpaid.and_then(|_| world.kinds.iter().find(|k| k.function == Function::Palace)).map(|k| format!("Sans {}, les percepteurs ne lèvent aucun impôt", k.name.to_lowercase()));
     pages.push((
-        "Finances".to_string(),
+        tr("Finances"),
         [
-            format!("Trésor : {} dr.", world.money),
-            format!("Dernier mois : impôts {} dr., salaires {} dr.", world.last_month.0, world.last_month.1),
-            format!("Imposition (+ et -) : {}", tax_name(world)),
-            format!("Humeur de la cité : {} sur 100{}", world.sentiment, mood_note(world.sentiment)),
-            format!("Bénéfice de l'année en cours : {} dr.", world.year_profit),
+            trf!("Trésor : {} dr.", world.money),
+            trf!("Dernier mois : impôts {} dr., salaires {} dr.", world.last_month.0, world.last_month.1),
+            trf!("Imposition (+ et -) : {}", tax_name(world)),
+            trf!("Humeur de la cité : {} sur 100{}", world.sentiment, mood_note(world.sentiment)),
+            trf!("Bénéfice de l'année en cours : {} dr.", world.year_profit),
             match world.best_year_profit {
-                Some(best) => format!("Meilleure année achevée : {best} dr."),
-                None => "Aucune année achevée".to_string(),
+                Some(best) => trf!("Meilleure année achevée : {} dr.", best),
+                None => tr("Aucune année achevée"),
             },
-            format!("Commerce depuis le début : ventes {sold} dr., achats {bought} dr."),
+            trf!("Commerce depuis le début : ventes {} dr., achats {} dr.", sold, bought),
         ]
         .into_iter()
         .chain(palace_note)
@@ -1650,11 +1670,11 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         .map(|&service| {
             let served = houses.iter().filter(|h| h.has(service, world.ticks)).count();
             let percent = if houses.is_empty() { 0 } else { served * 100 / houses.len() };
-            format!("{} : {served} maisons sur {} ({percent} %)", service_label(world, text, service), houses.len())
+            trf!("{} : {} maisons sur {} ({} %)", service_label(world, text, service), served, houses.len(), percent)
         })
         .collect();
-    services.push(format!("Santé de la cité : {} sur 100", world.health));
-    services.push(format!("Vivres aux greniers : {} chargements", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()));
+    services.push(trf!("Santé de la cité : {} sur 100", world.health));
+    services.push(trf!("Vivres aux greniers : {} chargements", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()));
     let goods: Vec<String> = GOODS
         .iter()
         .enumerate()
@@ -1662,40 +1682,40 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
         .filter(|&(_, n)| n > 0)
         .map(|(i, n)| format!("{} {n}", good_names[i].to_lowercase()))
         .collect();
-    services.push(if goods.is_empty() { "Entrepôts : vides".to_string() } else { format!("Entrepôts : {}", goods.join(", ")) });
-    pages.push(("Services et réserves".to_string(), services));
+    services.push(if goods.is_empty() { tr("Entrepôts : vides") } else { trf!("Entrepôts : {}", goods.join(", ")) });
+    pages.push((tr("Services et réserves"), services));
     // Mythologie : sanctuaires, héros, quêtes et monstres.
-    let mut myth: Vec<String> = world.sanctuaries().iter().map(|&god| format!("Sanctuaire de {}", text.get(sanctuary::TEXT_GODS, god as usize))).collect();
+    let mut myth: Vec<String> = world.sanctuaries().iter().map(|&god| trf!("Sanctuaire de {}", text.get(sanctuary::TEXT_GODS, god as usize))).collect();
     if myth.is_empty() {
-        myth.push("Aucun sanctuaire achevé".to_string());
+        myth.push(tr("Aucun sanctuaire achevé"));
     }
     for (hero, &present) in world.heroes.iter().enumerate() {
         if present {
-            myth.push(format!("{} est dans la cité", text.get(heroes::TEXT_HEROES, hero)));
+            myth.push(trf!("{} est dans la cité", text.get(heroes::TEXT_HEROES, hero)));
         }
     }
     for quest in &world.quests {
         let hero = text.get(heroes::TEXT_HEROES, quest.hero as usize);
         myth.push(match quest.state {
-            zeus::world::QuestState::Waiting => format!("Quête en attente de {hero}"),
-            zeus::world::QuestState::Away { .. } => format!("{hero} est parti en quête"),
-            zeus::world::QuestState::Done => format!("Quête de {hero} accomplie"),
+            zeus::world::QuestState::Waiting => trf!("Quête en attente de {}", hero),
+            zeus::world::QuestState::Away { .. } => trf!("{} est parti en quête", hero),
+            zeus::world::QuestState::Done => trf!("Quête de {} accomplie", hero),
         });
     }
     let monsters = world.monsters.iter().filter(|m| !m.slain).count();
-    myth.push(format!("Monstres encore à vaincre : {monsters}"));
-    pages.push(("Mythologie".to_string(), myth));
+    myth.push(trf!("Monstres encore à vaincre : {}", monsters));
+    pages.push((tr("Mythologie"), myth));
     // Armée et commerce.
     let rivals = world.cities.iter().filter(|c| c.active && c.kind == zeus::map::FOREIGN && c.status == zeus::map::RIVAL).count();
     pages.push((
-        "Armée et commerce".to_string(),
+        tr("Armée et commerce"),
         vec![
-            format!("Force de l'armée : {}", world.army()),
+            trf!("Force de l'armée : {}", world.army()),
             match world.raid {
-                Some(raid) => format!("Invasion en cours : {} soldats de {}", raid.soldiers, city_name(text, world, raid.city)),
-                None => format!("{rivals} cités rivales"),
+                Some(raid) => trf!("Invasion en cours : {} soldats de {}", raid.soldiers, city_name(text, world, raid.city)),
+                None => trf!("{} cités rivales", rivals),
             },
-            format!("{} partenaires commerciaux, {} demandes en attente", world.partners(), world.requests.len()),
+            trf!("{} partenaires commerciaux, {} demandes en attente", world.partners(), world.requests.len()),
             format!("{} à quai : {}", capitalized(world.ship_plural()), world.triremes()),
         ],
     ));
@@ -2015,7 +2035,7 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
         13 => hall(57),
         14 => hall(58),
         17 => hall(124),
-        _ => "Condition particulière".to_string(),
+        _ => tr("Condition particulière"),
     };
     // Ces deux exigences disent déjà leur état ; inutile d'ajouter « rempli ».
     if requirement.kind == 18 || (requirement.kind == 6 && atlantean) {
@@ -2026,8 +2046,8 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
         Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 8 | 9 | 17) => format!("{current} % sur {wanted} %"),
         Check::Missing { current, wanted } if requirement.kind == 4 => format!("criminalité {current}, sous {wanted} demandé"),
         Check::Missing { current, wanted } if wanted > 1 => format!("{current} sur {wanted}"),
-        Check::Missing { .. } => "pas encore".to_string(),
-        Check::Unsimulated => "non simulé, tenu pour rempli".to_string(),
+        Check::Missing { .. } => tr("pas encore"),
+        Check::Unsimulated => tr("non simulé, tenu pour rempli"),
     };
     format!("{what} ({state})")
 }
@@ -2199,6 +2219,7 @@ impl Graphics {
     }
 
     fn glyph_width(&self, font: Font, c: char) -> f32 {
+        let c = zeus::font::esperanto(c).map_or(c, |(base, _)| base);
         match font.image(c).and_then(|i| self.fonts.images.get(i)) {
             Some(image) => image.width as f32 + 1.0,
             // Espace, ou caractère sans glyphe : une demi-lettre.
@@ -2216,6 +2237,8 @@ impl Graphics {
         let mut pen = x;
         for c in text.chars() {
             let advance = self.glyph_width(font, c);
+            let accent = zeus::font::esperanto(c);
+            let c = accent.map_or(c, |(base, _)| base);
             if let Some(sprite) = font.image(c).and_then(|i| self.sprite(Source::Fonts, i)) {
                 // Les glyphes accentués dépassent vers le haut.
                 let rise = (sprite.height - line).max(0.0);
@@ -2227,6 +2250,26 @@ impl Graphics {
                     sdl::SDL_SetTextureColorMod(sprite.texture, r, g, b);
                     sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
                     sdl::SDL_SetTextureColorMod(sprite.texture, 255, 255, 255);
+                }
+                // Lettre de l'espéranto : l'accent est pris au « â » de la police (le tiers
+                // haut de son image), posé au-dessus de la lettre et retourné pour la
+                // brève du « ŭ ».
+                if let Some((_, mark)) = accent {
+                    let accented = if c.is_lowercase() { 'â' } else { 'Â' };
+                    let hat = font.image(accented).and_then(|i| self.sprite(Source::Fonts, i));
+                    if let Some(hat) = hat {
+                        let height = (hat.height * 0.36).round().max(1.0);
+                        let source = sdl::FRect { x: 0.0, y: 0.0, w: hat.width, h: height };
+                        let place = sdl::FRect { x: pen + (sprite.width - hat.width) / 2.0, y: y - rise - height + 2.0, w: hat.width, h: height };
+                        let flip = if mark == zeus::font::Accent::Breve { sdl::FLIP_VERTICAL } else { sdl::FLIP_NONE };
+                        let (r, g, b) = self.ink;
+                        unsafe {
+                            sdl::SDL_SetTextureScaleMode(hat.texture, sdl::SCALEMODE_NEAREST);
+                            sdl::SDL_SetTextureColorMod(hat.texture, r, g, b);
+                            sdl::SDL_RenderTextureRotated(self.renderer, hat.texture, &source, &place, 0.0, null(), flip);
+                            sdl::SDL_SetTextureColorMod(hat.texture, 255, 255, 255);
+                        }
+                    }
                 }
             }
             pen += advance;
@@ -2746,7 +2789,7 @@ fn install(args: &[String]) {
 /// Aventures jouables : (nom affiché, fichier), les grandes aventures d'abord.
 fn adventures(data: &Path) -> Vec<(String, PathBuf)> {
     let mut found = Vec::new();
-    let messages = fs::read(data.join("zeus_mm.eng")).ok().and_then(|file| Messages::parse(file).ok());
+    let messages = fs::read(lang::data_file(data, "zeus_mm.eng")).ok().and_then(|file| Messages::parse(file).ok());
     let folder = data.join("adventures");
     for entry in fs::read_dir(&folder).into_iter().flatten().flatten() {
         let path = entry.path();
@@ -2795,8 +2838,9 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
         return Err("aucune aventure dans le dossier de données".into());
     }
     let background = fs::read(data.join("data/zeus_fe_choosegame.jpg")).map_err(|e| e.to_string()).and_then(|file| jpeg::decode(&file));
-    let text = Text::parse(&fs::read(data.join("zeus_text.eng")).map_err(|e| e.to_string())?)?;
-    let level_name = |level: usize| text.get(TEXT_DIFFICULTY, level + 1);
+    let load_text = || Text::parse(&fs::read(lang::data_file(data, "zeus_text.eng")).map_err(|e| e.to_string())?);
+    let mut text = load_text()?;
+    let level_name = |text: &Text, level: usize| text.get(TEXT_DIFFICULTY, level + 1);
     let mut chosen = None;
     // SAFETY : appels directs à SDL3 ; chaque pointeur rendu est vérifié avant usage.
     unsafe {
@@ -2894,6 +2938,15 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         sdl::KEY_UP => first = first.saturating_sub(1),
                         sdl::KEY_DOWN => first = (first + 1).min(list.len() - rows),
                         sdl::KEY_D => DIFFICULTY.store((difficulty() + 1) % DIFFICULTY_MODELS.len(), std::sync::atomic::Ordering::Relaxed),
+                        // Langue suivante, retenue pour les lancements suivants.
+                        sdl::KEY_L => {
+                            let next = lang::current().next();
+                            lang::set(next);
+                            lang::remember(data, next);
+                            if let Ok(reloaded) = load_text() {
+                                text = reloaded;
+                            }
+                        }
                         _ => {}
                     },
                     sdl::EVENT_MOUSE_MOTION => pointer = event.position(),
@@ -2913,6 +2966,15 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         if pointer.0 >= left && pointer.0 < left + width && pointer.1 >= below && pointer.1 < below + row {
                             DIFFICULTY.store((difficulty() + 1) % DIFFICULTY_MODELS.len(), std::sync::atomic::Ordering::Relaxed);
                         }
+                        // Ligne de la langue : un clic passe à la langue suivante.
+                        if pointer.0 >= left && pointer.0 < left + width && pointer.1 >= below + row && pointer.1 < below + 2.0 * row {
+                            let next = lang::current().next();
+                            lang::set(next);
+                            lang::remember(data, next);
+                            if let Ok(reloaded) = load_text() {
+                                text = reloaded;
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -2930,9 +2992,9 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                 // Centre du bandeau bleu peint sur le fond.
                 banner = (place.x + CHOOSER_BANNER.0 * scale, place.y + CHOOSER_BANNER.1 * scale);
             }
-            let heading = "Choisissez une aventure";
-            let heading_width = graphics.text_width(FONT_TITLE, heading);
-            graphics.draw_text(FONT_TITLE, heading, banner.0 - heading_width / 2.0, banner.1 - graphics.line_height(FONT_TITLE) / 2.0);
+            let heading = tr("Choisissez une aventure");
+            let heading_width = graphics.text_width(FONT_TITLE, &heading);
+            graphics.draw_text(FONT_TITLE, &heading, banner.0 - heading_width / 2.0, banner.1 - graphics.line_height(FONT_TITLE) / 2.0);
             graphics.panel(left - 8.0, top - 8.0, width + 16.0, row * rows as f32 + 16.0);
             for (line, (name, _)) in list.iter().enumerate().skip(first).take(rows) {
                 let y = top + row * (line - first) as f32;
@@ -2943,9 +3005,11 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                 graphics.draw_text(FONT_TEXT, name, left + 32.0, y + 4.0);
             }
             let below = top + row * rows as f32 + 16.0;
-            graphics.panel(left - 8.0, below - 4.0, width + 16.0, row + 8.0);
-            let label = format!("{} : {} (D)", text.get(TEXT_DIFFICULTY, 0), level_name(difficulty()));
+            graphics.panel(left - 8.0, below - 4.0, width + 16.0, 2.0 * row + 8.0);
+            let label = format!("{} : {} (D)", text.get(TEXT_DIFFICULTY, 0), level_name(&text, difficulty()));
             graphics.draw_text(FONT_TEXT, &label, left + 32.0, below + 4.0);
+            let label = format!("{} : {} (L)", tr("Langue"), lang::current().name());
+            graphics.draw_text(FONT_TEXT, &label, left + 32.0, below + row + 4.0);
             if let (Some(file), true, true) = (capture, script.is_empty(), running) {
                 save_frame(renderer, file)?;
                 running = false;
@@ -2968,7 +3032,7 @@ fn run(
     measure: u32,
 ) -> Result<(), String> {
     let (map, colony_maps, settings) = load_map(map_path)?;
-    let read = |file: &str| fs::read(data.join(file)).map_err(|e| format!("{file} : {e}"));
+    let read = |file: &str| fs::read(lang::data_file(data, file)).map_err(|e| format!("{file} : {e}"));
     let text = Text::parse(&read("zeus_text.eng")?)?;
     let model = Model::parse(&read(&format!("model/zeus_model_{}.txt", DIFFICULTY_MODELS[difficulty()]))?)?;
     let general = Catalog::load(&data.join("data/zeus_general.sg3"))?;
@@ -3393,7 +3457,7 @@ fn run(
         let mut info_pinned: Option<(i32, i32)> = None;
         let mut right_press: Option<f32> = None;
         let category_names: Vec<String> =
-            CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or(fallback.to_string())).collect();
+            CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| tr(fallback))).collect();
         // Une sauvegarde par carte, à côté de l'exécutable lancé.
         // Les parties sont rangées avec les données, une par carte.
         let saves = paths::saves_dir(data);
@@ -5408,12 +5472,13 @@ fn run(
 
             // Aide : les commandes, au centre de l'écran.
             if help {
-                let width = HELP.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 48.0;
-                let height = row * HELP.len() as f32 + 24.0;
+                let lines: Vec<String> = HELP.iter().map(|l| tr(l)).collect();
+                let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 48.0;
+                let height = row * lines.len() as f32 + 24.0;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
                 graphics.panel(px, py, width, height);
                 graphics.panel(px, py, width, height);
-                for (i, l) in HELP.iter().enumerate() {
+                for (i, l) in lines.iter().enumerate() {
                     graphics.draw_text(FONT_TEXT, l, px + 24.0, py + 12.0 + row * i as f32);
                 }
             }
