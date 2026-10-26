@@ -1617,7 +1617,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
     let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
     let mut pages = Vec::new();
     // Population : habitants par niveau de logement.
-    let mut population = vec![format!("{} habitants dans {} maisons", world.population(), houses.len())];
+    let mut population = vec![trf!("{} habitants dans {} maisons", world.population(), houses.len())];
     for (level, name) in level_names.iter().enumerate() {
         let (count, people) = houses.iter().filter(|h| h.level == level).fold((0, 0), |(c, p), h| (c + 1, p + h.population));
         if count > 0 {
@@ -1717,7 +1717,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
                 None => trf!("{} cités rivales", rivals),
             },
             trf!("{} partenaires commerciaux, {} demandes en attente", world.partners(), world.requests.len()),
-            format!("{} à quai : {}", capitalized(world.ship_plural()), world.triremes()),
+            trf!("{} à quai : {}", capitalized(world.ship_plural()), world.triremes()),
         ],
     ));
     pages
@@ -1984,7 +1984,7 @@ fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
         }
         HeroNews::QuestDone(event) => trf!("Quête accomplie : {}", quest(event).1),
         HeroNews::Fighting(event) => trf!("Un héros affronte {}", monster_name(event)),
-        HeroNews::Slain(event) => format!("{} est vaincu", capitalized(&monster_name(event))),
+        HeroNews::Slain(event) => trf!("{} est vaincu", capitalized(&monster_name(event))),
         HeroNews::Invaded(event) => trf!("{} entre dans la cité !", capitalized(&monster_name(event))),
     }
 }
@@ -4261,7 +4261,7 @@ fn run(
                         sdl::KEY_M => {
                             if let Some(music) = music.as_mut() {
                                 let on = music.toggle();
-                                notice = (format!("Musique : {}", text.get(18, on as usize)), sdl::SDL_GetTicks());
+                                notice = (trf!("Musique : {}", text.get(18, on as usize)), sdl::SDL_GetTicks());
                             }
                         }
                         sdl::KEY_H => help = !help,
@@ -4282,18 +4282,18 @@ fn run(
                             let up = matches!(event.key(), sdl::KEY_PLUS | sdl::KEY_EQUALS | sdl::KEY_KP_PLUS);
                             let level = if up { world.tax_level + 1 } else { world.tax_level.saturating_sub(1) };
                             world.set_tax_level(level);
-                            notice = (format!("Imposition : {}", tax_name(&world)), now);
+                            notice = (trf!("Imposition : {}", tax_name(&world)), now);
                         }
                         sdl::KEY_R => notice = (set_aside(&mut world, &goals, &text), now),
                         sdl::KEY_B => {
                             if let Some(ambience) = ambience.as_mut() {
                                 ambience.enabled = !ambience.enabled;
-                                notice = (format!("Bruitages : {}", text.get(18, ambience.enabled as usize)), sdl::SDL_GetTicks());
+                                notice = (trf!("Bruitages : {}", text.get(18, ambience.enabled as usize)), sdl::SDL_GetTicks());
                             }
                         }
                         sdl::KEY_PAGEUP | sdl::KEY_PAGEDOWN => {
                             speed = if event.key() == sdl::KEY_PAGEUP { (speed + 1).min(SPEEDS.len() - 1) } else { speed.saturating_sub(1) };
-                            notice = (format!("Vitesse : {} %", SPEEDS[speed].0), now);
+                            notice = (trf!("Vitesse : {} %", SPEEDS[speed].0), now);
                         }
                         sdl::KEY_LEFT => view.cx -= KEY_STEP / view.zoom,
                         sdl::KEY_RIGHT => view.cx += KEY_STEP / view.zoom,
@@ -4512,7 +4512,7 @@ fn run(
                                 let (x, y) = build_corner(&world, kind, (x, y));
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
-                                        notice = (format!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
+                                        notice = (trf!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
                                     } else if let Some(hint) = world.placement_hint(kind, x, y) {
                                         notice = (format!("{} : {}", world.kind_name(kind), tr(hint)), now);
                                     }
@@ -5158,7 +5158,7 @@ fn run(
                 }
                 if world.kinds[building.kind].function == Function::Racetrack {
                     let (sections, closed) = world.hippodrome();
-                    lines.push(format!("Hippodrome : {sections} stades, {}", if closed { tr("les courses ont lieu") } else { tr("piste pas encore fermée") }));
+                    lines.push(trf!("Hippodrome : {} stades, {}", sections, if closed { tr("les courses ont lieu") } else { tr("piste pas encore fermée") }));
                 }
                 if world.kinds[building.kind].function == Function::Wharf {
                     lines.push(match building.stock {
@@ -5418,7 +5418,7 @@ fn run(
                 let months_left = |until: u64| until.saturating_sub(world.ticks) / zeus::world::TICKS_PER_MONTH;
                 for (i, request) in world.requests.iter().enumerate() {
                     let y = py + height + 8.0 + row * i as f32;
-                    let line = format!(
+                    let line = trf!(
                         "{} demande {} {} (vous avez {}, encore {} mois) [envoyer]",
                         city_name(&text, &world, request.city),
                         request.amount,
