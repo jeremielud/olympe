@@ -862,9 +862,10 @@ fn main() {
         }
     }
     let data = data.as_path();
-    lang::set(language.unwrap_or_else(|| lang::initial(data)));
+    let config = paths::config_dir();
+    lang::set(language.unwrap_or_else(|| lang::initial(&config, data)));
     if let Some(chosen) = language {
-        lang::remember(data, chosen);
+        lang::remember(&config, chosen);
     }
     if !data.join("zeus_text.eng").exists() {
         eprintln!("{}", trf!("Les données du jeu ne sont pas installées dans {}.", data.display()));
@@ -2942,7 +2943,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         sdl::KEY_L => {
                             let next = lang::current().next();
                             lang::set(next);
-                            lang::remember(data, next);
+                            lang::remember(&paths::config_dir(), next);
                             if let Ok(reloaded) = load_text() {
                                 text = reloaded;
                             }
@@ -2970,7 +2971,7 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
                         if pointer.0 >= left && pointer.0 < left + width && pointer.1 >= below + row && pointer.1 < below + 2.0 * row {
                             let next = lang::current().next();
                             lang::set(next);
-                            lang::remember(data, next);
+                            lang::remember(&paths::config_dir(), next);
                             if let Ok(reloaded) = load_text() {
                                 text = reloaded;
                             }

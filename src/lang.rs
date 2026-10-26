@@ -76,11 +76,19 @@ pub fn set(lang: Lang) {
     CURRENT.store(Lang::ALL.iter().position(|&l| l == lang).unwrap_or(0) as u8, Ordering::Relaxed);
 }
 
-/// Langue au démarrage : celle retenue dans `<données>/langue`, sinon celle du système
-/// (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`), sinon le français.
-pub fn initial(data: &Path) -> Lang {
-    if let Some(chosen) = std::fs::read_to_string(data.join(SETTING)).ok().and_then(|v| Lang::parse(&v)) {
-        return chosen;
+/// Fichier qui retient la langue choisie. Il s'écrit dans le dossier de configuration
+/// de l'utilisateur ; le fichier homonyme des données du jeu, hérité des versions où la
+/// préférence y vivait, reste lu par compatibilité.
+const SETTING: &str = "langue";
+
+/// Langue au démarrage : celle retenue dans `<config>/langue`, puis, par compatibilité,
+/// celle des données du jeu, sinon celle du système (`LANGUAGE`, `LC_ALL`,
+/// `LC_MESSAGES`, `LANG`), sinon le français.
+pub fn initial(config: &Path, data: &Path) -> Lang {
+    for file in [config.join(SETTING), data.join(SETTING)] {
+        if let Some(chosen) = std::fs::read_to_string(file).ok().and_then(|v| Lang::parse(&v)) {
+            return chosen;
+        }
     }
     ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
@@ -90,12 +98,12 @@ pub fn initial(data: &Path) -> Lang {
         .unwrap_or(Lang::Fr)
 }
 
-/// Fichier, dans le dossier des données, qui retient la langue choisie.
-const SETTING: &str = "langue";
-
-/// Retient la langue pour les lancements suivants.
-pub fn remember(data: &Path, lang: Lang) {
-    let _ = std::fs::write(data.join(SETTING), lang.code());
+/// Retient la langue pour les lancements suivants, dans le dossier de configuration :
+/// les données du jeu ne sont jamais écrites ici (CD, dossier partagé, lecture seule).
+pub fn remember(config: &Path, lang: Lang) {
+    if std::fs::create_dir_all(config).is_ok() {
+        let _ = std::fs::write(config.join(SETTING), lang.code());
+    }
 }
 
 fn catalog(lang: Lang) -> Option<&'static HashMap<&'static str, &'static str>> {
