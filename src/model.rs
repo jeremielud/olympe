@@ -28,7 +28,7 @@ pub struct HouseModel {
     pub fleece: i32,
     pub olive_oil: i32,
     pub wine: i32,
-    /// Exigences des logements luxueux qui ne sont pas simulées : stade, chevaux, armes.
+    /// Exigences des logements luxueux : stade (ou musée), chevaux (ou chars) et armes.
     pub stadium: i32,
     pub horses: i32,
     pub arms: i32,

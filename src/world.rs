@@ -1,9 +1,9 @@
 //! État de la cité et simulation : routes, bâtiments, logements, nourriture, personnages.
 //!
-//! Les rythmes et les quantités (durée d'un jour, vitesse de marche, rendement des
-//! fermes, consommation…) sont provisoires : ils ne sont pas encore tirés du jeu
-//! d'origine. L'échoppe est ici un bâtiment autonome, alors que le jeu la place
-//! dans une agora.
+//! La plupart des rythmes et des seuils viennent de `Zeus.exe` ou de mesures dans le
+//! jeu (production, consommation, migrations, santé, impôts…). Ceux qui restent des
+//! valeurs d'Olympe sont signalés au cas par cas. L'échoppe est ici un bâtiment
+//! autonome, alors que le jeu la place dans une agora.
 
 use crate::map::{City, EDGE_DRAW_TILE, FOREIGN, GRID, Map, RIVAL, Source, VASSAL};
 use crate::model::HouseModel;

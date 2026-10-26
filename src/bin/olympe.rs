@@ -422,8 +422,8 @@ const WINGED_TAB: usize = 0;
 /// coche des objectifs, les conseillers et la carte du monde (globe). Sans touche, le
 /// bouton est inactif.
 /// Rangée des boutons ronds sous les onglets, comme dans le jeu : route, barrage
-/// routier (non simulé), dégager (la pelle), rotation de la vue (non simulée) ; quatre
-/// états par bouton (repos, survol, enfoncé, inactif).
+/// routier, dégager (la pelle), rotation de la vue ; quatre états par bouton (repos,
+/// survol, enfoncé, inactif).
 const ROAD_BUTTON: usize = 1275;
 const ROADBLOCK_BUTTON: usize = 1279;
 const CLEAR_BUTTON: usize = 1283;
