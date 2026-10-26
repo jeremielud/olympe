@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dépendances
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl ca-certificates \
+            libsdl3-dev libopus-dev
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Tests
+        run: cargo test --release
