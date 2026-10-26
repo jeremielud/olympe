@@ -1723,21 +1723,21 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
 }
 
 /// Qualité d'une couverture, comme les appréciations du jeu.
-fn coverage_word(percent: usize) -> &'static str {
+fn coverage_word(percent: usize) -> String {
     match percent {
-        0 => "aucune",
-        1..20 => "très faible",
-        20..40 => "faible",
-        40..60 => "moyenne",
-        60..80 => "bonne",
-        80..100 => "très bonne",
-        _ => "parfaite",
+        0 => tr("aucune"),
+        1..20 => tr("très faible"),
+        20..40 => tr("faible"),
+        40..60 => tr("moyenne"),
+        60..80 => tr("bonne"),
+        80..100 => tr("très bonne"),
+        _ => tr("parfaite"),
     }
 }
 
 /// Ce que le panneau latéral dit d'une catégorie, comme le jeu sous ses onglets : des
 /// lignes courtes, et les vues en surimpression qu'elle propose (« Voir… »).
-fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, Vec<(&'static str, Overlay)>) {
+fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, Vec<(String, Overlay)>) {
     let houses: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
     let cover = |service: Service| {
         let percent = if houses.is_empty() { 0 } else { houses.iter().filter(|h| h.has(service, world.ticks)).count() * 100 / houses.len() };
@@ -1748,58 +1748,58 @@ fn category_info(world: &World, text: &Text, category: usize) -> (Vec<String>, V
         0 => {
             let room: i32 = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).map(|h| (world.capacity(h) - h.population).max(0)).sum();
             let limit = if world.sentiment < 50 {
-                "Immigration freinée : la cité est mal aimée"
+                tr("Immigration freinée : la cité est mal aimée")
             } else if room == 0 {
-                "Immigration limitée : pas de logement libre"
+                tr("Immigration limitée : pas de logement libre")
             } else {
-                "Des gens veulent venir dans la cité"
+                tr("Des gens veulent venir dans la cité")
             };
-            (vec![format!("Logements pour {room} habitants de plus"), limit.to_string()], vec![("Voir l'attrait", Overlay::Appeal)])
+            (vec![trf!("Logements pour {} habitants de plus", room), limit.to_string()], vec![(tr("Voir l'attrait"), Overlay::Appeal)])
         }
         1 => (
             vec![
-                format!("Vivres aux greniers : {}", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()),
-                format!("Exploitations : {}", count(&|f| matches!(f, Function::Farm | Function::Fishery | Function::Producer(Good::Food)))),
+                trf!("Vivres aux greniers : {} chargements", (1..zeus::world::FOODS).map(|r| world.stored(r)).sum::<i32>()),
+                trf!("Exploitations : {}", count(&|f| matches!(f, Function::Farm | Function::Fishery | Function::Producer(Good::Food)))),
             ],
             Vec::new(),
         ),
         2 => {
             let idle = world.buildings.iter().flatten().filter(|b| category_of(world.kinds[b.kind].function) == 2 && !b.staffed).count();
-            (vec![format!("Ateliers à l'arrêt : {idle}")], Vec::new())
+            (vec![trf!("Ateliers à l'arrêt : {}", idle)], Vec::new())
         }
         3 => {
             let fed = if houses.is_empty() { 0 } else { houses.iter().filter(|h| h.ate).count() * 100 / houses.len() };
-            (vec![format!("Échoppes : {}", count(&|f| matches!(f, Function::Vendor(_)))), format!("Maisons nourries : {fed} %")], Vec::new())
+            (vec![trf!("Échoppes : {}", count(&|f| matches!(f, Function::Vendor(_)))), trf!("Maisons nourries : {} %", fed)], Vec::new())
         }
         4 => (
-            vec![cover(Service::Water), cover(Service::Maintenance), cover(Service::Health), cover(Service::Security), format!("Santé : {} sur 100", world.health)],
-            vec![("Voir l'eau", Overlay::Water), ("Voir le feu", Overlay::Fire), ("Voir les dégâts", Overlay::Damage), ("Voir la santé", Overlay::Health), ("Voir le crime", Overlay::Crime)],
+            vec![cover(Service::Water), cover(Service::Maintenance), cover(Service::Health), cover(Service::Security), trf!("Santé : {} sur 100", world.health)],
+            vec![(tr("Voir l'eau"), Overlay::Water), (tr("Voir le feu"), Overlay::Fire), (tr("Voir les dégâts"), Overlay::Damage), (tr("Voir la santé"), Overlay::Health), (tr("Voir le crime"), Overlay::Crime)],
         ),
         5 => (
-            vec![format!("Trésor : {} dr.", world.money), cover(Service::Tax), format!("Humeur : {} sur 100", world.sentiment)],
-            vec![("Voir les impôts", Overlay::Tax)],
+            vec![trf!("Trésor : {} dr.", world.money), cover(Service::Tax), trf!("Humeur : {} sur 100", world.sentiment)],
+            vec![(tr("Voir les impôts"), Overlay::Tax)],
         ),
-        6 => (vec![cover(Service::Philosophy), cover(Service::Athletics), cover(Service::Drama)], vec![("Voir la culture", Overlay::Culture)]),
-        7 => (vec![format!("Sanctuaires : {}", world.sanctuaries().len()), format!("Monstres : {}", world.monsters.iter().filter(|m| !m.slain).count())], Vec::new()),
+        6 => (vec![cover(Service::Philosophy), cover(Service::Athletics), cover(Service::Drama)], vec![(tr("Voir la culture"), Overlay::Culture)]),
+        7 => (vec![trf!("Sanctuaires : {}", world.sanctuaries().len()), trf!("Monstres : {}", world.monsters.iter().filter(|m| !m.slain).count())], Vec::new()),
         8 => {
             let appeal = world.buildings.iter().flatten().filter(|b| b.house.is_some()).map(|b| world.appeal(b.x as i32, b.y as i32)).collect::<Vec<_>>();
             let mean = if appeal.is_empty() { 0 } else { appeal.iter().sum::<i32>() / appeal.len() as i32 };
-            (vec![format!("Attrait moyen des maisons : {mean}")], vec![("Voir l'attrait", Overlay::Appeal)])
+            (vec![trf!("Attrait moyen des maisons : {}", mean)], vec![(tr("Voir l'attrait"), Overlay::Appeal)])
         }
         COMMEMORATIVE_CATEGORY => (
             vec![match world.commemoratives.len() {
-                0 => "Aucun monument à ériger. La cité en gagne par ses exploits.".to_string(),
-                1 => "Un monument à ériger".to_string(),
-                n => format!("{n} monuments à ériger"),
+                0 => tr("Aucun monument à ériger. La cité en gagne par ses exploits."),
+                1 => tr("Un monument à ériger"),
+                n => trf!("{} monuments à ériger", n),
             }],
             Vec::new(),
         ),
         _ => (
             vec![
-                format!("Force de l'armée : {}", world.army()),
+                trf!("Force de l'armée : {}", world.army()),
                 match world.raid {
-                    Some(raid) => format!("Invasion : {} soldats", raid.soldiers),
-                    None => "Aucune invasion".to_string(),
+                    Some(raid) => trf!("Invasion : {} soldats", raid.soldiers),
+                    None => tr("Aucune invasion"),
                 },
             ],
             Vec::new(),
@@ -5015,8 +5015,8 @@ fn run(
                     sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
                     graphics.ink = (255, 255, 255);
                     let font = if overlay == wanted { FONT_SMALL_GOLD } else { FONT_SMALL };
-                    let label_width = graphics.text_width(font, label);
-                    graphics.draw_text(font, label, slot.0 + (slot.2 - label_width) / 2.0, slot.1 + (slot.3 - small_line) / 2.0);
+                    let label_width = graphics.text_width(font, &label);
+                    graphics.draw_text(font, &label, slot.0 + (slot.2 - label_width) / 2.0, slot.1 + (slot.3 - small_line) / 2.0);
                     graphics.ink = CHROME_INK;
                     menu_rows.push((slot, MenuRow::Overlay(wanted)));
                     top += slot.3 + 3.0;

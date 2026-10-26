@@ -27,7 +27,7 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Commerce et cités du monde | 70 % |
 | Mythologie (dieux, héros, monstres, quêtes) | 70 % |
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 70 % |
-| Langues (anglais, espéranto) et menu de triche | 45 % (menus, aide, conseillers, état de la cité, fiches et textes du jeu ; traduction complète à finir) |
+| Langues (anglais, espéranto) et menu de triche | 50 % (menus, aide, conseillers, état de la cité, fiches, panneaux de catégorie et textes du jeu ; traduction complète à finir) |
 
 Manque encore notamment : l'image et les règles propres de la frégate atlante
 (dans une cité atlante, le quai et le navire portent leur nom atlante, mais gardent
