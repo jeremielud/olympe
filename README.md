@@ -228,7 +228,8 @@ Ce qui fonctionne :
   demandent les logements, Héphaïstos ôte tout risque d'incendie, Poséidon fait
   pêcher en deux tiers du temps, Héra ajoute 3 points au croît de la population,
   Hermès rend les porteurs plus rapides d'un tiers, Athéna donne 4 points d'armure
-  contre les projectiles aux soldats de la cité ;
+  contre les projectiles aux soldats de la cité, Atlas accélère les chantiers (le
+  quai arme son navire en 16 jours au lieu de 32) ;
 - santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
   mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
   bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut

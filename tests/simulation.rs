@@ -380,6 +380,36 @@ fn a_wharf_builds_a_trireme_from_wood() {
 }
 
 #[test]
+fn atlas_halves_the_time_to_build_a_ship() {
+    let Some(data) = data() else { return };
+    let campaign = zeus::pak::Campaign::parse(&fs::read(data.join("adventures/&persée et méduse.pak")).unwrap()).unwrap();
+    let (base, ..) = world(&data);
+    let mut world = World::new(campaign.parent().clone(), base.kinds.clone(), Vec::new(), WalkerImages::default(), 10_000);
+    let wharf = world.kinds.len();
+    world.kinds.push(Kind::simple("quai des trières".into(), 150, 3, 721, Function::Wharf, 0));
+    let (wx, wy) = world.map.disaster_point(3).unwrap();
+    let shore = (-12..12).flat_map(|dy| (-12..12).map(move |dx| (wx as i32 + dx, wy as i32 + dy))).find(|&(x, y)| world.can_place(wharf, x, y)).unwrap();
+    assert!(world.place_building(wharf, shore.0, shore.1));
+    // Les deux charges de bois et d'armement sont déjà au quai ; le compte des 32 jours
+    // commence.
+    let id = world.buildings.iter().position(|b| b.as_ref().is_some_and(|b| b.kind == wharf)).unwrap();
+    let building = world.buildings[id].as_mut().unwrap();
+    building.goods[Good::Wood as usize] = 2;
+    building.goods[Good::Arms as usize] = 2;
+    (0..16 * TICKS_PER_DAY).for_each(|_| world.tick());
+    assert_eq!(world.triremes(), 0);
+    // Un sanctuaire d'Atlas achevé (sans matériaux à fournir) divise le délai par deux :
+    // le navire est lancé au pas suivant.
+    world.max_sanctuaries = 4;
+    let atlas = world.kinds.len();
+    world.kinds.push(Kind::simple("sanctuaire d'Atlas".into(), 0, 3, 721, Function::Sanctuary { god: 13, needs: [0; 3] }, 0));
+    let site = (0..GRID as i32).flat_map(|y| (0..GRID as i32).map(move |x| (x, y))).find(|&(x, y)| world.can_place(atlas, x, y)).unwrap();
+    assert!(world.place_building(atlas, site.0, site.1));
+    world.tick();
+    assert_eq!(world.triremes(), 1);
+}
+
+#[test]
 fn a_closed_racetrack_makes_a_hippodrome() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);

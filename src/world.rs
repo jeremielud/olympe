@@ -864,6 +864,9 @@ const POSEIDON: u8 = 1;
 const POSEIDON_FISHING_PERCENT: u64 = 66;
 const HERA: u8 = 12;
 const HERA_GROWTH: i32 = 3;
+/// Atlas accélère les chantiers : `Zeus.exe` 0x48caf0 rend 2 au lieu de 1, et
+/// 0x48f8e1 ramène la durée à 66 %.
+const ATLAS: u8 = 13;
 /// Caractéristiques des personnages (`Zeus.exe`, 0x4e1b20) : Hermès rend charrettes et
 /// livreurs plus rapides d'un tiers (et caravanes et navires marchands de moitié, qu'Olympe
 /// ne fait pas circuler) ; Athéna donne 4 points d'armure contre les projectiles aux
@@ -4839,6 +4842,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
     /// Activité de chaque bâtiment : pousse, livraisons, achats, tournées.
     fn run_buildings(&mut self) {
         let fishing = if self.has_sanctuary(POSEIDON) { FISHING_TICKS * POSEIDON_FISHING_PERCENT / 100 } else { FISHING_TICKS };
+        let ship_ticks = if self.has_sanctuary(ATLAS) { TRIREME_TICKS / 2 } else { TRIREME_TICKS };
         let fish = self.map.fish_points();
         // Disciplines dont une école est en activité.
         let palace = self.buildings.iter().flatten().any(|b| self.kinds[b.kind].function == Function::Palace);
@@ -4883,15 +4887,15 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
                         self.start_rounds(id, walker, Rounds::Service(service));
                     }
                 }
-                // Quai sans trière : ses porteurs lui apportent bois et armement ; le
-                // chantier commence quand les deux sont réunis et la trière est lancée au
-                // bout de 32 jours. Elle reste à quai, comptée dans la flotte.
+                // Quai sans navire : ses porteurs lui apportent bois et armement ; le
+                // chantier commence quand les deux sont réunis et le navire est lancé au
+                // bout de 32 jours (16 avec Atlas). Il reste à quai, compté dans la flotte.
                 Function::Wharf if stock == 0 => {
                     let goods = building.goods;
                     let building = self.buildings[id].as_mut().unwrap();
                     if goods[Good::Wood as usize] < TRIREME_WOOD || goods[Good::Arms as usize] < TRIREME_ARMS {
                         building.sown_at = self.ticks;
-                    } else if self.ticks - building.sown_at >= TRIREME_TICKS {
+                    } else if self.ticks - building.sown_at >= ship_ticks {
                         building.goods[Good::Wood as usize] = 0;
                         building.goods[Good::Arms as usize] = 0;
                         building.stock = 1;
