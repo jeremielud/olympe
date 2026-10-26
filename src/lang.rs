@@ -220,4 +220,90 @@ mod tests {
             }
         }
     }
+
+    /// Les textes propres à Olympe s'écrivent en français dans le code : chaque chaîne
+    /// passée à `tr` ou `trf!` doit donc avoir son entrée dans les deux catalogues,
+    /// sinon elle resterait en français chez l'anglais ou l'espérantophone.
+    #[test]
+    fn every_translated_key_is_in_the_catalogues() {
+        let keys = translated_keys(include_str!("bin/olympe.rs"));
+        assert!(!keys.is_empty(), "le scanner ne trouve plus aucune chaîne");
+        for file in ["lang/en.tsv", "lang/eo.tsv"] {
+            let catalog: std::collections::HashSet<String> = catalog_keys(file).into_iter().collect();
+            for key in &keys {
+                assert!(catalog.contains(key), "{file} : « {} » n'est pas traduit", key.replace('\n', "\\n"));
+            }
+        }
+    }
+
+    /// Un doublon passe inaperçu (la table d'index garde la dernière ligne) mais égare
+    /// celui qui lit ou corrige le catalogue.
+    #[test]
+    fn catalogues_have_no_duplicate_entries() {
+        for file in ["lang/en.tsv", "lang/eo.tsv"] {
+            let mut seen = std::collections::HashSet::new();
+            for key in catalog_keys(file) {
+                assert!(seen.insert(key.clone()), "{file} : « {key} » en double");
+            }
+        }
+    }
+
+    /// Les premières colonnes d'un catalogue, telles qu'elles s'écrivent dans le fichier.
+    fn catalog_keys(file: &str) -> Vec<String> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .filter_map(|line| line.split('\t').next())
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Les chaînes passées à `tr` et `trf!` dans `source`, telles que le catalogue les
+    /// attend : `\"` et `\\` se résolvent, les autres échappements (dont `\n`) restent
+    /// écrits en deux caractères, comme dans les fichiers.
+    fn translated_keys(source: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for marker in ["tr(", "trf!("] {
+            let mut search = 0;
+            while let Some(found) = source[search..].find(marker) {
+                let start = search + found;
+                search = start + marker.len();
+                // « contr( », « entree( »… ne sont pas nos macros.
+                if start > 0 && (source.as_bytes()[start - 1] as char).is_alphanumeric() {
+                    continue;
+                }
+                // la chaîne peut commencer à la ligne suivante : « trf!(\n    "…" »
+                let mut open = search;
+                while source[open..].starts_with(char::is_whitespace) {
+                    open += 1;
+                }
+                let Some(body) = source[open..].strip_prefix('"') else { continue };
+                let mut key = String::new();
+                let mut chars = body.char_indices();
+                while let Some((offset, c)) = chars.next() {
+                    match c {
+                        '"' => {
+                            search = open + 1 + offset;
+                            keys.push(std::mem::take(&mut key));
+                            break;
+                        }
+                        '\\' => match chars.next() {
+                            Some((_, next @ ('"' | '\\'))) => key.push(next),
+                            Some((_, next)) => {
+                                key.push('\\');
+                                key.push(next);
+                            }
+                            None => break,
+                        },
+                        other => key.push(other),
+                    }
+                }
+            }
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
 }

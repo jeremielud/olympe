@@ -5121,12 +5121,18 @@ fn run(
             if let Some(building) = pinned_building.or_else(|| world.building_at(under.0, under.1)) {
                 let full = pinned_building.is_some();
                 let mut lines = vec![world.kind_name(building.kind)];
+                // Les lignes qui comptent aussi dans la fiche abrégée du survol :
+                // effectif, habitants, risques, évolution, attente. Elles sont marquées
+                // ici plutôt que reconnues à leur préfixe, qui change avec la langue.
+                let mut notable: Vec<String> = Vec::new();
                 if let Some(Some(description)) = descriptions.get(building.kind) {
                     lines.extend(wrap(description, INFO_LINE));
                 }
                 let employees = world.kinds[building.kind].employees;
                 if employees > 0 {
-                    lines.push(format!("{} : {} / {}", text.get(8, 13), building.workers, employees));
+                    let line = format!("{} : {} / {}", text.get(8, 13), building.workers, employees);
+                    notable.push(line.clone());
+                    lines.push(line);
                 }
                 let stocked = match world.kinds[building.kind].function {
                     Function::Farm | Function::Granary | Function::Fishery => Some(Good::Food),
@@ -5135,7 +5141,9 @@ fn run(
                 };
                 if building.fire + building.damage > 0 {
                     let (fire, damage) = world.risks(building);
-                    lines.push(trf!("Risques : feu {} %, dégâts {} %", fire, damage));
+                    let line = trf!("Risques : feu {} %, dégâts {} %", fire, damage);
+                    notable.push(line.clone());
+                    lines.push(line);
                 }
                 // Temple de héros : où en sont les exigences du héros.
                 if let Function::HeroHall(hero) = world.kinds[building.kind].function {
@@ -5187,7 +5195,9 @@ fn run(
                 }
                 if let Some(house) = &building.house {
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
-                    lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
+                    let people = format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house));
+                    notable.push(people.clone());
+                    lines.push(people);
                     lines.push(trf!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
                     lines.push(trf!("Culture : {}", world.house_culture(house)));
                     // Les marchandises en réserve ; ce qui manque est dit plus bas.
@@ -5212,14 +5222,24 @@ fn run(
                         })
                         .collect();
                     match needs.as_slice() {
-                        [] => lines.push(tr("Va évoluer")),
+                        [] => {
+                            let line = tr("Va évoluer");
+                            notable.push(line.clone());
+                            lines.push(line);
+                        }
                         [top] if top.is_empty() => {}
-                        _ => lines.push(trf!("Pour évoluer : {}", needs.join(", "))),
+                        _ => {
+                            let line = trf!("Pour évoluer : {}", needs.join(", "));
+                            notable.push(line.clone());
+                            lines.push(line);
+                        }
                     }
                 }
                 if let Some(missing) = world.service_waits_for(building) {
                     if let Some(kind) = world.kinds.iter().find(|k| k.function == missing) {
-                        lines.push(trf!("En attente : {}", kind.name.to_lowercase()));
+                        let line = trf!("En attente : {}", kind.name.to_lowercase());
+                        notable.push(line.clone());
+                        lines.push(line);
                     }
                 }
                 if full {
@@ -5238,14 +5258,10 @@ fn run(
                         graphics.draw_text(FONT_TEXT, l, px + 24.0, py + title_line + 24.0 + row * i as f32);
                     }
                 } else {
-                    // Au survol : le nom, l'effectif et ce qui manque ou bloque.
-                    let description = descriptions.get(building.kind).cloned().flatten().map(|d| wrap(&d, INFO_LINE).len()).unwrap_or(0);
+                    // Au survol : le nom, l'effectif et ce qui manque ou bloque ; les
+                    // lignes notables sont marquées à la source, pas reconnues au texte.
                     let mut short: Vec<String> = lines.iter().take(1).cloned().collect();
-                    let evolve = tr("Pour évoluer");
-                    let will = tr("Va évoluer");
-                    let waiting = tr("En attente");
-                    let risks = tr("Risques");
-                    short.extend(lines.iter().skip(1 + description).filter(|l| l.starts_with(&text.get(8, 13)) || l.starts_with(&text.get(8, 3)) || l.starts_with(&evolve) || l.starts_with(&will) || l.starts_with(&waiting) || l.starts_with(&risks)).cloned());
+                    short.extend(notable);
                     short.push(tr("Clic droit : détails"));
                     let width = short.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 32.0;
                     let height = row * short.len() as f32 + 12.0;
