@@ -1981,10 +1981,10 @@ fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
             let (hero, quest) = quest(event);
             format!("{hero} part : {quest}")
         }
-        HeroNews::QuestDone(event) => format!("Quête accomplie : {}", quest(event).1),
-        HeroNews::Fighting(event) => format!("Un héros affronte {}", monster_name(event)),
+        HeroNews::QuestDone(event) => trf!("Quête accomplie : {}", quest(event).1),
+        HeroNews::Fighting(event) => trf!("Un héros affronte {}", monster_name(event)),
         HeroNews::Slain(event) => format!("{} est vaincu", capitalized(&monster_name(event))),
-        HeroNews::Invaded(event) => format!("{} entre dans la cité !", capitalized(&monster_name(event))),
+        HeroNews::Invaded(event) => trf!("{} entre dans la cité !", capitalized(&monster_name(event))),
     }
 }
 
@@ -3849,8 +3849,8 @@ fn run(
                         post(&format!("{key}_sanctuary_complete_title"), &format!("{key}_sanctuary_complete_initial_announcement"), &[("player_name", "Chef".to_string()), ("god", name.clone())]);
                     }
                     notice = match gift {
-                        Some(gift) => (format!("Sanctuaire de {name} achevé : {name} vous offre {gift}"), now),
-                        None => (format!("Sanctuaire de {name} achevé"), now),
+                        Some(gift) => (trf!("Sanctuaire de {} achevé : {} vous offre {}", name, name, gift), now),
+                        None => (trf!("Sanctuaire de {} achevé", name), now),
                     };
                 }
             }
@@ -3893,7 +3893,7 @@ fn run(
                 }
                 let lines: Vec<String> = gifts.iter().filter(|g| g.2 > 0).map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
                 if !lines.is_empty() {
-                    notice = (format!("Cadeaux reçus : {}", lines.join(", ")), now);
+                    notice = (trf!("Cadeaux reçus : {}", lines.join(", ")), now);
                 }
             }
             // Début d'une invasion : l'armée ennemie vient d'entrer sur la carte.
@@ -3903,15 +3903,15 @@ fn run(
                     let defenders = world.figures.iter().filter(|f| f.soldier() == Some(false)).count();
                     let name = city_name(&text, &world, raid.city);
                     post("invasion_title", "invasion_city_attacked_alert", &city_fields(&text, &world, &leaders, raid.city));
-                    notice = (format!("Invasion ! L'armée de {name} ({} soldats) marche sur la cité ; {defenders} hoplites la défendent", raid.soldiers), now);
+                    notice = (trf!("Invasion ! L'armée de {} ({} soldats) marche sur la cité ; {} hoplites la défendent", name, raid.soldiers, defenders), now);
                 }
             }
             if let Some(battle) = world.battles.pop() {
                 let name = city_name(&text, &world, battle.city);
                 notice = if battle.repelled {
-                    (format!("L'armée de {name} ({} soldats) est repoussée", battle.soldiers), now)
+                    (trf!("L'armée de {} ({} soldats) est repoussée", name, battle.soldiers), now)
                 } else {
-                    (format!("L'armée de {name} pille la cité : {} drachmes et {} bâtiments perdus", battle.drachmas, battle.buildings), now)
+                    (trf!("L'armée de {} pille la cité : {} drachmes et {} bâtiments perdus", name, battle.drachmas, battle.buildings), now)
                 };
                 world.battles.clear();
             }
@@ -3923,7 +3923,7 @@ fn run(
             if !world.tributes.is_empty() {
                 let tributes = std::mem::take(&mut world.tributes);
                 let lines: Vec<String> = tributes.into_iter().map(|(city, amount)| format!("{} {amount} dr.", city_name(&text, &world, city))).collect();
-                notice = (format!("Tributs reçus : {}", lines.join(", ")), now);
+                notice = (trf!("Tributs reçus : {}", lines.join(", ")), now);
             }
             if let Some((god, arrived)) = world.god_news.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
@@ -3932,9 +3932,9 @@ fn run(
                 }
                 let defenders: Vec<String> = world.sanctuaries().iter().map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
                 notice = match (arrived, defenders.is_empty()) {
-                    (true, true) => (format!("{name} s'abat sur la cité !"), now),
-                    (true, false) => (format!("{name} s'abat sur la cité, mais {} le chassera bientôt", defenders.join(" et ")), now),
-                    (false, _) => (format!("{name} quitte la cité"), now),
+                    (true, true) => (trf!("{} s'abat sur la cité !", name), now),
+                    (true, false) => (trf!("{} s'abat sur la cité, mais {} le chassera bientôt", name, defenders.join(" et ")), now),
+                    (false, _) => (trf!("{} quitte la cité", name), now),
                 };
                 world.god_news.clear();
             }
@@ -3956,7 +3956,7 @@ fn run(
                 }
                 notice = match news {
                     zeus::world::RequestNews::Arrived(_) => (format!("{name} demande {} {good} (touche C)", r.amount), now),
-                    zeus::world::RequestNews::Expired(_) => (format!("La demande de {name} n'a pas été satisfaite"), now),
+                    zeus::world::RequestNews::Expired(_) => (trf!("La demande de {} n'a pas été satisfaite", name), now),
                 };
                 world.request_news.clear();
             }
@@ -4021,16 +4021,16 @@ fn run(
                 fields.push(("nationality", "ennemie".to_string()));
                 let name = city_name(&text, &world, city);
                 let (title, body, line) = match news {
-                    CampaignNews::Conquered(_) => ("city_conquered_by_player_title", "city_conquered_by_player_initial_announcement", format!("{name} est conquise")),
-                    CampaignNews::ConquestFailed(_) => ("players_conquest_fails_title", "players_conquest_fails_initial_announcement", format!("Notre armée est vaincue à {name}")),
-                    CampaignNews::WipedOut(_) => ("raiding_party_wiped_out_title", "raiding_party_wiped_out_initial_announcement", format!("Nos pillards sont anéantis à {name}")),
-                    CampaignNews::Returned { won: true, .. } => ("legion_returns_player_action_good_title", "legion_returns_player_action_good_initial_announcement", "L'armée rentre victorieuse".to_string()),
-                    CampaignNews::Returned { won: false, .. } => ("legion_returns_player_action_bad_title", "legion_returns_player_action_bad_initial_announcement", "L'armée rentre vaincue".to_string()),
+                    CampaignNews::Conquered(_) => ("city_conquered_by_player_title", "city_conquered_by_player_initial_announcement", trf!("{} est conquise", name)),
+                    CampaignNews::ConquestFailed(_) => ("players_conquest_fails_title", "players_conquest_fails_initial_announcement", trf!("Notre armée est vaincue à {}", name)),
+                    CampaignNews::WipedOut(_) => ("raiding_party_wiped_out_title", "raiding_party_wiped_out_initial_announcement", trf!("Nos pillards sont anéantis à {}", name)),
+                    CampaignNews::Returned { won: true, .. } => ("legion_returns_player_action_good_title", "legion_returns_player_action_good_initial_announcement", tr("L'armée rentre victorieuse")),
+                    CampaignNews::Returned { won: false, .. } => ("legion_returns_player_action_bad_title", "legion_returns_player_action_bad_initial_announcement", tr("L'armée rentre vaincue")),
                     CampaignNews::Plunder { resource, amount, .. } => {
                         fields.push(("amount", amount.to_string()));
                         fields.push(("item", text.get(23, resource as usize).to_lowercase()));
                         let body = if resource == zeus::world::DRACHMAS { "raiding_party_returns_cash_granted" } else { "raiding_party_returns_granted" };
-                        ("raiding_party_returns_title", body, format!("Butin de {name} : {amount}"))
+                        ("raiding_party_returns_title", body, trf!("Butin de {} : {}", name, amount))
                     }
                 };
                 post(title, body, &fields);
@@ -4041,14 +4041,14 @@ fn run(
                 let games = |kind: u8| ["olympian", "isthmian", "nemean", "pythian"][kind as usize & 3];
                 let chief = [("player_name", "Chef".to_string())];
                 let (title, body, line) = match news {
-                    zeus::world::GamesNews::Begin { home: true, .. } => ("home_games_begin_title".to_string(), "home_games_begin_initial_announcement".to_string(), "Les jeux de la cité commencent"),
-                    zeus::world::GamesNews::Begin { kind, .. } => (format!("{}_games_begin_title", games(kind)), format!("{}_games_begin_initial_announcement_go", games(kind)), "Nos concurrents partent aux jeux"),
-                    zeus::world::GamesNews::CantParticipate(kind) => (format!("{}_games_cant_participate_title", games(kind)), format!("{}_games_cant_participate_initial_announcement", games(kind)), "Personne à envoyer aux jeux"),
-                    zeus::world::GamesNews::HomeCancelled => ("home_games_cancelled_title".to_string(), "home_games_cancelled_initial_announcement".to_string(), "Jeux de la cité annulés : il faut un stade"),
+                    zeus::world::GamesNews::Begin { home: true, .. } => ("home_games_begin_title".to_string(), "home_games_begin_initial_announcement".to_string(), tr("Les jeux de la cité commencent")),
+                    zeus::world::GamesNews::Begin { kind, .. } => (format!("{}_games_begin_title", games(kind)), format!("{}_games_begin_initial_announcement_go", games(kind)), tr("Nos concurrents partent aux jeux")),
+                    zeus::world::GamesNews::CantParticipate(kind) => (format!("{}_games_cant_participate_title", games(kind)), format!("{}_games_cant_participate_initial_announcement", games(kind)), tr("Personne à envoyer aux jeux")),
+                    zeus::world::GamesNews::HomeCancelled => ("home_games_cancelled_title".to_string(), "home_games_cancelled_initial_announcement".to_string(), tr("Jeux de la cité annulés : il faut un stade")),
                     zeus::world::GamesNews::Concluded { kind, home, place } => {
                         let outcome = ["lost", "second", "won"][place.min(2) as usize];
                         let name = if home { "home" } else { games(kind) };
-                        (format!("{name}_games_conclude_title"), format!("{name}_games_conclude_initial_announcement_{outcome}"), ["Jeux perdus", "Deuxièmes aux jeux", "Jeux gagnés !"][place.min(2) as usize])
+                        (format!("{name}_games_conclude_title"), format!("{name}_games_conclude_initial_announcement_{outcome}"), [tr("Jeux perdus"), tr("Deuxièmes aux jeux"), tr("Jeux gagnés !")][place.min(2) as usize].clone())
                     }
                 };
                 post(&title, &body, &chief);
@@ -4095,7 +4095,7 @@ fn run(
                         format!("{} : {name}", i + 1)
                     })
                     .collect();
-                intro = Some((format!("Choisissez votre colonie : touche 1 à {}", choices.len()), lines));
+                intro = Some((trf!("Choisissez votre colonie : touche 1 à {}", choices.len()), lines));
                 colony_choice = Some(choices);
             } else if won && intro.is_none() {
                 won = false;
@@ -4154,7 +4154,7 @@ fn run(
             // Les annonces de la cité entrent au journal ; pas les réponses aux commandes.
             if world.commemoratives.len() > commemoratives {
                 let model = *world.commemoratives.last().unwrap() as usize;
-                notice = (format!("Un monument commémoratif est disponible (onglet ailé) : {}", text.get(TEXT_COMMEMORATIVES, 1 + model)), now);
+                notice = (trf!("Un monument commémoratif est disponible (onglet ailé) : {}", text.get(TEXT_COMMEMORATIVES, 1 + model)), now);
             }
             commemoratives = world.commemoratives.len();
             if notice != logged {
@@ -4208,7 +4208,7 @@ fn run(
                         }
                         sdl::KEY_F5 => {
                             notice = match journey.save(&world, &save_file) {
-                                Ok(()) => (format!("Partie enregistrée : {}", save_file.display()), now),
+                                Ok(()) => (trf!("Partie enregistrée : {}", save_file.display()), now),
                                 Err(e) => (format!("Enregistrement impossible : {e}"), now),
                             };
                         }
@@ -4322,7 +4322,7 @@ fn run(
                             let to = { let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h); pick(&world, wx, wy) };
                             let tiles = drag_tiles(&world, tool, from, to);
                             if tiles.is_empty() && matches!(tool, Tool::Road | Tool::Wall) {
-                                notice = ("Aucun chemin praticable jusque-là".to_string(), now);
+                                notice = (tr("Aucun chemin praticable jusque-là"), now);
                             }
                             for (tx, ty) in tiles {
                                 match tool {
@@ -4428,7 +4428,7 @@ fn run(
                                 if world.expedition.is_some() {
                                     notice = ("L'armée est déjà en campagne".to_string(), now);
                                 } else if world.army() == 0 {
-                                    notice = ("La cité n'a pas de soldats à envoyer".to_string(), now);
+                                    notice = (tr("La cité n'a pas de soldats à envoyer"), now);
                                 } else {
                                     company = Some(CompanyDraft { city, raid, soldiers: world.ranks(), triremes: world.triremes() });
                                 }
@@ -4459,7 +4459,7 @@ fn run(
                                     Err(Conquest::NoArmy) => ("Aucune troupe choisie".to_string(), now),
                                     Err(Conquest::TooMany) => (format!("Pas assez de soldats ou de {} pour cette compagnie", world.ship_plural()), now),
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
-                                    Err(_) => (format!("{name} ne peut pas être attaquée"), now),
+                                    Err(_) => (trf!("{} ne peut pas être attaquée", name), now),
                                 };
                                 continue;
                             }
@@ -4547,7 +4547,7 @@ fn run(
                     Tool::None => String::new(),
                     Tool::Road => format!(" — {road_name} ({road_cost})"),
                     Tool::Wall => format!(" — {wall_name} ({wall_cost})"),
-                    Tool::Demolish => " — Démolir".to_string(),
+                    Tool::Demolish => tr(" — Démolir"),
                     Tool::Build(kind) => format!(" — {} ({})", world.kind_name(kind), world.kinds[kind].cost),
                 };
                 let place = match in_grid(under) {
@@ -5367,10 +5367,10 @@ fn run(
                     .map(|(i, c)| {
                         let status = if c.kind == zeus::map::DISTANT { "lointaine".to_string() } else { statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default() };
                         let open = c.kind == zeus::map::FOREIGN && c.status <= zeus::map::RIVAL;
-                        let action = if open { format!(", défense {}, {} mois de marche) [soumettre]", world.defence(i), world.travel_months(i)) } else { ")".to_string() };
+                        let action = if open { trf!(", défense {}, {} mois de marche) [soumettre]", world.defence(i), world.travel_months(i)) } else { ")".to_string() };
                         let raid = if open { "  [piller]".to_string() } else { String::new() };
                         let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
-                        let goods = format!("Vend {} ; achète {}", names(&c.sells), names(&c.buys));
+                        let goods = trf!("Vend {} ; achète {}", names(&c.sells), names(&c.buys));
                         let post = if world.sea_route(i) { "des docks" } else { "un poste de commerce" };
                         let trade = match (world.trades_with(i), served.contains(&i)) {
                             (true, true) => format!("{goods} (ventes {} dr., achats {} dr.)", c.sold, c.bought),
@@ -5547,7 +5547,7 @@ fn run(
 
                 let action = if draft.raid { "piller" } else { "soumettre" };
                 let title = format!("Compagnie pour {action} {}", city_name(&text, &world, draft.city));
-                let detail = format!("Défense {} — {} mois de marche", world.defence(draft.city), world.travel_months(draft.city));
+                let detail = trf!("Défense {} — {} mois de marche", world.defence(draft.city), world.travel_months(draft.city));
                 let ships_label = if world.atlantean { "Frégates" } else { "Trières" };
                 let units = [("Piétaille", 0), ("Hoplites", 1), ("Cavaliers", 2), (ships_label, 3)];
                 let lines: Vec<String> = units
@@ -5557,7 +5557,7 @@ fn run(
                         format!("{name} : {count} / {max}")
                     })
                     .collect();
-                let force_line = format!("Force envoyée : {}", World::force(draft.soldiers, draft.triremes));
+                let force_line = trf!("Force envoyée : {}", World::force(draft.soldiers, draft.triremes));
                 let footer = ["Tout", "Envoyer", "Annuler"];
                 let footer_widths: Vec<f32> = footer.iter().map(|label| graphics.text_width(FONT_TEXT, label) + 24.0).collect();
                 let footer_total = footer_widths.iter().sum::<f32>() + 8.0 * (footer.len() - 1) as f32;
@@ -5644,11 +5644,11 @@ fn run(
                     MenuRow::Pick(Tool::Road) => Some(format!("{road_name} ({road_cost})")),
                     MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
                     MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
-                    MenuRow::Key(sdl::KEY_O) => Some("Objectifs de l'épisode (O)".to_string()),
+                    MenuRow::Key(sdl::KEY_O) => Some(tr("Objectifs de l'épisode (O)")),
                     MenuRow::Key(sdl::KEY_J) => Some("Journal des messages (J)".to_string()),
                     MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
-                    MenuRow::Key(sdl::KEY_C) => Some("Cités du monde (C)".to_string()),
-                    MenuRow::SidebarMap(true) => Some("Carte générale".to_string()),
+                    MenuRow::Key(sdl::KEY_C) => Some(tr("Cités du monde (C)")),
+                    MenuRow::SidebarMap(true) => Some(tr("Carte générale")),
                     MenuRow::SidebarMap(false) => Some("Constructions".to_string()),
                     MenuRow::Journal => Some("Journal des annonces (J)".to_string()),
                     _ => None,
