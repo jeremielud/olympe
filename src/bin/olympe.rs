@@ -5135,7 +5135,7 @@ fn run(
                 };
                 if building.fire + building.damage > 0 {
                     let (fire, damage) = world.risks(building);
-                    lines.push(format!("Risques : feu {fire} %, dégâts {damage} %"));
+                    lines.push(trf!("Risques : feu {} %, dégâts {} %", fire, damage));
                 }
                 // Temple de héros : où en sont les exigences du héros.
                 if let Function::HeroHall(hero) = world.kinds[building.kind].function {
@@ -5153,16 +5153,16 @@ fn run(
                 }
                 if world.kinds[building.kind].function == Function::Wharf {
                     lines.push(match building.stock {
-                        0 => format!(
-                            "{} en chantier : {} {} / 4, {} {} / 1",
+                        0 => trf!(
+                            "{} en chantier : {} {} / 2, {} {} / 2",
                             capitalized(world.ship_singular()),
                             good_names[Good::Wood as usize],
                             building.goods[Good::Wood as usize],
                             good_names[Good::Arms as usize],
                             building.goods[Good::Arms as usize]
                         ),
-                        ..0 => format!("Sa {} est partie en campagne", world.ship_singular()),
-                        _ => format!("Une {} est à quai", world.ship_singular()),
+                        ..0 => trf!("Sa {} est partie en campagne", world.ship_singular()),
+                        _ => trf!("Une {} est à quai", world.ship_singular()),
                     });
                 }
                 // Chantier de sanctuaire ou de monument : matériaux livrés sur demandés.
@@ -5174,7 +5174,7 @@ fn run(
                             .filter(|&(_, need)| need > 0)
                             .map(|(&good, need)| format!("{} {} / {need}", good_names[good as usize], building.goods[good as usize].min(need as i32)))
                             .collect();
-                        lines.push(format!("Chantier : {}", delivered.join(", ")));
+                        lines.push(trf!("Chantier : {}", delivered.join(", ")));
                     }
                 }
                 if world.kinds[building.kind].function == Function::Storehouse {
@@ -5188,8 +5188,8 @@ fn run(
                 if let Some(house) = &building.house {
                     lines[0] = level_names[house.level.min(level_names.len() - 1)].clone();
                     lines.push(format!("{} : {} / {}", text.get(8, 3), house.population, world.capacity(house)));
-                    lines.push(format!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
-                    lines.push(format!("Culture : {}", world.house_culture(house)));
+                    lines.push(trf!("Attrait : {}", world.appeal(building.x as i32, building.y as i32)));
+                    lines.push(trf!("Culture : {}", world.house_culture(house)));
                     // Les marchandises en réserve ; ce qui manque est dit plus bas.
                     for good in GOODS.into_iter().filter(|&good| for_houses(good) && (good == Good::Food || house.goods[good as usize] > 0)) {
                         lines.push(format!("{} : {}", good_names[good as usize], house.goods[good as usize]));
@@ -5205,28 +5205,28 @@ fn run(
                             Need::Food => good_names[Good::Food as usize].to_lowercase(),
                             Need::Water => service_name(&text, Service::Water).to_lowercase(),
                             Need::Goods(good) => good_names[good as usize].to_lowercase(),
-                            Need::Stadium => "un stade".to_string(),
-                            Need::Culture(n) => format!("culture {n}"),
-                            Need::Appeal(n) => format!("attrait {n}"),
+                            Need::Stadium => tr("un stade"),
+                            Need::Culture(n) => trf!("culture {}", n),
+                            Need::Appeal(n) => trf!("attrait {}", n),
                             Need::Top => String::new(),
                         })
                         .collect();
                     match needs.as_slice() {
-                        [] => lines.push("Va évoluer".to_string()),
+                        [] => lines.push(tr("Va évoluer")),
                         [top] if top.is_empty() => {}
-                        _ => lines.push(format!("Pour évoluer : {}", needs.join(", "))),
+                        _ => lines.push(trf!("Pour évoluer : {}", needs.join(", "))),
                     }
                 }
                 if let Some(missing) = world.service_waits_for(building) {
                     if let Some(kind) = world.kinds.iter().find(|k| k.function == missing) {
-                        lines.push(format!("En attente : {}", kind.name.to_lowercase()));
+                        lines.push(trf!("En attente : {}", kind.name.to_lowercase()));
                     }
                 }
                 if full {
                     // Fenêtre au centre : le nom en titre, le reste dessous.
                     let heading = lines.remove(0);
                     lines.push(String::new());
-                    lines.push("Clic ou Echap : fermer".to_string());
+                    lines.push(tr("Clic ou Echap : fermer"));
                     let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                     let height = title_line + 32.0 + row * lines.len() as f32;
                     let (px, py) = ((side - width) / 2.0, (h - height) / 2.0);
@@ -5241,8 +5241,12 @@ fn run(
                     // Au survol : le nom, l'effectif et ce qui manque ou bloque.
                     let description = descriptions.get(building.kind).cloned().flatten().map(|d| wrap(&d, INFO_LINE).len()).unwrap_or(0);
                     let mut short: Vec<String> = lines.iter().take(1).cloned().collect();
-                    short.extend(lines.iter().skip(1 + description).filter(|l| l.starts_with(&text.get(8, 13)) || l.starts_with(&text.get(8, 3)) || l.starts_with("Pour évoluer") || l.starts_with("Va évoluer") || l.starts_with("En attente") || l.starts_with("Risques")).cloned());
-                    short.push("Clic droit : détails".to_string());
+                    let evolve = tr("Pour évoluer");
+                    let will = tr("Va évoluer");
+                    let waiting = tr("En attente");
+                    let risks = tr("Risques");
+                    short.extend(lines.iter().skip(1 + description).filter(|l| l.starts_with(&text.get(8, 13)) || l.starts_with(&text.get(8, 3)) || l.starts_with(&evolve) || l.starts_with(&will) || l.starts_with(&waiting) || l.starts_with(&risks)).cloned());
+                    short.push(tr("Clic droit : détails"));
                     let width = short.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(0.0, f32::max) + 32.0;
                     let height = row * short.len() as f32 + 12.0;
                     let (px, py) = (12.0, TOP_BAR_HEIGHT + 12.0);
