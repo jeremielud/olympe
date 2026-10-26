@@ -230,7 +230,9 @@ Ce qui fonctionne :
   Hermès rend les porteurs plus rapides d'un tiers, Athéna donne 4 points d'armure
   contre les projectiles aux soldats de la cité, Atlas accélère les chantiers (le
   quai arme son navire en 16 jours au lieu de 32), Apollon ajoute 20 à chaque note
-  de culture ou de science ;
+  de culture ou de science ; Zeus, Déméter, Artémis, Arès et Hadès agissent par leurs
+  événements (défense contre les dieux hostiles, monstres, invasions) plutôt que par
+  un bienfait permanent ;
 - santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
   mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
   bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut
