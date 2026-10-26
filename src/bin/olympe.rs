@@ -1543,7 +1543,7 @@ fn set_aside(world: &mut World, goals: &[Goal], text: &Text) -> String {
         }
     }
     if report.is_empty() {
-        return "Rien à mettre de côté".to_string();
+        return tr("Rien à mettre de côté");
     }
     report.join(" ; ")
 }
@@ -1596,19 +1596,19 @@ fn service_label(world: &World, text: &Text, service: Service) -> String {
 const TAX_NAMES: [&str; 7] = ["aucun", "très bas", "bas", "normal", "haut", "très haut", "scandaleux"];
 
 fn tax_name(world: &World) -> String {
-    let name = TAX_NAMES.get(world.tax_level).copied().unwrap_or("normal");
+    let name = tr(TAX_NAMES.get(world.tax_level).copied().unwrap_or("normal"));
     match world.taxes.levels.get(world.tax_level) {
         Some((rate, _)) => format!("{name} ({rate} %)"),
-        None => name.to_string(),
+        None => name,
     }
 }
 
-fn mood_note(sentiment: i32) -> &'static str {
+fn mood_note(sentiment: i32) -> String {
     match sentiment {
-        ..15 => " : les habitants s'en vont",
-        15..30 => " : les immigrants ne viennent plus",
-        30..50 => " : mécontentement",
-        _ => "",
+        ..15 => tr(" : les habitants s'en vont"),
+        15..30 => tr(" : les immigrants ne viennent plus"),
+        30..50 => tr(" : mécontentement"),
+        _ => String::new(),
     }
 }
 
@@ -1623,7 +1623,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
             population.push(format!("{name} : {count} ({people} habitants)"));
         }
     }
-    pages.push(("Population".to_string(), population));
+    pages.push((tr("Population"), population));
     // Emploi : postes par catégorie de bâtiments, et bâtiments à l'arrêt.
     let (needed, available) = (world.workers_needed(), world.workers_available());
     let mut employment = vec![match available - needed {
@@ -2777,7 +2777,7 @@ fn install(args: &[String]) {
             if report.unconverted > 0 {
                 println!("{} fichiers audio laissés en MP3 (non lus par le jeu).", report.unconverted);
             }
-            println!("Lancez le jeu avec : olympe");
+            println!("{}", tr("Lancez le jeu avec : olympe"));
         }
         Err(e) => {
             eprintln!("erreur : {e}");
@@ -3464,7 +3464,7 @@ fn run(
         let _ = fs::create_dir_all(&saves);
         let save_file = saves.join(format!("{name}.zsauv"));
         // Message passager en bas d'écran, et instant où il est apparu.
-        let mut notice = ("H : aide".to_string(), sdl::SDL_GetTicks());
+        let mut notice = (tr("H : aide"), sdl::SDL_GetTicks());
         let mut help = false;
         // Menu du bandeau ouvert (0 Fichier, 1 Options, 2 Aide).
         let mut top_menu: Option<usize> = None;
@@ -3962,16 +3962,16 @@ fn run(
             }
             if let Some((change, destroyed)) = world.disaster_news.pop() {
                 let what = match change {
-                    zeus::world::EARTHQUAKE => "Tremblement de terre ! La terre s'ouvre",
-                    zeus::world::LAVA => "Éruption ! La lave recouvre le pays",
-                    zeus::world::TIDAL_WAVE => "Raz-de-marée ! Les eaux envahissent la côte",
-                    zeus::world::LANDSLIDE => "Glissement de terrain ! Des éboulis dévalent la pente",
-                    _ => "Inondation ! La mer engloutit la côte pour toujours",
+                    zeus::world::EARTHQUAKE => tr("Tremblement de terre ! La terre s'ouvre"),
+                    zeus::world::LAVA => tr("Éruption ! La lave recouvre le pays"),
+                    zeus::world::TIDAL_WAVE => tr("Raz-de-marée ! Les eaux envahissent la côte"),
+                    zeus::world::LANDSLIDE => tr("Glissement de terrain ! Des éboulis dévalent la pente"),
+                    _ => tr("Inondation ! La mer engloutit la côte pour toujours"),
                 };
                 let toll = match destroyed {
                     0 => String::new(),
-                    1 => " : un bâtiment détruit".to_string(),
-                    n => format!(" : {n} bâtiments détruits"),
+                    1 => tr(" : un bâtiment détruit"),
+                    n => trf!(" : {} bâtiments détruits", n),
                 };
                 notice = (format!("{what}{toll}"), now);
                 world.disaster_news.clear();
@@ -4059,9 +4059,9 @@ fn run(
                     post("plague_title", "plague_initial_announcement", &[("player_name", "Chef".to_string())]);
                 }
                 notice = match incident {
-                    zeus::world::Incident::Pillage { .. } => ("Des voleurs ont pillé une maison luxueuse : postez des gardes".to_string(), now),
-                    zeus::world::Incident::Theft { amount, .. } => (format!("Un voleur a dérobé {amount} dr. au trésor : postez des gardes"), now),
-                    zeus::world::Incident::Plague { dead, .. } => (format!("Une épidémie a emporté {dead} habitants : bâtissez des infirmeries"), now),
+                    zeus::world::Incident::Pillage { .. } => (tr("Des voleurs ont pillé une maison luxueuse : postez des gardes"), now),
+                    zeus::world::Incident::Theft { amount, .. } => (trf!("Un voleur a dérobé {} dr. au trésor : postez des gardes", amount), now),
+                    zeus::world::Incident::Plague { dead, .. } => (trf!("Une épidémie a emporté {} habitants : bâtissez des infirmeries", dead), now),
                 };
                 world.incidents.clear();
             }
@@ -4128,8 +4128,8 @@ fn run(
                     goals.clear();
                     intro = story(data, map_path, settings.as_ref(), journey.step(), Moment::End);
                     (told, narrated) = ((journey.step(), Moment::End), false);
-                    notice = ("Aventure terminée : la partie continue sans objectif".to_string(), now);
-                    eprintln!("aventure terminée");
+                    notice = (tr("Aventure terminée : la partie continue sans objectif"), now);
+                    eprintln!("{}", tr("aventure terminée"));
                 }
                 goals_met = vec![false; goals.len()];
             }
@@ -4146,7 +4146,7 @@ fn run(
             }
             if !won && journey.position < journey.order.len().max(1) && (std::mem::take(&mut force_end) || !goals.is_empty() && goals_met.iter().all(|&met| met)) {
                 won = true;
-                let fallback = ("Épisode terminé".to_string(), vec!["Tous les objectifs de l'épisode sont atteints.".to_string()]);
+                let fallback = (tr("Épisode terminé"), vec![tr("Tous les objectifs de l'épisode sont atteints.")]);
                 intro = Some(story(data, map_path, settings.as_ref(), journey.step(), Moment::Victory).unwrap_or(fallback));
                 (told, narrated) = ((journey.step(), Moment::Victory), false);
             }
@@ -4230,7 +4230,7 @@ fn run(
                                     goals = episode(step).map(|e| e.goals.clone()).unwrap_or_default();
                                     goals_met = goals.iter().map(|goal| goal.status(&world) == Status::Met).collect();
                                     won = false;
-                                    ("Partie chargée".to_string(), now)
+                                    (tr("Partie chargée"), now)
                                 }
                                 Err(e) => (format!("Chargement impossible : {e}"), now),
                             };
@@ -4860,8 +4860,8 @@ fn run(
                 months[month as usize],
                 // Sans réglages d'aventure, on compte les années depuis la fondation.
                 if start_year == 0 { year as i64 + 1 } else { (start_year as i64 + year as i64).abs() },
-                if start_year as i64 + (year as i64) < 0 { " av. J.-C." } else { "" },
-                if paused { "  (pause)" } else { "" }
+                if start_year as i64 + (year as i64) < 0 { tr(" av. J.-C.") } else { String::new() },
+                if paused { tr("  (pause)") } else { String::new() }
             );
             let status_width = graphics.text_width(FONT_CHROME, &status);
             graphics.draw_text(FONT_CHROME, &status, side - status_width - 16.0, (TOP_BAR_HEIGHT - line) / 2.0);
@@ -5149,7 +5149,7 @@ fn run(
                 }
                 if world.kinds[building.kind].function == Function::Racetrack {
                     let (sections, closed) = world.hippodrome();
-                    lines.push(format!("Hippodrome : {sections} stades, {}", if closed { "les courses ont lieu" } else { "piste pas encore fermée" }));
+                    lines.push(format!("Hippodrome : {sections} stades, {}", if closed { tr("les courses ont lieu") } else { tr("piste pas encore fermée") }));
                 }
                 if world.kinds[building.kind].function == Function::Wharf {
                     lines.push(match building.stock {
@@ -5299,7 +5299,7 @@ fn run(
                             }
                             Status::Pending(Some(current)) => format!("actuellement {current}"),
                             Status::Pending(None) => text.get(194, 52),
-                            Status::Unsupported => "pas encore simulé par Olympe".to_string(),
+                            Status::Unsupported => tr("pas encore simulé par Olympe"),
                         };
                         let event = episode(journey.step()).and_then(|e| e.events.get(goal.values[0].max(0) as usize).copied());
                         let label = match (goal.kind, event) {
@@ -5319,7 +5319,7 @@ fn run(
                     lines.push(text.get(44, 280));
                 }
                 if goals.iter().zip(&statuses).any(|(goal, status)| goal.kind == GoalKind::SetAside && *status != Status::Met) {
-                    lines.push("R : mettre de côté ce qui est en stock".to_string());
+                    lines.push(tr("R : mettre de côté ce qui est en stock"));
                 }
                 let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * lines.len() as f32;
@@ -5350,7 +5350,7 @@ fn run(
                 }
             }
             if cities_panel {
-                let heading = "Cités du monde".to_string();
+                let heading = tr("Cités du monde");
                 let statuses = (0..4).map(|s| text.get(253, s)).collect::<Vec<_>>();
                 let served = world.trade_posts();
                 // Chaque ligne : la cité (clic : la soumettre), le raid (clic : la piller),
@@ -5373,7 +5373,7 @@ fn run(
                             (true, false) => format!("{goods} : construisez {post} pour commercer"),
                             (false, _) => String::new(),
                         };
-                        let away = if world.army_away(i) { ", armée partie" } else { "" };
+                        let away = if world.army_away(i) { tr(", armée partie") } else { String::new() };
                         (i, format!("{} ({status}, faveur {}, force {}{away}{action}", city_name(&text, &world, i), c.favor, c.military), raid, trade)
                     })
                     .collect();
@@ -5391,7 +5391,7 @@ fn run(
                 let heading_width = graphics.text_width(FONT_TITLE, &heading);
                 graphics.draw_text(FONT_TITLE, &heading, px + (width - heading_width) / 2.0, py + 12.0);
                 if rows.is_empty() {
-                    graphics.draw_text(FONT_TEXT, "Aucune cité étrangère", px + 24.0, py + title_line + 24.0);
+                    graphics.draw_text(FONT_TEXT, &tr("Aucune cité étrangère"), px + 24.0, py + title_line + 24.0);
                 }
                 // Demandes en attente, sous les cités : un clic les satisfait.
                 let months_left = |until: u64| until.saturating_sub(world.ticks) / zeus::world::TICKS_PER_MONTH;
@@ -5491,21 +5491,21 @@ fn run(
                 let items: Vec<(String, u32)> = match index {
                     0 => vec![(format!("{} (F5)", text.get(1, 4)), sdl::KEY_F5), (format!("{} (F9)", text.get(1, 3)), sdl::KEY_F9), (format!("{} (Q)", text.get(1, 5)), sdl::KEY_Q)],
                     1 => vec![
-                        ("Musique (M)".to_string(), sdl::KEY_M),
-                        ("Bruitages (B)".to_string(), sdl::KEY_B),
-                        ("Plein écran (F)".to_string(), sdl::KEY_F),
-                        ("Plus vite (Page préc.)".to_string(), sdl::KEY_PAGEUP),
-                        ("Plus lent (Page suiv.)".to_string(), sdl::KEY_PAGEDOWN),
-                        ("Pause (P)".to_string(), sdl::KEY_P),
-                        ("Vues (V)".to_string(), sdl::KEY_V),
-                        ("Mettre de côté (R)".to_string(), sdl::KEY_R),
+                        (tr("Musique (M)"), sdl::KEY_M),
+                        (tr("Bruitages (B)"), sdl::KEY_B),
+                        (tr("Plein écran (F)"), sdl::KEY_F),
+                        (tr("Plus vite (Page préc.)"), sdl::KEY_PAGEUP),
+                        (tr("Plus lent (Page suiv.)"), sdl::KEY_PAGEDOWN),
+                        (tr("Pause (P)"), sdl::KEY_P),
+                        (tr("Vues (V)"), sdl::KEY_V),
+                        (tr("Mettre de côté (R)"), sdl::KEY_R),
                     ],
                     _ => vec![
                         (format!("{} (H)", text.get(3, 0)), sdl::KEY_H),
-                        ("Objectifs (O)".to_string(), sdl::KEY_O),
-                        ("Conseillers (A)".to_string(), sdl::KEY_A),
-                        ("Cités du monde (C)".to_string(), sdl::KEY_C),
-                        ("Journal (J)".to_string(), sdl::KEY_J),
+                        (tr("Objectifs (O)"), sdl::KEY_O),
+                        (tr("Conseillers (A)"), sdl::KEY_A),
+                        (tr("Cités du monde (C)"), sdl::KEY_C),
+                        (tr("Journal (J)"), sdl::KEY_J),
                     ],
                 };
                 let width = items.iter().map(|(label, _)| graphics.text_width(FONT_TEXT, label)).fold(0.0, f32::max) + 32.0;

@@ -242,3 +242,17 @@ Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les ongl
 V : vues (eau, risques, attrait, criminalité, culture, santé, impôts) ; J : journal	V: overlays (water, risks, appeal, crime, culture, health, taxes); J: journal
 O : objectifs de l'épisode ; C : cités du monde (clic : choisir la compagnie) ; A : conseillers (Tab : page)	O: episode goals; C: cities of the world (click: choose the company); A: advisers (Tab: page)
 Survoler un bâtiment : son résumé ; clic droit : sa fiche ; clic sur un passant : il parle	Hover a building: its summary; right click: its details; click a walker: they talk
+Musique (M)	Music (M)
+Bruitages (B)	Sound effects (B)
+Plein écran (F)	Full screen (F)
+Plus vite (Page préc.)	Faster (Page up)
+Plus lent (Page suiv.)	Slower (Page down)
+Pause (P)	Pause (P)
+Vues (V)	Overlays (V)
+Mettre de côté (R)	Set aside (R)
+Objectifs (O)	Goals (O)
+Conseillers (A)	Advisers (A)
+Cités du monde (C)	Cities of the world (C)
+Journal (J)	Journal (J)
+ av. J.-C.	 BC
+  (pause)	  (paused)
