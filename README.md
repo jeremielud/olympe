@@ -25,8 +25,8 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Économie et logements (emploi, vivres, marchandises, évolution, impôts, risques) | 85 % |
 | Interface (menus, fiches, vues, journal, superviseurs, panneaux) | 80 % |
 | Commerce et cités du monde | 70 % |
-| Mythologie (dieux, héros, monstres, quêtes) | 65 % |
-| Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 65 % |
+| Mythologie (dieux, héros, monstres, quêtes) | 70 % |
+| Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 70 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
 Manque encore notamment : l'image et les règles propres de la frégate atlante
