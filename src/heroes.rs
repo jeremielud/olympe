@@ -146,6 +146,18 @@ impl Requirement {
             14 => if world.walled_in(hall.0, hall.1) { Check::Met } else { Check::Missing { current: 0, wanted: 1 } },
             // Attrait autour du temple.
             13 => against(world.appeal(hall.0 as i32, hall.1 as i32), a),
+            // Exigence 6 : dans une cité atlante, un hippodrome en activité (textes
+            // 117 à 119 du groupe 185) ; dans une cité grecque, une victoire aux jeux
+            // panhelléniques (texte 50), qu'Olympe ne compte pas encore.
+            6 if world.atlantean => {
+                let (sections, closed) = world.hippodrome();
+                if sections > 0 && closed { Check::Met } else { Check::Missing { current: sections.min(1), wanted: 1 } }
+            }
+            6 => Check::Unsimulated,
+            // Stade actif (textes 127 à 130) : un stade, ou un musée dans une cité
+            // atlante, avec son personnel. Le jeu ne demande qu'un bâtiment actif ;
+            // le paramètre `a` n'est pas lu.
+            18 => if world.stadium_open() { Check::Met } else { Check::Missing { current: 0, wanted: 1 } },
             // Jeux panhelléniques…
             _ => Check::Unsimulated,
         }

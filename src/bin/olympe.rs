@@ -1972,11 +1972,22 @@ fn capitalized(text: &str) -> String {
 }
 
 /// Ligne du panneau d'un temple de héros : une exigence et où elle en est.
-fn requirement_line(text: &Text, requirement: Requirement, check: Check) -> String {
+fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlantean: bool) -> String {
     let [a, b, c, d, e] = requirement.values;
     let resource = |id: i32| if id == 25 { text.get(23, 25).to_lowercase() } else { text.get(23, id.max(0) as usize).to_lowercase() };
     let hall = |index: usize| text.get(heroes::TEXT_HALLS, index);
     let what = match requirement.kind {
+        // Cité atlante : hippodrome en activité (le jeu affiche 117 ou 118 selon
+        // l'état). Cité grecque : une victoire aux jeux panhelléniques (arm plus bas).
+        6 if atlantean => hall(if check.passes() { 117 } else { 118 }),
+        // Stade actif, ou musée actif dans une cité atlante (textes 127 à 130).
+        18 => hall(if atlantean {
+            if check.passes() { 129 } else { 130 }
+        } else if check.passes() {
+            128
+        } else {
+            127
+        }),
         0 => {
             let unit = if b == 19 { 400 } else { 100 };
             let alternative = if c > 0 { format!(" ou {}", resource(c)) } else { String::new() };
@@ -2004,6 +2015,10 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check) -> Stri
         17 => hall(124),
         _ => "Condition particulière".to_string(),
     };
+    // Ces deux exigences disent déjà leur état ; inutile d'ajouter « rempli ».
+    if requirement.kind == 18 || (requirement.kind == 6 && atlantean) {
+        return what;
+    }
     let state = match check {
         Check::Met => "rempli".to_string(),
         Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 8 | 9 | 17) => format!("{current} % sur {wanted} %"),
@@ -5063,7 +5078,7 @@ fn run(
                         lines.push(text.get(heroes::TEXT_HALLS, 68).replace("[hero_name]", &text.get(heroes::TEXT_HEROES, hero as usize)));
                     }
                     for requirement in heroes::requirements(hero) {
-                        lines.push(requirement_line(&text, requirement, requirement.check(&world, hall)));
+                        lines.push(requirement_line(&text, requirement, requirement.check(&world, hall), world.atlantean));
                     }
                 }
                 if world.kinds[building.kind].function == Function::Racetrack {

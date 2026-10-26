@@ -135,7 +135,8 @@ Ce qui fonctionne :
   n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
   d'entretien de trières sont suivis ;
 - héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
-  ses exigences lues dans le jeu ; un héros venu dans la cité affronte le monstre
+  ses exigences lues dans le jeu, dont l'hippodrome en activité (cités atlantes) et
+  le stade ou le musée actif ; un héros venu dans la cité affronte le monstre
   qui lui revient puis part pour sa quête, et les objectifs correspondants sont
   suivis ; les monstres entrent dans la cité, où ils détruisent un bâtiment tous les
   deux mois jusqu'à ce que leur héros, venu de son temple, les tue (les monstres

@@ -387,6 +387,11 @@ fn a_closed_racetrack_makes_a_hippodrome() {
     world.kinds.push(Kind::simple("hippodrome".into(), 60, 4, 426, Function::Racetrack, 0));
     let goal = Goal { kind: GoalKind::Hippodrome, values: [8, 0, 0] };
     // Une boucle de trois sections sur trois, vide au milieu : huit stades.
+    // Dans une cité atlante, l'exigence 6 d'un héros est un hippodrome en activité.
+    use zeus::heroes::{Check, Requirement};
+    world.atlantean = true;
+    let hippodrome = Requirement { kind: 6, values: [0; 5] };
+    assert_eq!(hippodrome.check(&world, (x as usize, y as usize, 4)), Check::Missing { current: 0, wanted: 1 });
     let ring = [(0, 0), (4, 0), (8, 0), (8, 4), (8, 8), (4, 8), (0, 8), (0, 4)];
     for (i, &(dx, dy)) in ring.iter().enumerate() {
         assert!(world.place_building(track, x + dx, y + dy), "section {i}");
@@ -398,10 +403,38 @@ fn a_closed_racetrack_makes_a_hippodrome() {
     assert!(!world.can_place(track, x + 13, y + 9));
     assert_eq!(world.hippodrome(), (8, true));
     assert_eq!(goal.status(&world), Status::Met);
+    assert_eq!(hippodrome.check(&world, (x as usize, y as usize, 4)), Check::Met);
     // Les coins sont des virages, les côtés des droites.
     let image = |dx: i32, dy: i32| world.draw((x + dx) as usize, (y + dy + 3) as usize).map(|d| d.image);
     assert_eq!((image(0, 0), image(8, 8)), (Some(429), Some(425)));
     assert!(matches!(image(4, 0), Some(422 | 426)) && matches!(image(0, 4), Some(424 | 428)));
+}
+
+#[test]
+fn a_hero_wants_an_active_stadium_or_museum() {
+    use zeus::heroes::{Check, Requirement};
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    // Exigence d'Atalante : un stade actif (un musée dans une cité atlante).
+    let stadium = Requirement { kind: 18, values: [1, 207, 80, 0, 0] };
+    assert_eq!(stadium.check(&world, (x as usize, y as usize, 1)), Check::Missing { current: 0, wanted: 1 });
+    // Stade et son annexe, puis son personnel.
+    world.kinds.push(Kind::simple("annexe".into(), 0, 5, 1055, Function::Annex, 0));
+    let kind = world.kinds.len();
+    world.kinds.push(Kind::simple("stade".into(), 0, 5, 1055, Function::Stadium, 0));
+    assert!(world.place_building(kind, x, y));
+    world.buildings.iter_mut().flatten().find(|b| b.kind == kind).unwrap().staffed = false;
+    assert_eq!(stadium.check(&world, (x as usize, y as usize, 1)), Check::Missing { current: 0, wanted: 1 });
+    world.buildings.iter_mut().flatten().find(|b| b.kind == kind).unwrap().staffed = true;
+    assert_eq!(stadium.check(&world, (x as usize, y as usize, 1)), Check::Met);
+    // Dans une cité atlante, un musée actif en tient lieu.
+    world.atlantean = true;
+    world.buildings.iter_mut().flatten().filter(|b| b.kind == kind).for_each(|b| b.staffed = false);
+    let museum = world.kinds.len();
+    world.kinds.push(Kind::simple("musée".into(), 0, 5, 1055, Function::Museum, 0));
+    assert!(world.place_building(museum, x + 6, y));
+    world.buildings.iter_mut().flatten().find(|b| b.kind == museum).unwrap().staffed = true;
+    assert_eq!(stadium.check(&world, (x as usize, y as usize, 1)), Check::Met);
 }
 
 #[test]
