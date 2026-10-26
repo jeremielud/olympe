@@ -4513,7 +4513,7 @@ fn run(
                                     if world.money < world.kinds[kind].cost {
                                         notice = (format!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
                                     } else if let Some(hint) = world.placement_hint(kind, x, y) {
-                                        notice = (format!("{} : {hint}", world.kind_name(kind)), now);
+                                        notice = (format!("{} : {}", world.kind_name(kind), tr(hint)), now);
                                     }
                                 }
                             }
