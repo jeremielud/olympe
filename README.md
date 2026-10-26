@@ -29,9 +29,8 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 65 % |
 | Langues (anglais, espéranto) et menu de triche | 0 % (prévus une fois le jeu entièrement jouable) |
 
-Manque encore notamment : le choix des compagnies envoyées
-au loin (toute l'armée et toute la flotte partent), et dans
-les cités atlantes la frégate (la trière en tient lieu).
+Manque encore notamment : dans les cités atlantes la frégate
+(la trière en tient lieu).
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -78,7 +77,9 @@ Ce qui fonctionne :
   atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; points de
   science mesurés dans le jeu : astronomie 20, apprentissage 15, recherche 25 (le
   musée compte comme le stade, non mesuré) ;
-- campagnes lointaines (panneau des cités du monde, touche `C`) : l'armée part
+- campagnes lointaines (panneau des cités du monde, touche `C`) : un panneau choisit
+  les compagnies qui partent — piétaille, hoplites, cavaliers et trières, chacun de
+  zéro au maximum présent — et le reste garde la cité ; la compagnie part
   soumettre ou piller une cité étrangère, marche le temps que donne la route du monde
   (longueur × allure / 200 mois, deux au moins), livre bataille puis rentre, comme dans
   `Zeus.exe` : un homme de piétaille ou un hoplite compte pour un, un cavalier pour

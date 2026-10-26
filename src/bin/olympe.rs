@@ -393,7 +393,7 @@ const HELP: [&str; 19] = [
     "F : plein écran",
     "M : musique ; B : bruitages",
     "V : vues (eau, risques, attrait, criminalité, culture, santé, impôts) ; J : journal",
-    "O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)",
+    "O : objectifs de l'épisode ; C : cités du monde (clic : choisir la compagnie) ; A : conseillers (Tab : page)",
     "R : mettre de côté les marchandises demandées",
     "+ et - : taux d'imposition",
     "Origine et Fin : pivoter la vue",
@@ -712,8 +712,18 @@ enum MenuRow {
     /// Ouvre ou referme une catégorie.
     Category(usize),
     Pick(Tool),
-    /// Envoie l'armée soumettre cette cité du monde, ou y ouvre une route commerciale.
+    /// Prépare la compagnie à envoyer soumettre cette cité du monde, ou à la piller.
     Conquer(usize, bool),
+    /// Change l'effectif d'un rang (0 à 2) ou des trières (3) de la compagnie préparée.
+    CompanyCount(usize, i32),
+    /// Remplit la compagnie préparée avec tout ce qui reste à la cité.
+    CompanyAll,
+    /// Envoie la compagnie préparée.
+    CompanySend,
+    /// Referme la composition sans envoyer.
+    CompanyCancel,
+    /// Fond de la composition : absorbe les clics destinés à la carte.
+    CompanyShield,
     /// Satisfait la demande de ce rang.
     Fulfil(usize),
     /// Change ce que le commerce peut faire de cette ressource.
@@ -730,6 +740,16 @@ enum MenuRow {
     Group(usize),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
+}
+
+/// Compagnie en préparation pour une campagne lointaine : ce que le joueur a choisi
+/// d'envoyer, cité par cité, avant de confirmer.
+#[derive(Clone, Copy)]
+struct CompanyDraft {
+    city: usize,
+    raid: bool,
+    soldiers: [i32; 3],
+    triremes: i32,
 }
 
 /// Outil tenu par le joueur.
@@ -3328,6 +3348,7 @@ fn run(
             Some((start, plan)) => (start, plan),
             None => (opening_site(&world), DemoPlan::new()),
         };
+
         let (start_x, start_y) = tile_origin(start.0, start.1);
         let mut view = View { cx: start_x, cy: start_y, zoom: 1.0 };
         // Échelle de l'interface : 1 jusqu'à 1440 lignes, 2 en 4K, etc. Fixée à la
@@ -3391,6 +3412,8 @@ fn run(
         let (mut colony_choice, mut colony_pick): (Option<Vec<usize>>, Option<usize>) = (None, None);
         // Panneau des cités du monde, ouvert par C.
         let mut cities_panel = false;
+        // Compagnie en préparation, ouverte depuis le panneau des cités.
+        let mut company: Option<CompanyDraft> = None;
         // Panneau des conseillers, ouvert par A.
         let mut advisor_panel = false;
         let mut advisor_page = 0usize;
@@ -4087,6 +4110,7 @@ fn run(
                 match event.kind() {
                     sdl::EVENT_QUIT => running = false,
                     sdl::EVENT_KEY_DOWN => match event.key() {
+                        sdl::KEY_ESCAPE if company.is_some() => company = None,
                         sdl::KEY_ESCAPE if tool != Tool::None => {
                             tool = Tool::None;
                             hovered = (-1, -1);
@@ -4320,21 +4344,59 @@ fn run(
                                 continue;
                             }
                             Some(MenuRow::Conquer(city, raid)) => {
-                                let name = city_name(&text, &world, city);
-                                notice = match world.conquer(city, raid) {
-                                    Ok(months) => (format!("L'armée part {} {name} : {months} mois de marche", if raid { "piller" } else { "attaquer" }), now),
-                                    Err(Conquest::NoArmy) => ("La cité n'a pas de soldats à envoyer".to_string(), now),
+                                if world.expedition.is_some() {
+                                    notice = ("L'armée est déjà en campagne".to_string(), now);
+                                } else if world.army() == 0 {
+                                    notice = ("La cité n'a pas de soldats à envoyer".to_string(), now);
+                                } else {
+                                    company = Some(CompanyDraft { city, raid, soldiers: world.ranks(), triremes: world.triremes() });
+                                }
+                                continue;
+                            }
+                            Some(MenuRow::CompanyCount(slot, delta)) => {
+                                if let Some(mut draft) = company {
+                                    let max = if slot < 3 { world.ranks()[slot] } else { world.triremes() };
+                                    let value = if slot < 3 { &mut draft.soldiers[slot] } else { &mut draft.triremes };
+                                    *value = (*value + delta).clamp(0, max);
+                                    company = Some(draft);
+                                }
+                                continue;
+                            }
+                            Some(MenuRow::CompanyAll) => {
+                                if let Some(mut draft) = company {
+                                    draft.soldiers = world.ranks();
+                                    draft.triremes = world.triremes();
+                                    company = Some(draft);
+                                }
+                                continue;
+                            }
+                            Some(MenuRow::CompanySend) => {
+                                let Some(draft) = company.take() else { continue };
+                                let name = city_name(&text, &world, draft.city);
+                                notice = match world.conquer_with(draft.city, draft.raid, draft.soldiers, draft.triremes) {
+                                    Ok(months) => (format!("La compagnie part {} {name} : {months} mois de marche", if draft.raid { "piller" } else { "attaquer" }), now),
+                                    Err(Conquest::NoArmy) => ("Aucune troupe choisie".to_string(), now),
+                                    Err(Conquest::TooMany) => ("Pas assez de soldats ou de trières pour cette compagnie".to_string(), now),
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
                                     Err(_) => (format!("{name} ne peut pas être attaquée"), now),
                                 };
                                 continue;
                             }
+                            Some(MenuRow::CompanyCancel) => {
+                                company = None;
+                                continue;
+                            }
+                            Some(MenuRow::CompanyShield) => continue,
                             None if top_menu.is_some() => {
                                 // Un clic hors du menu déroulé le referme.
                                 top_menu = None;
                                 continue;
                             }
                             None => {}
+                        }
+                        // La composition ouverte garde le clic pour elle.
+                        if company.is_some() {
+                            continue;
                         }
                         // Le bandeau et le panneau latéral ne laissent pas passer le clic.
                         if iy < TOP_BAR_HEIGHT || ix >= w / ui - SIDEBAR_WIDTH {
@@ -5386,6 +5448,96 @@ fn run(
                 graphics.panel((side - width) / 2.0, TOP_BAR_HEIGHT + 12.0, width, row + 12.0);
                 graphics.draw_text(FONT_TEXT, &banner, (side - width) / 2.0 + 24.0, TOP_BAR_HEIGHT + 18.0);
             }
+            // Composition d'une campagne : les compagnies et les trières à envoyer.
+            if let Some(mut draft) = company {
+                let ranks = world.ranks();
+                let ships = world.triremes();
+                for rank in 0..3 {
+                    draft.soldiers[rank] = draft.soldiers[rank].clamp(0, ranks[rank]);
+                }
+                draft.triremes = draft.triremes.clamp(0, ships);
+                company = Some(draft);
+
+                let action = if draft.raid { "piller" } else { "soumettre" };
+                let title = format!("Compagnie pour {action} {}", city_name(&text, &world, draft.city));
+                let detail = format!("Défense {} — {} mois de marche", world.defence(draft.city), world.travel_months(draft.city));
+                let units = [("Piétaille", 0), ("Hoplites", 1), ("Cavaliers", 2), ("Trières", 3)];
+                let lines: Vec<String> = units
+                    .iter()
+                    .map(|&(name, slot)| {
+                        let (count, max) = if slot < 3 { (draft.soldiers[slot], ranks[slot]) } else { (draft.triremes, ships) };
+                        format!("{name} : {count} / {max}")
+                    })
+                    .collect();
+                let force_line = format!("Force envoyée : {}", World::force(draft.soldiers, draft.triremes));
+                let footer = ["Tout", "Envoyer", "Annuler"];
+                let footer_widths: Vec<f32> = footer.iter().map(|label| graphics.text_width(FONT_TEXT, label) + 24.0).collect();
+                let footer_total = footer_widths.iter().sum::<f32>() + 8.0 * (footer.len() - 1) as f32;
+                let content = lines
+                    .iter()
+                    .map(|line| graphics.text_width(FONT_TEXT, line))
+                    .fold(graphics.text_width(FONT_TITLE, &title), f32::max)
+                    .max(graphics.text_width(FONT_TEXT, &detail))
+                    .max(graphics.text_width(FONT_TEXT, &force_line))
+                    .max(footer_total);
+                let width = content + 24.0 + 90.0 + 24.0;
+                let height = 36.0 + title_line + 7.0 * row;
+                let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
+                // Deux couches, comme les autres panneaux : le texte reste lisible sur
+                // la carte et sur le panneau des cités resté derrière.
+                graphics.panel(px, py, width, height);
+                graphics.panel(px, py, width, height);
+                graphics.ink = (255, 255, 255);
+                // Fond plein écran : la carte et les panneaux derrière ne reçoivent plus
+                // les clics tant que la composition est ouverte.
+                menu_rows.push(((0.0, 0.0, w, h), MenuRow::CompanyShield));
+                let title_width = graphics.text_width(FONT_TITLE, &title);
+                graphics.draw_text(FONT_TITLE, &title, px + (width - title_width) / 2.0, py + 12.0);
+                let mut y = py + 12.0 + title_line + 4.0;
+                graphics.draw_text(FONT_TEXT, &detail, px + 24.0, y);
+                y += row;
+                for (index, line) in lines.iter().enumerate() {
+                    graphics.draw_text(FONT_TEXT, line, px + 24.0, y);
+                    let (count, max) = if index < 3 { (draft.soldiers[index], ranks[index]) } else { (draft.triremes, ships) };
+                    let minus = (px + width - 24.0 - 68.0, y - 2.0, 30.0, row - 2.0);
+                    let plus = (minus.0 + 34.0, minus.1, 30.0, minus.3);
+                    for (slot, delta) in [(minus, -1), (plus, 1)] {
+                        let active = if delta < 0 { count > 0 } else { count < max };
+                        sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                        sdl::SDL_SetRenderDrawColor(renderer, 40, 90, 150, if active { 240 } else { 90 });
+                        sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                        let glyph = if delta < 0 { "-" } else { "+" };
+                        let glyph_width = graphics.text_width(FONT_TEXT, glyph);
+                        graphics.draw_text(FONT_TEXT, glyph, slot.0 + (slot.2 - glyph_width) / 2.0, slot.1 + 2.0);
+                        menu_rows.push((slot, MenuRow::CompanyCount(index, delta)));
+                    }
+                    y += row;
+                }
+                graphics.draw_text(FONT_TEXT, &force_line, px + 24.0, y);
+                y += row + 8.0;
+                let mut bx = px + 24.0;
+                for (index, &label) in footer.iter().enumerate() {
+                    let slot = (bx, y, footer_widths[index], row - 2.0);
+                    let (r, g, b) = match index {
+                        0 => (60, 90, 130),
+                        1 => (30, 110, 60),
+                        _ => (110, 60, 60),
+                    };
+                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                    sdl::SDL_SetRenderDrawColor(renderer, r, g, b, 240);
+                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
+                    let label_width = graphics.text_width(FONT_TEXT, label);
+                    graphics.draw_text(FONT_TEXT, label, slot.0 + (slot.2 - label_width) / 2.0, slot.1 + 2.0);
+                    let action = match index {
+                        0 => MenuRow::CompanyAll,
+                        1 => MenuRow::CompanySend,
+                        _ => MenuRow::CompanyCancel,
+                    };
+                    menu_rows.push((slot, action));
+                    bx += footer_widths[index] + 8.0;
+                }
+            }
+
             // Bulle d'aide : ce que fait l'élément d'interface survolé, après un instant.
             let hovered_row = menu_rows.iter().rev().find(|&&(slot, _)| inside(slot)).map(|&(slot, action)| (slot, action));
             let hovered_key = hovered_row.map(|(slot, _)| ((slot.0 * 7.0 + slot.1) as i64));

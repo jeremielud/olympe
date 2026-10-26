@@ -370,6 +370,8 @@ fn a_wharf_builds_a_trireme_from_wood() {
     // en bâtir d'autre, puis elle rentre.
     world.cities = vec![zeus::map::City { active: true, kind: 2, name: 68, status: zeus::map::RIVAL, military: 1, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0, wealth: 3, strength: 0 }];
     assert_eq!(world.army(), 6);
+    // On ne peut pas envoyer plus de trières qu'il n'y en a à quai.
+    assert_eq!(world.conquer_with(0, false, [0, 0, 0], 2), Err(zeus::world::Conquest::TooMany));
     assert_eq!(world.conquer(0, false), Ok(2));
     assert_eq!((world.army(), world.expedition.unwrap().triremes), (0, 1));
     (0..4 * TICKS_PER_MONTH + TICKS_PER_DAY).for_each(|_| world.tick());
@@ -574,6 +576,55 @@ fn a_strong_enough_army_makes_a_city_vassal() {
     other.cities = vec![City { active: true, kind: 2, name: 68, status: RIVAL, military: 1, trade: false, favor: 50, sells: vec![], buys: vec![], sold: 0, bought: 0, army: 0, tribute_received: 0, tribute_paid: 0, wealth: 3, strength: -1 }];
     other.load(&world.save()).unwrap();
     assert_eq!((other.cities[0].status, other.cities[0].trade), (VASSAL, true));
+}
+
+#[test]
+fn a_campaign_sends_only_the_chosen_companies() {
+    use zeus::map::{City, RIVAL, VASSAL};
+    use zeus::world::Conquest;
+    let Some(data) = data() else { return };
+    let (mut world, x, y) = world(&data);
+    street(&mut world, x, y);
+    world.cities = vec![City {
+        active: true,
+        kind: 2,
+        name: 68,
+        status: RIVAL,
+        military: 1,
+        trade: false,
+        favor: 50,
+        sells: vec![],
+        buys: vec![],
+        sold: 0,
+        bought: 0,
+        army: 0,
+        tribute_received: 0,
+        tribute_paid: 0,
+        wealth: 3,
+        strength: 0,
+    }];
+    // Quatre maisons de ville pleines : 60 hommes de piétaille.
+    for building in world.buildings.iter_mut().flatten() {
+        if let Some(house) = building.house.as_mut() {
+            (house.level, house.population) = (6, 1000);
+        }
+    }
+    assert_eq!(world.ranks(), [60, 0, 0]);
+    // Une compagnie plus nombreuse que l'armée présente est refusée.
+    assert_eq!(world.conquer_with(0, false, [61, 0, 0], 0), Err(Conquest::TooMany));
+    assert_eq!(world.conquer_with(0, false, [-1, 0, 0], 0), Err(Conquest::TooMany));
+    assert_eq!(world.conquer_with(0, false, [0, 0, 0], 0), Err(Conquest::NoArmy));
+    // Vingt-cinq hommes partent, trente-cinq restent pour garder la cité.
+    assert_eq!(world.conquer_with(0, false, [25, 0, 0], 0), Ok(2));
+    assert_eq!(world.expedition.unwrap().soldiers, [25, 0, 0]);
+    assert_eq!(world.ranks(), [35, 0, 0]);
+    assert_eq!(world.army(), 35);
+    // Défense nulle : la campagne aboutit et la compagnie rentre. (Les logements
+    // évoluent pendant les quatre mois ; on ne compare donc pas les effectifs au
+    // départ, seulement le retour et le statut de la cité.)
+    (0..4 * TICKS_PER_MONTH + TICKS_PER_DAY).for_each(|_| world.tick());
+    assert!(world.expedition.is_none());
+    assert_eq!(world.cities[0].status, VASSAL);
 }
 
 #[test]

@@ -580,6 +580,8 @@ pub enum Conquest {
     AlreadyRuled,
     Away,
     NoArmy,
+    /// La compagnie demandée dépasse les soldats ou les trières présents.
+    TooMany,
 }
 
 /// Campagne lointaine de l'armée : conquête, ou raid (`raid`) pour un butin. Les
@@ -3074,7 +3076,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
 
     /// Force comme `Zeus.exe` la compte (0x4dea00) : un par homme de piétaille ou
     /// hoplite, deux par cavalier, six par trière.
-    fn force(soldiers: [i32; 3], triremes: i32) -> i32 {
+    pub fn force(soldiers: [i32; 3], triremes: i32) -> i32 {
         soldiers[0] + soldiers[1] + 2 * soldiers[2] + TRIREME_FORCE * triremes
     }
 
@@ -3132,6 +3134,16 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
     /// ou la piller (`raid`) ; rend la durée du trajet en mois. La bataille se livre à
     /// l'arrivée, puis l'armée rentre par le même chemin.
     pub fn conquer(&mut self, city: usize, raid: bool) -> Result<i32, Conquest> {
+        let (soldiers, triremes) = (self.ranks(), self.triremes());
+        self.conquer_with(city, raid, soldiers, triremes)
+    }
+
+    /// Envoie une compagnie choisie — `soldiers` par rang (piétaille, hoplites,
+    /// cavaliers) et `triremes` — soumettre une cité étrangère, alliée ou rivale, ou
+    /// la piller (`raid`). Ce qui reste à la cité ne part pas. Rend la durée du trajet
+    /// en mois ; la bataille se livre à l'arrivée, puis la compagnie rentre par le même
+    /// chemin.
+    pub fn conquer_with(&mut self, city: usize, raid: bool, soldiers: [i32; 3], triremes: i32) -> Result<i32, Conquest> {
         let Some(target) = self.cities.get(city).filter(|c| c.active && c.kind == FOREIGN) else { return Err(Conquest::NotForeign) };
         if target.status > RIVAL {
             return Err(Conquest::AlreadyRuled);
@@ -3139,14 +3151,19 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
         if self.expedition.is_some() || self.ticks < self.campaign_until {
             return Err(Conquest::Away);
         }
-        let (soldiers, docked) = (self.ranks(), self.triremes());
-        if Self::force(soldiers, docked) == 0 {
+        let (available, docked) = (self.ranks(), self.triremes());
+        if soldiers.iter().any(|&n| n < 0) || triremes < 0 || soldiers.iter().zip(available).any(|(&n, max)| n > max) || triremes > docked {
+            return Err(Conquest::TooMany);
+        }
+        if Self::force(soldiers, triremes) == 0 {
             return Err(Conquest::NoArmy);
         }
-        let triremes = self.moor(docked, 1, -1);
+        // Chaque trière choisie quitte son quai ; il l'attendra jusqu'au retour.
+        let sent = self.moor(triremes, 1, -1);
+        debug_assert_eq!(sent, triremes);
         let months = self.travel_months(city);
         let arrives = self.ticks + months as u64 * TICKS_PER_MONTH;
-        self.expedition = Some(Expedition { city, raid, soldiers, triremes, arrives, returns: arrives, won: None, loot: (0, 0) });
+        self.expedition = Some(Expedition { city, raid, soldiers, triremes: sent, arrives, returns: arrives, won: None, loot: (0, 0) });
         Ok(months)
     }
 
