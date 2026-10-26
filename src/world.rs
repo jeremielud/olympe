@@ -867,6 +867,10 @@ const HERA_GROWTH: i32 = 3;
 /// Atlas accélère les chantiers : `Zeus.exe` 0x48caf0 rend 2 au lieu de 1, et
 /// 0x48f8e1 ramène la durée à 66 %.
 const ATLAS: u8 = 13;
+/// Apollon ajoute 20 à chacune des quatre notes de cité (culture, athlétisme, théâtre,
+/// philosophie), lues par `Zeus.exe` 0x565d40.
+const APOLLO: u8 = 3;
+const APOLLO_NOTE: i32 = 20;
 /// Caractéristiques des personnages (`Zeus.exe`, 0x4e1b20) : Hermès rend charrettes et
 /// livreurs plus rapides d'un tiers (et caravanes et navires marchands de moitié, qu'Olympe
 /// ne fait pas circuler) ; Athéna donne 4 points d'armure contre les projectiles aux
@@ -4129,7 +4133,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
             fed: house.goods[Good::Food as usize] >= house.population.max(1),
             had: house.goods.map(|amount| amount > 0),
             water: house.has(Service::Water, self.ticks),
-            culture: culture_of(house, self.ticks, stadium_open, self.atlantean),
+            culture: culture_of(house, self.ticks, stadium_open, self.atlantean, self.has_sanctuary(APOLLO)),
             stadium_open,
         };
         let mut needs = state.missing(wanted);
@@ -4164,7 +4168,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
     /// Note de culture d'une maison (philosophie, athlétisme, théâtre, stade).
     pub fn house_culture(&self, house: &House) -> i32 {
         let stadium_open = self.stadium_open();
-        culture_of(house, self.ticks, stadium_open, self.atlantean)
+        culture_of(house, self.ticks, stadium_open, self.atlantean, self.has_sanctuary(APOLLO))
     }
 
     /// Capacité d'accueil d'une maison à son niveau actuel.
@@ -5465,6 +5469,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
         // Le stade profite à toute la cité dès qu'il a son personnel (lecture provisoire
         // de l'exigence « stade » des règles).
         let stadium_open = self.stadium_open();
+        let apollo = self.has_sanctuary(APOLLO);
         let appeal_relief = if self.has_sanctuary(APHRODITE) { APHRODITE_APPEAL } else { 0 };
         for id in 0..self.buildings.len() {
             let Some(building) = self.buildings[id].as_ref() else { continue };
@@ -5488,7 +5493,7 @@ pub fn footprint_corner(orientation: u8, at: (i32, i32), w: i32, d: i32) -> (i32
                     house.goods[good as usize] = (house.goods[good as usize] - used.max(0)).max(0);
                 }
             }
-            let state = HouseState { mount: if self.atlantean { Good::Chariot } else { Good::Horses }, fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open, self.atlantean), stadium_open };
+            let state = HouseState { mount: if self.atlantean { Good::Chariot } else { Good::Horses }, fed, had, water: house.has(Service::Water, now), culture: culture_of(house, now, stadium_open, self.atlantean, apollo), stadium_open };
             let meets = |level: &HouseModel| state.missing(level).is_empty();
             let Some(current) = self.house_levels.get(house.level) else { continue };
             let (floor, next) = house_steps(house.level);
@@ -5772,9 +5777,11 @@ const CULTURE_POINTS: [(Service, i32); 3] = [(Service::Philosophy, 15), (Service
 const SCIENCE_POINTS: [(Service, i32); 3] = [(Service::Philosophy, 20), (Service::Athletics, 15), (Service::Drama, 25)];
 const STADIUM_ATHLETICS_POINTS: i32 = 30;
 
-fn culture_of(house: &House, now: u64, stadium_open: bool, atlantean: bool) -> i32 {
+fn culture_of(house: &House, now: u64, stadium_open: bool, atlantean: bool, apollo: bool) -> i32 {
     let table = if atlantean { &SCIENCE_POINTS } else { &CULTURE_POINTS };
-    let points: i32 = table.iter().filter(|&&(service, _)| house.has(service, now)).map(|&(_, points)| points).sum();
+    // Apollon ajoute 20 à chaque note que la maison reçoit, comme `Zeus.exe` 0x565d40.
+    let bonus = if apollo { APOLLO_NOTE } else { 0 };
+    let points: i32 = table.iter().filter(|&&(service, _)| house.has(service, now)).map(|&(_, points)| points + bonus).sum();
     let stadium = if stadium_open && house.has(Service::Athletics, now) { STADIUM_ATHLETICS_POINTS } else { 0 };
     points + stadium
 }
@@ -6339,5 +6346,27 @@ impl World {
         self.hero_news.clear();
         self.rebuild_appeal();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apollo_adds_twenty_to_each_culture_note() {
+        let mut house = House {
+            level: 5,
+            population: 10,
+            arriving: 0,
+            covered_until: [0; SERVICES.len()],
+            goods: [0; GOODS.len()],
+            crime: 0,
+            ate: false,
+            hungry: 0,
+        };
+        house.covered_until[Service::Philosophy as usize] = 100;
+        assert_eq!(culture_of(&house, 10, false, false, false), 15);
+        assert_eq!(culture_of(&house, 10, false, false, true), 35);
     }
 }
