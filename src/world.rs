@@ -1872,6 +1872,14 @@ impl World {
                     && self.map.terrain(x as usize, y as usize) & TERRAIN_ROAD != 0))
     }
 
+    /// Route posée par le joueur, ou route déjà présente sur la carte (bit de terrain,
+    /// sans cellule `Cell::Road`).
+    fn is_built_road(&self, x: i32, y: i32) -> bool {
+        Self::in_grid(x, y)
+            && (self.cell(x as usize, y as usize) == Cell::Road
+                || (self.cell(x as usize, y as usize) == Cell::Terrain && self.map.terrain(x as usize, y as usize) & TERRAIN_ROAD != 0))
+    }
+
     /// Une case isolée de terrain nu, dans la zone jouable.
     fn is_free(&self, x: i32, y: i32) -> bool {
         if !self.in_map(x, y) {
@@ -1994,15 +2002,10 @@ impl World {
             }
             // Sur une route, qu'il recouvre : route posée par le joueur, ou route déjà
             // présente sur la carte (bit de terrain, sans cellule `Cell::Road`).
-            Function::Roadblock => {
-                Self::in_grid(x, y)
-                    && (self.cell(x as usize, y as usize) == Cell::Road
-                        || (self.cell(x as usize, y as usize) == Cell::Terrain && self.map.terrain(x as usize, y as usize) & TERRAIN_ROAD != 0))
-            }
+            Function::Roadblock => self.is_built_road(x, y),
             Function::Gatehouse => {
                 let tiles: Vec<(i32, i32)> = (0..size).flat_map(|dy| (0..size).map(move |dx| (x + dx, y + dy))).collect();
-                tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || (matches!(self.cell(tx as usize, ty as usize), Cell::Road) && Self::in_grid(tx, ty)))
-                    && tiles.iter().any(|&(tx, ty)| Self::in_grid(tx, ty) && self.cell(tx as usize, ty as usize) == Cell::Road)
+                tiles.iter().all(|&(tx, ty)| self.is_free(tx, ty) || self.is_built_road(tx, ty)) && tiles.iter().any(|&(tx, ty)| self.is_built_road(tx, ty))
             }
             Function::Fishery | Function::Wharf | Function::TradePost { sea: true } => {
                 let near_water = (y - 1..=y + size).any(|ty| (x - 1..=x + size).any(|tx| Self::in_grid(tx, ty) && self.map.terrain(tx as usize, ty as usize) & TERRAIN_WATER != 0));

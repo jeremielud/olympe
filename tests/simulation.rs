@@ -1489,6 +1489,22 @@ fn a_roadblock_can_be_placed_on_a_map_road() {
 }
 
 #[test]
+fn a_gatehouse_can_sit_on_a_map_road() {
+    let Some(data) = data() else { return };
+    let map = Map::parse(&fs::read(data.join("adventures/jeu ouvert - bac à sable 2/jeu ouvert - bac à sable 2p.map")).unwrap()).unwrap();
+    let model = Model::parse(&fs::read(data.join("model/zeus_model_normal.txt")).unwrap()).unwrap();
+    let mut world = World::new(map, Vec::new(), model.houses.clone(), WalkerImages::default(), 10_000);
+    let gate = world.kinds.len();
+    world.kinds.push(Kind::simple("corps de garde".into(), 80, 2, 768, Function::Gatehouse, 0));
+    // La route de carte passe en (122,9) et (122,10) ; le corps de garde la chevauche.
+    assert!(world.can_place(gate, 121, 9));
+    assert!(world.place_building(gate, 121, 9));
+    assert!(world.demolish(122, 9));
+    assert!(world.is_road(122, 9));
+    assert!(world.is_road(122, 10));
+}
+
+#[test]
 fn a_dragged_road_goes_around_obstacles() {
     let Some(data) = data() else { return };
     let (mut world, x, y) = world(&data);
