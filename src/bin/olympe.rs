@@ -4686,6 +4686,10 @@ fn run(
             if matches!(tool, Tool::Road | Tool::Wall) {
                 world.show_ghosts(&drag_plan, tool == Tool::Wall);
             }
+            // Ferme en main : les prés fleuris, seuls terrains où elle se pose, se
+            // teintent de vert. Sans cela, une ferme refusée partout autour de la vue
+            // ressemble à un bouton qui ne répond pas.
+            let meadow_hint = matches!(tool, Tool::Build(kind) if world.kinds.get(kind).is_some_and(|k| k.function == Function::Farm));
             for sum in first_sum.max(0)..=last_sum.min(2 * GRID as i32 - 2) {
                 for diff in first_diff..=last_diff {
                     if (sum + diff) % 2 != 0 {
@@ -4721,6 +4725,11 @@ fn run(
                             false => draw.image,
                         };
                         let tint = world.building_at(tile.0, tile.1).and_then(|b| overlay_tint(&world, overlay, b));
+                        let tint = if meadow_hint && tint.is_none() && world.is_meadow(tile.0, tile.1) && world.can_build(tile.0, tile.1, 1) {
+                            Some((120, 255, 120))
+                        } else {
+                            tint
+                        };
                         draw_list.push((sum + n - 1, screen_tile.0 * 3 + 1, ox, top, draw.source, image, tint));
                         // Pièce qui couronne un étage de monument.
                         if let Some((source, image, lift)) = draw.above {

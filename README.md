@@ -42,7 +42,9 @@ Ce qui fonctionne :
 - écran de choix parmi les 40 aventures, avec leur récit d'ouverture ;
 - affichage de la carte, zoom, mini-carte, mer animée ;
 - construction : routes, logements modestes et luxueux, agoras et échoppes, fermes,
-  ateliers, entrepôt, grenier, culture, palais, stade, embellissements ;
+  ateliers, entrepôt, grenier, culture, palais, stade, embellissements ; une maison
+  posée en glissant en pose une rangée, et les prés fleuris se teintent de vert quand
+  une ferme est en main ;
 - simulation : immigrants, emploi, tournées des marcheurs, vivres et marchandises,
   attrait des quartiers, évolution des logements (note de culture du jeu : 15 pour la
   philosophie, 20 pour l'athlétisme, 30 de plus avec un stade, 25 pour le théâtre,
