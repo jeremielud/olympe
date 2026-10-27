@@ -200,6 +200,17 @@ pub fn data_file(data: &Path, name: &str) -> PathBuf {
     data.join(name)
 }
 
+/// Chemin d'un fichier de données dans la langue courante, sous-dossiers compris :
+/// `donnees/<langue>/<chemin>` s'il existe, sinon `donnees/<chemin>`.
+pub fn data_path(data: &Path, relative: &str) -> PathBuf {
+    data_path_for(current(), data, relative)
+}
+
+fn data_path_for(lang: Lang, data: &Path, relative: &str) -> PathBuf {
+    let localized = data.join(lang.code()).join(relative);
+    if localized.exists() { localized } else { data.join(relative) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,6 +228,18 @@ mod tests {
         assert_eq!(Lang::parse("en_GB:fr"), Some(Lang::En));
         assert_eq!(Lang::parse("Français"), Some(Lang::Fr));
         assert_eq!(Lang::parse("de_DE"), None);
+    }
+
+    #[test]
+    fn localized_paths_fall_back_to_the_installation() {
+        let root = std::env::temp_dir().join(format!("olympe-lang-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let localized = root.join("eo").join("audio/voice/campaign");
+        std::fs::create_dir_all(&localized).unwrap();
+        std::fs::write(localized.join("x.opus"), b"x").unwrap();
+        assert_eq!(data_path_for(Lang::Eo, &root, "audio/voice/campaign/x.opus"), localized.join("x.opus"));
+        assert_eq!(data_path_for(Lang::En, &root, "audio/voice/campaign/x.opus"), root.join("audio/voice/campaign/x.opus"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

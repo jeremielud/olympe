@@ -327,9 +327,11 @@ olympe chemin/vers/carte.map    # une carte précise
 En jeu, la touche `H` affiche les commandes. `olympe --aide` liste les options.
 
 La langue se choisit avec `--langue en` ou `--langue eo` (ou avec `L` sur l'écran des
-aventures) ; le choix est retenu dans le fichier `langue` des données. Les textes du
-jeu viennent du sous-dossier de la langue (`en`) quand il existe ; l'espéranto a ses
-propres traductions. Une partie de l'interface reste à traduire.
+aventures) ; le choix est retenu dans le fichier `langue` de la configuration de
+l'utilisateur. Les textes du jeu viennent du sous-dossier de la langue (`en`) quand il
+existe ; l'espéranto a ses propres traductions. Les voix espéranto, quand elles
+existent, se rangent dans `donnees/eo/audio/voice/campaign` et passent avant celles de
+l'installation. Une partie de l'interface reste à traduire.
 
 Les parties s'enregistrent avec `F5` et se rechargent avec `F9` ; elles sont rangées
 dans le sous-dossier `sauvegardes` des données.

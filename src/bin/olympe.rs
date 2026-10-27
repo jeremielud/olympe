@@ -1014,7 +1014,8 @@ fn story(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, 
 /// fin ; la campagne k se déduit du premier récit (290, 318… par pas de 28 dans
 /// `zeus_mm.eng`, dans l'ordre de la table de Zeus.exe).
 fn narration(data: &Path, map_path: &Path, settings: Option<&Settings>, step: Step, moment: Moment) -> Option<PathBuf> {
-    let voices = data.join("audio/voice/campaign");
+    let base = data.join("audio/voice/campaign");
+    let voices = lang::data_path(data, "audio/voice/campaign");
     let kind = match moment {
         Moment::Opening => "i",
         _ => "v",
@@ -1027,7 +1028,7 @@ fn narration(data: &Path, map_path: &Path, settings: Option<&Settings>, step: St
         (_, Step::Parent(i)) => format!("{stem}_p{}_{kind}.opus", i + 1),
         (_, Step::Colony(i)) => format!("{stem}_c{}_{kind}.opus", i + 1),
     };
-    let candidates = [folder.join(&named), voices.join(&named)];
+    let candidates = [voices.join(&named), folder.join(&named), base.join(&named)];
     if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
         return Some(found);
     }
@@ -1041,7 +1042,8 @@ fn narration(data: &Path, map_path: &Path, settings: Option<&Settings>, step: St
         (_, Step::Parent(i)) => format!("c{campaign}_e{}_{kind}.opus", i + 1),
         (_, Step::Colony(i)) => format!("c{campaign}_e{}_{kind}.opus", i + 11),
     };
-    Some(voices.join(file)).filter(|p| p.exists())
+    let relative = format!("audio/voice/campaign/{file}");
+    Some(lang::data_path(data, &relative)).filter(|p| p.exists())
 }
 
 /// Premier récit de la première campagne de Zeus (Hercule), écart entre deux
@@ -5803,5 +5805,15 @@ mod narration_tests {
         assert_eq!(name(narration(&data, &worlds, settings.as_ref(), Step::Colony(1), Moment::Victory)).as_deref(), Some("^deux mondes s'affrontent_c2_v.opus"));
         let odyssey = data.join("adventures/l'odyssée/l'odysséep.map");
         assert_eq!(name(narration(&data, &odyssey, None, Step::Parent(2), Moment::Opening)).as_deref(), Some("l'odyssée_p3_i.opus"));
+        // La voix espéranto, quand elle existe, passe avant celle de l'installation.
+        if data.join("eo/audio/voice/campaign/c1_e1_i.opus").exists() {
+            let hercules = data.join("adventures/]les travaux d'hercule.pak");
+            let (_, _, settings) = load_map(&hercules).unwrap();
+            lang::set(Lang::Eo);
+            let voice = narration(&data, &hercules, settings.as_ref(), Step::Parent(0), Moment::Opening).unwrap();
+            assert_eq!(voice.file_name().unwrap(), "c1_e1_i.opus");
+            assert!(voice.components().any(|c| c.as_os_str() == "eo"), "{}", voice.display());
+            lang::set(Lang::Fr);
+        }
     }
 }
