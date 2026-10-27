@@ -389,7 +389,7 @@ const HELP: [&str; 19] = [
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
     "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
-    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets)",
+    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets) ; glisser une maison pour en poser une rangée",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
     "Espace ou P : pause",
@@ -2316,6 +2316,23 @@ fn tile_origin(x: i32, y: i32) -> (f32, f32) {
     ((x - y) as f32 * HALF_WIDTH, (x + y) as f32 * HALF_HEIGHT)
 }
 
+/// Cases traversées en ligne droite de `from` à `to`, sans `from` : le glissement
+/// d'une maison tente chaque case, et les emprises qui se chevauchent sont refusées,
+/// ce qui laisse des maisons jointives sans trou.
+fn house_drag_tiles(from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+    let steps = dx.abs().max(dy.abs());
+    if steps == 0 {
+        return Vec::new();
+    }
+    (1..=steps)
+        .map(|i| {
+            let ratio = i as f32 / steps as f32;
+            (from.0 + (dx as f32 * ratio).round() as i32, from.1 + (dy as f32 * ratio).round() as i32)
+        })
+        .collect()
+}
+
 /// Cases que couvre un geste de `from` à `to` : le tracé d'une route ou d'un mur, ou
 /// le rectangle à démolir.
 fn drag_tiles(world: &World, tool: Tool, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
@@ -2832,6 +2849,20 @@ fn adventures(data: &Path) -> Vec<(String, PathBuf)> {
     found.into_iter().map(|(_, _, name, pak)| (name, pak)).collect()
 }
 
+/// Taille de fenêtre qui tient sur l'écran principal. Une fenêtre plus grande que
+/// l'écran laisse le panneau latéral — et donc tous ses boutons — hors de portée.
+fn fit_to_display(size: (i32, i32)) -> (i32, i32) {
+    // SAFETY : la vidéo est initialisée, et SDL remplit le rectangle fourni.
+    unsafe {
+        let mut bounds = sdl::Rect { x: 0, y: 0, w: 0, h: 0 };
+        if !sdl::SDL_GetDisplayUsableBounds(sdl::SDL_GetPrimaryDisplay(), &mut bounds) || bounds.w <= 0 || bounds.h <= 0 {
+            return size;
+        }
+        // Marge pour les bordures et la barre de titre de la fenêtre.
+        ((bounds.w - 24).max(320).min(size.0), (bounds.h - 48).max(240).min(size.1))
+    }
+}
+
 /// Écran de choix d'aventure, sur le fond d'origine du jeu. Rend le fichier choisi, ou
 /// `None` si le joueur quitte. Avec `capture`, enregistre l'écran et quitte aussitôt.
 fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i32, i32)) -> Result<Option<PathBuf>, String> {
@@ -2850,6 +2881,8 @@ fn choose_adventure(data: &Path, capture: Option<&Path>, script: &str, size: (i3
         if !sdl::SDL_Init(sdl::INIT_VIDEO) {
             return Err(sdl::error("initialisation de SDL"));
         }
+        // En capture, la taille demandée est celle de l'image à produire.
+        let size = if capture.is_some() { size } else { fit_to_display(size) };
         let title = CString::new("Zeus").unwrap_or_default();
         let window = sdl::SDL_CreateWindow(title.as_ptr(), size.0, size.1, sdl::WINDOW_RESIZABLE | sdl::WINDOW_HIGH_PIXEL_DENSITY);
         let renderer = if window.is_null() { null_mut() } else { sdl::SDL_CreateRenderer(window, null()) };
@@ -3391,6 +3424,8 @@ fn run(
         if !sdl::SDL_Init(sdl::INIT_VIDEO) {
             return Err(sdl::error("initialisation de SDL"));
         }
+        // En capture, la taille demandée est celle de l'image à produire.
+        let size = if capture.is_some() { size } else { fit_to_display(size) };
         let flags = sdl::WINDOW_RESIZABLE | sdl::WINDOW_HIGH_PIXEL_DENSITY;
         let window = sdl::SDL_CreateWindow(title("").as_ptr(), size.0, size.1, flags);
         if window.is_null() {
@@ -3443,6 +3478,9 @@ fn run(
         let mut hovered = (-1, -1);
         // Dernière case d'un glissement en cours (route ou démolition).
         let mut drag_from: Option<(i32, i32)> = None;
+        // Maison posée et dernière case visitée pendant un clic maintenu : glisser
+        // pose une rangée de maisons, alignées sur la grille.
+        let mut build_drag: Option<(usize, (i32, i32))> = None;
         let mut event = sdl::Event::new();
         let mut running = true;
         // (profondeur, couche, coin haut-gauche en pixels de monde, catalogue, image)
@@ -4197,6 +4235,7 @@ fn run(
                         sdl::KEY_ESCAPE if company.is_some() => company = None,
                         sdl::KEY_ESCAPE if tool != Tool::None => {
                             tool = Tool::None;
+                            build_drag = None;
                             hovered = (-1, -1);
                         }
                         sdl::KEY_ESCAPE if info_pinned.is_some() => info_pinned = None,
@@ -4317,10 +4356,29 @@ fn run(
                         if let (true, Some(target)) = (buttons & sdl::BUTTON_LEFT_MASK != 0, minimap_at.target(pointer.0 / ui, pointer.1 / ui)) {
                             (view.cx, view.cy) = target;
                         }
+                        // Clic maintenu sur une maison : poser la rangée au fil du geste.
+                        if let Some((kind, last)) = build_drag {
+                            let (ix, iy) = (pointer.0 / ui, pointer.1 / ui);
+                            let over_map = iy >= TOP_BAR_HEIGHT && ix < w / ui - SIDEBAR_WIDTH;
+                            if buttons & sdl::BUTTON_LEFT_MASK == 0 || tool != Tool::Build(kind) || !over_map {
+                                build_drag = None;
+                            } else if world.kinds.get(kind).is_some_and(|k| k.function == Function::House) {
+                                let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
+                                let at = pick(&world, wx, wy);
+                                if at != last && in_grid(at) {
+                                    for tile in house_drag_tiles(last, at) {
+                                        let (cx, cy) = build_corner(&world, kind, tile);
+                                        let _ = world.place_building(kind, cx, cy);
+                                    }
+                                    build_drag = Some((kind, at));
+                                }
+                            }
+                        }
                     }
                     // Relâcher pose le tracé montré pendant le geste, comme dans le jeu : la
                     // route ou le mur le long du chemin, ou la démolition du rectangle.
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => {
+                        build_drag = None;
                         if let Some(from) = drag_from.take() {
                             let to = { let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h); pick(&world, wx, wy) };
                             let tiles = drag_tiles(&world, tool, from, to);
@@ -4343,6 +4401,7 @@ fn run(
                         // Le clic droit lâche aussi l'outil, comme dans le jeu, et annule le
                         // geste en cours.
                         drag_from = None;
+                        build_drag = None;
                         if tool != Tool::None {
                             (tool, hovered) = (Tool::None, (-1, -1));
                             right_press = None;
@@ -4376,6 +4435,7 @@ fn run(
                             }
                             Some(MenuRow::Pick(picked)) => {
                                 tool = picked;
+                                build_drag = None;
                                 open_group = None;
                                 hovered = (-1, -1);
                                 continue;
@@ -4386,6 +4446,7 @@ fn run(
                                 match group.map(|(_, tools)| tools) {
                                     Some(tools) if tools.len() == 1 => {
                                         (tool, open_group, hovered) = (tools[0].1, None, (-1, -1));
+                                        build_drag = None;
                                     }
                                     Some(_) => open_group = if open_group == Some(button) { None } else { Some(button) },
                                     None => {}
@@ -4511,13 +4572,19 @@ fn run(
                             // Le geste commence ; il se pose au relâchement.
                             Tool::Road | Tool::Wall | Tool::Demolish => drag_from = Some((x, y)),
                             Tool::Build(kind) => {
-                                let (x, y) = build_corner(&world, kind, (x, y));
+                                let at = (x, y);
+                                let (x, y) = build_corner(&world, kind, at);
                                 if !world.place_building(kind, x, y) {
                                     if world.money < world.kinds[kind].cost {
                                         notice = (trf!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
                                     } else if let Some(hint) = world.placement_hint(kind, x, y) {
                                         notice = (format!("{} : {}", world.kind_name(kind), tr(hint)), now);
                                     }
+                                }
+                                // Seules les maisons se posent en glissant : les autres
+                                // bâtiments coûtent trop cher pour un geste involontaire.
+                                if world.kinds.get(kind).is_some_and(|k| k.function == Function::House) {
+                                    build_drag = Some((kind, at));
                                 }
                             }
                         }
@@ -5815,5 +5882,17 @@ mod narration_tests {
             assert!(voice.components().any(|c| c.as_os_str() == "eo"), "{}", voice.display());
             lang::set(Lang::Fr);
         }
+    }
+}
+
+#[cfg(test)]
+mod drag_tests {
+    use super::house_drag_tiles;
+
+    #[test]
+    fn a_house_drag_walks_every_tile_between_the_ends() {
+        assert_eq!(house_drag_tiles((0, 0), (4, 0)), vec![(1, 0), (2, 0), (3, 0), (4, 0)]);
+        assert_eq!(house_drag_tiles((0, 0), (0, -3)), vec![(0, -1), (0, -2), (0, -3)]);
+        assert!(house_drag_tiles((2, 2), (2, 2)).is_empty());
     }
 }

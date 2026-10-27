@@ -202,6 +202,15 @@ pub struct FRect {
     pub h: f32,
 }
 
+/// Rectangle en pixels d'écran : position et taille.
+#[repr(C)]
+pub struct Rect {
+    pub x: c_int,
+    pub y: c_int,
+    pub w: c_int,
+    pub h: c_int,
+}
+
 #[repr(C)]
 pub struct Surface {
     pub flags: u32,
@@ -240,6 +249,8 @@ unsafe extern "C" {
     pub fn SDL_GetError() -> *const c_char;
     pub fn SDL_GetTicks() -> u64;
     pub fn SDL_Delay(ms: u32);
+    pub fn SDL_GetPrimaryDisplay() -> u32;
+    pub fn SDL_GetDisplayUsableBounds(display: u32, rect: *mut Rect) -> bool;
     pub fn SDL_CreateWindow(title: *const c_char, w: c_int, h: c_int, flags: u64) -> Window;
     pub fn SDL_SetWindowTitle(window: Window, title: *const c_char) -> bool;
     pub fn SDL_SetWindowFullscreen(window: Window, fullscreen: bool) -> bool;
