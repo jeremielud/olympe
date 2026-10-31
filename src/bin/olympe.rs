@@ -384,12 +384,13 @@ const MEASURE_WARMUP: u32 = 60;
 const INTRO_WIDTH: f32 = 1000.0;
 
 /// Aide affichée par la touche H.
-const HELP: [&str; 19] = [
+const HELP: [&str; 20] = [
     "Glisser avec le clic droit ou flèches : déplacer la vue",
     "Molette : zoom",
     "Mini-carte : clic pour s'y rendre",
     "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
-    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets) ; glisser une maison pour en poser une rangée",
+    "Panneau : clic sur une catégorie, puis sur un bâtiment ; molette pour défiler",
+    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route en bas du panneau) ; glisser une maison pour en poser une rangée",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
     "Espace ou P : pause",
@@ -406,59 +407,34 @@ const HELP: [&str; 19] = [
     "H : refermer cette aide",
 ];
 
-/// Habillage d'origine (`zeus_interface.sg3`) : bandeau du haut, panneau latéral et son
-/// prolongement, onglets des catégories (quatre états par onglet, dont trois servent).
-const UI_TOP_BAR: usize = 1231;
-const UI_TOP_BAR_WIDTH: f32 = 838.0;
-const TOP_BAR_HEIGHT: f32 = 30.0;
-const UI_SIDEBAR: usize = 1232;
-const SIDEBAR_WIDTH: f32 = 186.0;
+/// Habillage : un bandeau fin en haut, un panneau de construction à droite.
+const TOP_BAR_HEIGHT: f32 = 46.0;
+const SIDEBAR_WIDTH: f32 = 320.0;
 const UI_TABS: usize = 1319;
 const UI_TAB_STATES: usize = 4;
 /// Icône d'onglet de l'armée (grisée).
 const MILITARY_TAB: usize = 9;
 /// Icône ailée, onzième onglet de la colonne d'origine : les monuments commémoratifs.
 const WINGED_TAB: usize = 0;
-/// Réserves transparentes du panneau latéral, relevées sur son image : (x, y,
-/// largeur, hauteur, premier état du bouton qui s'y loge, touche qu'il remplace).
-/// Barrage routier, réserve de la pelle, rotation ; le parchemin des messages ; la
-/// coche des objectifs, les conseillers et la carte du monde (globe). Sans touche, le
-/// bouton est inactif.
-/// Rangée des boutons ronds sous les onglets, comme dans le jeu : route, barrage
-/// routier, dégager (la pelle), rotation de la vue ; quatre états par bouton (repos,
-/// survol, enfoncé, inactif).
+/// Boutons ronds d'origine : route, barrage routier, pelle, rotation.
 const ROAD_BUTTON: usize = 1275;
-const ROADBLOCK_BUTTON: usize = 1279;
-const CLEAR_BUTTON: usize = 1283;
+const CLEAR_BUTTON: usize = 1279;
+const ROADBLOCK_BUTTON: usize = 1283;
 const ROTATE_BUTTON: usize = 1287;
-const ROAD_SLOT: (f32, f32, f32, f32) = (50.0, 435.0, 35.0, 37.0);
-const CLEAR_BUTTON_SLOT: (f32, f32, f32, f32) = (118.0, 435.0, 32.0, 37.0);
-const ROADBLOCK_SLOT: (f32, f32, f32, f32) = (85.0, 435.0, 32.0, 37.0);
-/// Onglets du haut du panneau (relevés sur son image) : constructions, carte générale.
-/// Taille d'un bouton de groupe de bâtiments.
-const GROUP_BUTTON: (f32, f32) = (58.0, 42.0);
+/// Ruban vertical des catégories, à gauche du panneau.
+const RAIL_LEFT: f32 = 8.0;
+const RAIL_TOP: f32 = 8.0;
+const RAIL_STEP: f32 = 47.0;
+const RAIL_BUTTON: (f32, f32) = (46.0, 42.0);
+/// Contenu du panneau, à droite du ruban.
+const CONTENT_LEFT: f32 = 62.0;
+const CONTENT_WIDTH: f32 = SIDEBAR_WIDTH - CONTENT_LEFT - 8.0;
+/// Bas du panneau : fiche de l'outil, touches, outils.
+const DOCK_HEIGHT: f32 = 120.0;
+/// Hauteur d'une ligne de bâtiment dans la liste.
+const BUILD_ROW: f32 = 38.0;
 /// Délai avant l'affichage d'une bulle d'aide.
 const TOOLTIP_MS: u64 = 500;
-const SIDEBAR_TABS: [(f32, f32, f32, f32); 2] = [(52.0, 2.0, 59.0, 19.0), (113.0, 2.0, 63.0, 19.0)];
-/// Zone des messages, sous les boutons (relevée sur l'image du panneau).
-const MESSAGE_SLOT: (f32, f32, f32, f32) = (8.0, 514.0, 172.0, 46.0);
-const SIDEBAR_BUTTONS: [(f32, f32, f32, f32, Option<usize>, Option<u32>); 7] = [
-    (85.0, 435.0, 32.0, 37.0, None, None),
-    (118.0, 435.0, 32.0, 37.0, None, None),
-    (151.0, 435.0, 35.0, 37.0, Some(ROTATE_BUTTON), None),
-    (146.0, 483.0, 33.0, 28.0, Some(1291), Some(sdl::KEY_J)),
-    (11.0, 565.0, 33.0, 33.0, Some(1267), Some(sdl::KEY_O)),
-    (45.0, 565.0, 69.0, 33.0, Some(1263), Some(sdl::KEY_A)),
-    (115.0, 565.0, 67.0, 33.0, Some(1271), Some(sdl::KEY_C)),
-];
-/// Emplacements des onglets dans le panneau latéral, relevés sur son image.
-const TAB_LEFT: f32 = 5.0;
-const TAB_TOP: f32 = 22.0;
-const TAB_STEP: f32 = 41.0;
-const TAB_WIDTH: f32 = 44.0;
-const TAB_HEIGHT: f32 = 40.0;
-/// Bord gauche de la grande zone du panneau, à droite des onglets.
-const PANEL_LEFT: f32 = 54.0;
 /// Icône d'onglet de chaque catégorie (rang dans la série des onglets d'origine :
 /// maison, épis, rouage, amphore, chapiteau, personnage assis, discobole, cyprès) ;
 /// l'attribution des icônes aux catégories est faite à l'œil.
@@ -695,22 +671,6 @@ fn tool_button(world: &World, tool: Tool) -> usize {
     }
 }
 
-/// Groupes de boutons d'une catégorie, dans l'ordre du menu : (bouton, outils).
-fn category_groups(world: &World, category: usize) -> Vec<(usize, Vec<(usize, Tool)>)> {
-    let mut groups: Vec<(usize, Vec<(usize, Tool)>)> = Vec::new();
-    for (slot, tool) in category_tools(world, category).into_iter().enumerate() {
-        if tool == Tool::Road {
-            continue;
-        }
-        let button = tool_button(world, tool);
-        match groups.iter_mut().find(|(b, _)| *b == button) {
-            Some((_, tools)) => tools.push((slot, tool)),
-            None => groups.push((button, vec![(slot, tool)])),
-        }
-    }
-    groups
-}
-
 /// Ce que fait un clic sur une ligne du menu.
 #[derive(Clone, Copy, PartialEq)]
 enum MenuRow {
@@ -741,8 +701,6 @@ enum MenuRow {
     TopMenu(usize),
     /// Onglets du haut du panneau : constructions, ou carte générale.
     SidebarMap(bool),
-    /// Bouton d'un groupe de bâtiments (image du bouton) dans le panneau.
-    Group(usize),
     /// Bouton du panneau latéral : comme la touche donnée.
     Key(u32),
 }
@@ -2213,6 +2171,16 @@ const FONT_CHROME: Font = Font(335);
 const FONT_SMALL: Font = Font(1809);
 const FONT_SMALL_GOLD: Font = Font(1943);
 const CHROME_INK: (u8, u8, u8) = (20, 40, 90);
+/// Habillage moderne : ardoise profonde, or patiné, parchemin clair.
+const UI_INK: (u8, u8, u8) = (238, 231, 213);
+const UI_MUTED: (u8, u8, u8) = (152, 164, 176);
+const UI_GOLD: (u8, u8, u8) = (224, 186, 98);
+const UI_GREEN: (u8, u8, u8) = (126, 196, 128);
+const UI_RED: (u8, u8, u8) = (224, 116, 96);
+const UI_FILL: (u8, u8, u8, u8) = (13, 19, 27, 238);
+const UI_FILL_SOFT: (u8, u8, u8, u8) = (23, 32, 43, 220);
+const UI_FILL_HOVER: (u8, u8, u8, u8) = (43, 58, 74, 235);
+const UI_LINE: (u8, u8, u8, u8) = (188, 150, 74, 110);
 
 impl Graphics {
     /// Hauteur de ligne d'une police : celle de ses lettres sans accent.
@@ -2291,14 +2259,135 @@ impl Graphics {
         }
     }
 
-    /// Panneau sombre translucide, pour garder le texte lisible sur la carte.
-    unsafe fn panel(&self, x: f32, y: f32, w: f32, h: f32) {
+    /// Dessine une image de l'interface d'origine, agrandie ou réduite.
+    unsafe fn blit_scaled(&mut self, image: usize, x: f32, y: f32, w: f32, h: f32) {
+        if let Some(sprite) = self.sprite(Source::Interface, image) {
+            let target = sdl::FRect { x, y, w, h };
+            unsafe {
+                sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_LINEAR);
+                sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
+            }
+        }
+    }
+
+    /// Remplit un rectangle, en mélange si la couleur est translucide.
+    unsafe fn fill(&self, x: f32, y: f32, w: f32, h: f32, colour: (u8, u8, u8, u8)) {
+        let (r, g, b, a) = colour;
         unsafe {
             sdl::SDL_SetRenderDrawBlendMode(self.renderer, sdl::BLENDMODE_BLEND);
-            sdl::SDL_SetRenderDrawColor(self.renderer, 10, 20, 45, 200);
+            sdl::SDL_SetRenderDrawColor(self.renderer, r, g, b, a);
             sdl::SDL_RenderFillRect(self.renderer, &sdl::FRect { x, y, w, h });
         }
     }
+
+    /// Cadre d'un pixel autour d'un rectangle.
+    unsafe fn stroke(&self, x: f32, y: f32, w: f32, h: f32, colour: (u8, u8, u8, u8)) {
+        unsafe {
+            self.fill(x, y, w, 1.0, colour);
+            self.fill(x, y + h - 1.0, w, 1.0, colour);
+            self.fill(x, y, 1.0, h, colour);
+            self.fill(x + w - 1.0, y, 1.0, h, colour);
+        }
+    }
+
+    /// Panneau moderne : ombre portée, ardoise translucide, filet d'or en tête.
+    unsafe fn panel(&self, x: f32, y: f32, w: f32, h: f32) {
+        unsafe {
+            self.fill(x + 4.0, y + 5.0, w, h, (0, 0, 0, 90));
+            self.fill(x, y, w, h, UI_FILL);
+            self.stroke(x, y, w, h, UI_LINE);
+            self.fill(x + 1.0, y + 1.0, w - 2.0, 2.0, (206, 168, 88, 210));
+        }
+    }
+
+    /// Panneau sans ombre, pour les bandeaux collés au bord de l'écran.
+    unsafe fn slab(&self, x: f32, y: f32, w: f32, h: f32, colour: (u8, u8, u8, u8)) {
+        unsafe {
+            self.fill(x, y, w, h, colour);
+            self.stroke(x, y, w, h, UI_LINE);
+            self.fill(x + 1.0, y + 1.0, w - 2.0, 1.0, (206, 168, 88, 190));
+        }
+    }
+
+    /// Vignette d'un bâtiment : sa plus haute image, réduite dans la case donnée.
+    /// Les champs (parts `crop`) sont écartés : c'est le bâtiment qu'on reconnaît.
+    unsafe fn kind_icon(&mut self, kind: &Kind, x: f32, y: f32, w: f32, h: f32) -> bool {
+        let mut chosen: Option<(Source, usize, f32, f32)> = None;
+        for part in kind.parts.iter().filter(|part| !part.crop) {
+            if let Some(sprite) = self.sprite(part.source, part.image) {
+                let better = chosen.is_none_or(|(_, _, width, height)| sprite.height * sprite.width > width * height);
+                if better {
+                    chosen = Some((part.source, part.image, sprite.width, sprite.height));
+                }
+            }
+        }
+        let Some((source, image, sw, sh)) = chosen else { return false };
+        let Some(sprite) = self.sprite(source, image) else { return false };
+        let scale = (w / sw).min(h / sh);
+        let (tw, th) = (sw * scale, sh * scale);
+        let target = sdl::FRect { x: x + (w - tw) / 2.0, y: y + h - th, w: tw, h: th };
+        unsafe {
+            sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_LINEAR);
+            sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
+        }
+        true
+    }
+
+    /// Texte raccourci à la largeur demandée, avec un point de suspension.
+    fn fit(&self, font: Font, text: &str, width: f32) -> String {
+        if self.text_width(font, text) <= width {
+            return text.to_string();
+        }
+        let mut out = String::new();
+        for c in text.chars() {
+            let longer = format!("{out}{c}");
+            if self.text_width(font, &format!("{longer}.")) > width {
+                break;
+            }
+            out = longer;
+        }
+        out.push('.');
+        out
+    }
+
+    /// Jauge horizontale, valeur de 0 à 100.
+    unsafe fn gauge(&self, x: f32, y: f32, w: f32, h: f32, value: i32, colour: (u8, u8, u8)) {
+        unsafe {
+            self.fill(x, y, w, h, (5, 8, 12, 220));
+            let filled = (w * value.clamp(0, 100) as f32 / 100.0).round();
+            self.fill(x, y, filled, h, (colour.0, colour.1, colour.2, 210));
+            self.stroke(x, y, w, h, (60, 72, 86, 200));
+        }
+    }
+}
+
+/// Plaque du bandeau : libellé discret au-dessus, valeur lisible dessous.
+unsafe fn hud_chip(graphics: &mut Graphics, right: &mut f32, y: f32, label: &str, value: &str, colour: (u8, u8, u8)) -> (f32, f32, f32, f32) {
+    let width = graphics.text_width(FONT_TEXT, value).max(graphics.text_width(FONT_SMALL, label)) + 18.0;
+    *right -= width;
+    let slot = (*right, y, width, 32.0);
+    graphics.fill(slot.0, slot.1, slot.2, slot.3, (18, 25, 34, 235));
+    graphics.stroke(slot.0, slot.1, slot.2, slot.3, UI_LINE);
+    graphics.ink = colour;
+    if label.is_empty() {
+        graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 9.0);
+    } else {
+        graphics.ink = UI_MUTED;
+        graphics.draw_text(FONT_SMALL, label, slot.0 + 9.0, slot.1 + 3.0);
+        graphics.ink = colour;
+        graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 15.0);
+    }
+    graphics.ink = UI_INK;
+    *right -= 6.0;
+    slot
+}
+
+/// Titre de section du panneau, souligné d'un filet d'or.
+unsafe fn hud_section(graphics: &mut Graphics, x: f32, y: f32, width: f32, label: &str) {
+    graphics.ink = UI_GOLD;
+    graphics.draw_text(FONT_SMALL, label, x, y);
+    graphics.fill(x, y + graphics.line_height(FONT_SMALL) + 2.0, width, 1.0, UI_LINE);
+    graphics.ink = UI_INK;
 }
 
 /// Position du coin haut-gauche de la boîte d'une case, en pixels de monde.
@@ -3489,8 +3578,9 @@ fn run(
         // Action de chaque ligne du menu, telle qu'affichée à la dernière image.
         let mut menu_rows: Vec<((f32, f32, f32, f32), MenuRow)> = Vec::new();
         let mut open_category: Option<usize> = None;
-        // Groupe de bâtiments déplié dans la catégorie ouverte (image de son bouton).
-        let mut open_group: Option<usize> = None;
+        // Défilement de la liste des bâtiments de la catégorie ouverte, et sa borne.
+        let mut build_scroll = 0.0f32;
+        let mut build_max_scroll = 0.0f32;
         // Élément survolé et depuis quand, pour les bulles d'aide.
         let mut tooltip: (Option<i64>, u64) = (None, 0);
         // Fiche ouverte par un clic droit (case du bâtiment), et où le bouton droit a été
@@ -4239,7 +4329,6 @@ fn run(
                             hovered = (-1, -1);
                         }
                         sdl::KEY_ESCAPE if info_pinned.is_some() => info_pinned = None,
-                        sdl::KEY_ESCAPE if open_group.is_some() => open_group = None,
                         sdl::KEY_ESCAPE if open_category.is_some() => open_category = None,
                         sdl::KEY_ESCAPE | sdl::KEY_Q => running = false,
                         sdl::KEY_SPACE | sdl::KEY_P => paused = !paused,
@@ -4291,7 +4380,10 @@ fn run(
                                         hovered = (-1, -1);
                                     }
                                 }
-                                None if slot < CATEGORY_NAMES.len() => (open_category, open_group) = (Some(slot), None),
+                                None if slot < CATEGORY_NAMES.len() => {
+                                    open_category = Some(slot);
+                                    build_scroll = 0.0;
+                                }
                                 None => {}
                             }
                         }
@@ -4430,27 +4522,14 @@ fn run(
                         match hit.map(|&(_, action)| action) {
                             Some(MenuRow::Category(index)) => {
                                 open_category = (open_category != Some(index)).then_some(index);
-                                open_group = None;
+                                sidebar_map = false;
+                                build_scroll = 0.0;
                                 continue;
                             }
                             Some(MenuRow::Pick(picked)) => {
                                 tool = picked;
                                 build_drag = None;
-                                open_group = None;
                                 hovered = (-1, -1);
-                                continue;
-                            }
-                            Some(MenuRow::Group(button)) => {
-                                // Un seul bâtiment : il est choisi ; plusieurs : leur liste s'ouvre.
-                                let group = open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button));
-                                match group.map(|(_, tools)| tools) {
-                                    Some(tools) if tools.len() == 1 => {
-                                        (tool, open_group, hovered) = (tools[0].1, None, (-1, -1));
-                                        build_drag = None;
-                                    }
-                                    Some(_) => open_group = if open_group == Some(button) { None } else { Some(button) },
-                                    None => {}
-                                }
                                 continue;
                             }
                             Some(MenuRow::SidebarMap(wanted)) => {
@@ -4907,266 +4986,397 @@ fn run(
                 let color = if fresh * unit > world.money { FONT_SMALL } else { FONT_SMALL_GOLD };
                 graphics.draw_text(color, &label, lx, ly);
             }
-            // Habillage d'origine : le bandeau du haut, répété sur la largeur, et le
-            // panneau latéral à droite, prolongé vers le bas sur les grands écrans.
+            // ---- Habillage moderne : bandeau, panneau de construction, mini-carte ----
             let line = graphics.line_height(FONT_TEXT);
             let title_line = graphics.line_height(FONT_TITLE);
             let row = line + 8.0;
+            let small_line = graphics.line_height(FONT_SMALL) + 1.0;
             let side = w - SIDEBAR_WIDTH;
-            let mut x = 0.0;
-            while x < side {
-                graphics.blit(UI_TOP_BAR, x, 0.0);
-                x += UI_TOP_BAR_WIDTH;
-            }
-            // Un fond uni derrière le panneau : son image a des réserves transparentes
-            // (emplacements de boutons), et elle ne descend pas au-delà de 768 lignes.
-            sdl::SDL_SetRenderDrawColor(renderer, 9, 62, 104, 255);
-            sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: side, y: 0.0, w: SIDEBAR_WIDTH, h });
-            graphics.blit(UI_SIDEBAR, side, 0.0);
-            // Sur le bleu clair de l'habillage, le texte s'écrit en bleu nuit.
-            graphics.ink = CHROME_INK;
-            let (day, month, year) = world.date();
-            let status = format!(
-                "{} : {}     {} : {} / {}     {} : {}     {} {} {}{}{}",
-                text.get(8, 3),
-                world.population(),
-                text.get(8, 13),
-                world.workers_needed().min(world.workers_available()),
-                world.workers_needed(),
-                text.get(8, 0),
-                world.money,
-                day + 1,
-                months[month as usize],
-                // Sans réglages d'aventure, on compte les années depuis la fondation.
-                if start_year == 0 { year as i64 + 1 } else { (start_year as i64 + year as i64).abs() },
-                if start_year as i64 + (year as i64) < 0 { tr(" av. J.-C.") } else { String::new() },
-                if paused { tr("  (pause)") } else { String::new() }
-            );
-            let status_width = graphics.text_width(FONT_CHROME, &status);
-            graphics.draw_text(FONT_CHROME, &status, side - status_width - 16.0, (TOP_BAR_HEIGHT - line) / 2.0);
-            // Menus du bandeau, comme dans le jeu : Fichier, Options, Aide.
-            let menu_titles = [text.get(1, 0), text.get(2, 0), text.get(3, 0)];
-            let mut menu_x = 12.0;
-            let mut menu_slots = Vec::new();
-            for title in &menu_titles {
-                let width = graphics.text_width(FONT_CHROME, title) + 20.0;
-                let slot = (menu_x - 6.0, 0.0, width, TOP_BAR_HEIGHT);
-                graphics.draw_text(FONT_CHROME, title, menu_x, (TOP_BAR_HEIGHT - line) / 2.0);
-                menu_slots.push(slot);
-                menu_x += width;
-            }
-            // Le titre ne s'affiche que s'il tient entre les menus et les chiffres : dans
-            // une fenêtre étroite, ce sont eux qui comptent.
-            if menu_x + 12.0 + graphics.text_width(FONT_CHROME, &display_name) + 24.0 <= side - status_width - 16.0 {
-                graphics.draw_text(FONT_CHROME, &display_name, menu_x + 12.0, (TOP_BAR_HEIGHT - line) / 2.0);
-            }
-
-            // Onglets des catégories dans la colonne du panneau, avec leurs icônes
-            // d'origine ; l'onglet ouvert déploie ses bâtiments à gauche du panneau.
-            // Les chiffres ouvrent une catégorie, puis y choisissent un bâtiment.
+            graphics.ink = UI_INK;
             menu_rows.clear();
             let pointer_ui = (pointer.0 / ui, pointer.1 / ui);
             let inside = |(x, y, w, h): (f32, f32, f32, f32)| pointer_ui.0 >= x && pointer_ui.0 < x + w && pointer_ui.1 >= y && pointer_ui.1 < y + h;
+
+            // Bandeau : menus à gauche, ressources à droite.
+            graphics.fill(0.0, 0.0, w, TOP_BAR_HEIGHT, (10, 14, 20, 244));
+            graphics.fill(0.0, TOP_BAR_HEIGHT - 1.0, w, 1.0, (0, 0, 0, 160));
+            graphics.fill(0.0, TOP_BAR_HEIGHT, w, 1.0, UI_LINE);
+            let (day, month, year) = world.date();
+            let date = format!(
+                "{} {} {}{}",
+                day + 1,
+                months[month as usize],
+                if start_year == 0 { year as i64 + 1 } else { (start_year as i64 + year as i64).abs() },
+                if start_year as i64 + (year as i64) < 0 { tr(" av. J.-C.") } else { String::new() }
+            );
+            let mut right = side - 10.0;
+            let pause_chip = if paused {
+                hud_chip(&mut graphics, &mut right, 7.0, "", &tr("EN PAUSE"), UI_RED)
+            } else {
+                hud_chip(&mut graphics, &mut right, 7.0, &tr("VITESSE"), &format!("{} %", SPEEDS[speed].0), UI_MUTED)
+            };
+            if inside(pause_chip) {
+                graphics.stroke(pause_chip.0, pause_chip.1, pause_chip.2, pause_chip.3, (206, 168, 88, 200));
+            }
+            menu_rows.push((pause_chip, MenuRow::Key(sdl::KEY_P)));
+            // Fenêtre étroite : les chiffres essentiels restent, la date et l'emploi
+            // passent dans le panneau de la ville.
+            let narrow = side < 1180.0;
+            if !narrow {
+                hud_chip(&mut graphics, &mut right, 7.0, "", &date, UI_INK);
+            }
+            hud_chip(&mut graphics, &mut right, 7.0, &text.get(8, 0), &world.money.to_string(), UI_GOLD);
+            if !narrow {
+                hud_chip(
+                    &mut graphics,
+                    &mut right,
+                    7.0,
+                    &text.get(8, 13),
+                    &format!("{} / {}", world.workers_needed().min(world.workers_available()), world.workers_needed()),
+                    UI_INK,
+                );
+            }
+            hud_chip(&mut graphics, &mut right, 7.0, &text.get(8, 3), &world.population().to_string(), UI_INK);
+
+            // Menus du bandeau, comme dans le jeu : Fichier, Options, Aide.
+            let menu_titles = [text.get(1, 0), text.get(2, 0), text.get(3, 0)];
+            let mut menu_x = 10.0;
+            let mut menu_slots = Vec::new();
+            for (index, title) in menu_titles.iter().enumerate() {
+                let width = graphics.text_width(FONT_CHROME, title) + 18.0;
+                let slot = (menu_x, 8.0, width, TOP_BAR_HEIGHT - 16.0);
+                if top_menu == Some(index) {
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, (64, 52, 24, 235));
+                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, (206, 168, 88, 180));
+                } else if inside(slot) {
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, (30, 42, 55, 210));
+                }
+                graphics.ink = if top_menu == Some(index) { UI_GOLD } else { UI_INK };
+                graphics.draw_text(FONT_CHROME, title, menu_x + 9.0, 15.0);
+                menu_slots.push(slot);
+                menu_x += width + 4.0;
+            }
+            if menu_x + 10.0 + graphics.text_width(FONT_CHROME, &display_name) < right - 8.0 {
+                graphics.fill(menu_x + 2.0, 12.0, 1.0, 22.0, UI_LINE);
+                graphics.ink = UI_GOLD;
+                graphics.draw_text(FONT_CHROME, &display_name, menu_x + 12.0, 15.0);
+            }
+
+            // Panneau de construction à droite, sur une ardoise pleine.
+            graphics.fill(side - 6.0, TOP_BAR_HEIGHT + 4.0, 6.0, h - TOP_BAR_HEIGHT, (0, 0, 0, 80));
+            graphics.fill(side, TOP_BAR_HEIGHT, SIDEBAR_WIDTH, h - TOP_BAR_HEIGHT, UI_FILL);
+            graphics.fill(side, TOP_BAR_HEIGHT, 1.0, h - TOP_BAR_HEIGHT, UI_LINE);
+            graphics.fill(side, TOP_BAR_HEIGHT, SIDEBAR_WIDTH, 1.0, UI_LINE);
+
+            // Ruban des catégories, avec leurs icônes d'origine.
             for (index, &(icon, _)) in CATEGORY_TABS.iter().enumerate() {
-                let slot = (side + TAB_LEFT, TAB_TOP + TAB_STEP * index as f32, TAB_WIDTH, TAB_HEIGHT);
-                // Trois états se suivent dans le catalogue : repos, survol, choisi.
-                let state = if open_category == Some(index) { 2 } else if inside(slot) { 1 } else { 0 };
-                graphics.blit(UI_TABS + UI_TAB_STATES * icon + state, slot.0, slot.1);
+                let slot = (side + RAIL_LEFT, TOP_BAR_HEIGHT + RAIL_TOP + RAIL_STEP * index as f32, RAIL_BUTTON.0, RAIL_BUTTON.1);
+                let chosen = open_category == Some(index) && !sidebar_map;
+                if chosen {
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, (64, 52, 24, 235));
+                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, (206, 168, 88, 190));
+                    graphics.fill(slot.0 - 4.0, slot.1 + 6.0, 3.0, slot.3 - 12.0, (224, 186, 98, 255));
+                } else if inside(slot) {
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, UI_FILL_HOVER);
+                } else {
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, (18, 26, 36, 170));
+                }
+                let state = if chosen { 2 } else if inside(slot) { 1 } else { 0 };
+                graphics.blit_scaled(UI_TABS + UI_TAB_STATES * icon + state, slot.0 + 4.0, slot.1 + 3.0, 38.0, 36.0);
                 menu_rows.push((slot, MenuRow::Category(index)));
             }
-            // Les autres réserves du panneau reçoivent les boutons d'origine : un fond
-            // sombre, puis le bouton (repos, survol, enfoncé, inactif).
-            for &(x, y, w, h, image, key) in &SIDEBAR_BUTTONS {
-                let slot = (side + x, y, w, h);
-                sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
-                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
-                let Some(image) = image else { continue };
-                let open = match key {
-                    Some(sdl::KEY_O) => goals_panel,
-                    Some(sdl::KEY_C) => cities_panel,
-                    Some(sdl::KEY_A) => advisor_panel,
-                    Some(sdl::KEY_H) => help,
-                    Some(sdl::KEY_J) => journal_panel,
-                    _ => false,
-                };
-                let state = match key {
-                    None => 3,
-                    Some(_) if open => 2,
-                    Some(_) if inside(slot) => 1,
-                    Some(_) => 0,
-                };
-                graphics.blit(image + state, slot.0, slot.1);
-                // Sur le parchemin des messages, le nombre de nouvelles annonces.
-                if key == Some(sdl::KEY_J) {
-                    if journal_panel {
-                        unread = 0;
-                    }
-                    if unread > 0 {
-                        let count = unread.min(99).to_string();
-                        let width = graphics.text_width(FONT_SMALL, &count);
-                        graphics.draw_text(FONT_SMALL, &count, slot.0 + (slot.2 - width) / 2.0, slot.1 + (slot.3 - graphics.line_height(FONT_SMALL)) / 2.0);
-                    }
+
+            let cx = side + CONTENT_LEFT;
+            let cw = CONTENT_WIDTH;
+            graphics.fill(side + CONTENT_LEFT - 8.0, TOP_BAR_HEIGHT + 8.0, 1.0, h - TOP_BAR_HEIGHT - 16.0, (60, 72, 86, 110));
+
+            // Deux vues : les constructions, ou la carte générale.
+            let seg_y = TOP_BAR_HEIGHT + 8.0;
+            let seg_w = (cw - 4.0) / 2.0;
+            for (i, label) in [tr("Constructions"), tr("Carte générale")].iter().enumerate() {
+                let wanted = i == 1;
+                let slot = (cx + i as f32 * (seg_w + 4.0), seg_y, seg_w, 24.0);
+                let active = sidebar_map == wanted;
+                graphics.fill(slot.0, slot.1, slot.2, slot.3, if active { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 180) });
+                if active {
+                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, (206, 168, 88, 170));
                 }
-                if let Some(key) = key {
-                    menu_rows.push((slot, MenuRow::Key(key)));
-                }
-            }
-            // Rangée des boutons ronds : route et dégager, comme dans le jeu.
-            sdl::SDL_SetRenderDrawColor(renderer, 4, 30, 52, 255);
-            let road_slot = (side + ROAD_SLOT.0, ROAD_SLOT.1, ROAD_SLOT.2, ROAD_SLOT.3);
-            let clear_slot = (side + CLEAR_BUTTON_SLOT.0, CLEAR_BUTTON_SLOT.1, CLEAR_BUTTON_SLOT.2, CLEAR_BUTTON_SLOT.3);
-            for (slot, image, held, picked) in [(road_slot, ROAD_BUTTON, Tool::Road, Tool::Road), (clear_slot, CLEAR_BUTTON, Tool::Demolish, Tool::Demolish)] {
-                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
-                let state = if tool == held { 2 } else if inside(slot) { 1 } else { 0 };
-                graphics.blit(image + state, slot.0, slot.1);
-                menu_rows.push((slot, MenuRow::Pick(picked)));
-            }
-            // Barrage routier : inactif quand l'épisode ne le permet pas.
-            let roadblock_slot = (side + ROADBLOCK_SLOT.0, ROADBLOCK_SLOT.1, ROADBLOCK_SLOT.2, ROADBLOCK_SLOT.3);
-            let roadblock = world.kinds.iter().position(|k| k.function == Function::Roadblock).filter(|&k| !world.locked.get(k).copied().unwrap_or(false));
-            let state = match roadblock {
-                None => 3,
-                Some(k) if tool == Tool::Build(k) => 2,
-                Some(_) if inside(roadblock_slot) => 1,
-                Some(_) => 0,
-            };
-            graphics.blit(ROADBLOCK_BUTTON + state, roadblock_slot.0, roadblock_slot.1);
-            if let Some(k) = roadblock {
-                menu_rows.push((roadblock_slot, MenuRow::Pick(Tool::Build(k))));
-            }
-            // Nom de la catégorie ouverte ou survolée, dans le haut du panneau.
-            let named = open_category.or_else(|| menu_rows.iter().find_map(|&(slot, action)| match action {
-                MenuRow::Category(index) if inside(slot) => Some(index),
-                _ => None,
-            }));
-            if named.is_none() && (tool == Tool::Demolish || inside(clear_slot)) {
-                graphics.draw_text(FONT_CHROME, &demolish_name, side + PANEL_LEFT, TAB_TOP + 6.0);
-            }
-            let small_line = graphics.line_height(FONT_SMALL) + 1.0;
-            // Hauteur du bouton dont la liste est dépliée.
-            let mut group_top = TAB_TOP;
-            // Onglets du haut du panneau ; l'onglet inactif est assombri.
-            for (wanted, slot) in [(false, SIDEBAR_TABS[0]), (true, SIDEBAR_TABS[1])] {
-                let slot = (side + slot.0, slot.1, slot.2, slot.3);
-                if sidebar_map != wanted {
-                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
-                    sdl::SDL_SetRenderDrawColor(renderer, 0, 20, 40, if inside(slot) { 60 } else { 110 });
-                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
-                }
+                graphics.ink = if active { UI_GOLD } else { UI_MUTED };
+                let width = graphics.text_width(FONT_SMALL, label);
+                graphics.draw_text(FONT_SMALL, label, slot.0 + (slot.2 - width) / 2.0, slot.1 + 7.0);
                 menu_rows.push((slot, MenuRow::SidebarMap(wanted)));
             }
-            let named = if sidebar_map { None } else { named };
-            if let Some(index) = named {
-                let mut top = TAB_TOP + 6.0;
-                for word in category_names[index].split(' ') {
-                    graphics.draw_text(FONT_CHROME, word, side + PANEL_LEFT, top);
-                    top += row;
+            let mut content_top = TOP_BAR_HEIGHT + 42.0;
+            let dock_top = h - DOCK_HEIGHT;
+            if sidebar_map {
+                hud_section(&mut graphics, cx, content_top, cw, &tr("Carte générale"));
+                content_top += 16.0;
+            } else if let Some(index) = open_category {
+                // En-tête de la catégorie, avec sa croix de fermeture.
+                graphics.ink = UI_GOLD;
+                graphics.draw_text(FONT_CHROME, &category_names[index], cx, content_top);
+                let close = (cx + cw - 18.0, content_top - 2.0, 18.0, 18.0);
+                if inside(close) {
+                    graphics.fill(close.0, close.1, close.2, close.3, UI_FILL_HOVER);
                 }
-                // Boutons des groupes de bâtiments, deux par rang, au bas du panneau.
-                let groups = if open_category == Some(index) { category_groups(&world, index) } else { Vec::new() };
-                let rows = groups.len().div_ceil(2) as f32;
-                let buttons_top = SIDEBAR_BUTTONS[0].1 - 6.0 - rows * (GROUP_BUTTON.1 + 4.0);
-                for (i, (button, tools)) in groups.iter().enumerate() {
-                    let x = side + PANEL_LEFT + (i % 2) as f32 * (GROUP_BUTTON.0 + 4.0);
-                    let y = buttons_top + (i / 2) as f32 * (GROUP_BUTTON.1 + 4.0);
-                    let slot = (x, y, GROUP_BUTTON.0, GROUP_BUTTON.1);
-                    if open_group == Some(*button) {
-                        group_top = y;
+                graphics.ink = UI_MUTED;
+                graphics.draw_text(FONT_CHROME, "x", close.0 + 5.0, close.1 + 1.0);
+                menu_rows.push((close, MenuRow::Category(index)));
+                let tools = category_tools(&world, index);
+                graphics.ink = UI_MUTED;
+                graphics.draw_text(FONT_SMALL, &format!("{} {}", tools.len(), tr("bâtiments")), cx, content_top + 16.0);
+
+                // Ce que dit la catégorie de la cité, puis ses vues en surimpression.
+                let (info, views) = category_info(&world, &text, index);
+                let mut y = content_top + 34.0;
+                let mut info_lines: Vec<String> = Vec::new();
+                for text_line in info.iter().take(2) {
+                    info_lines.extend(wrap_width(&graphics, FONT_SMALL, text_line, cw).into_iter().take(2));
+                }
+                for text_line in info_lines {
+                    graphics.ink = UI_INK;
+                    graphics.draw_text(FONT_SMALL, &text_line, cx, y);
+                    y += small_line;
+                }
+                let view_w = (cw - 4.0) / 2.0;
+                for (i, (label, wanted)) in views.iter().enumerate() {
+                    let slot = (cx + (i % 2) as f32 * (view_w + 4.0), y + (i / 2) as f32 * 20.0, view_w, 18.0);
+                    let lit = overlay == *wanted || inside(slot);
+                    graphics.ink = if overlay == *wanted { UI_GOLD } else { UI_MUTED };
+                    graphics.fill(slot.0, slot.1, slot.2, slot.3, if lit { (43, 58, 74, 225) } else { (18, 26, 36, 180) });
+                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, if lit { (188, 150, 74, 120) } else { (60, 72, 86, 90) });
+                    let fitted = graphics.fit(FONT_SMALL, label, slot.2 - 6.0);
+                    graphics.draw_text(FONT_SMALL, &fitted, slot.0 + 3.0, slot.1 + 4.0);
+                    menu_rows.push((slot, MenuRow::Overlay(*wanted)));
+                }
+                if !views.is_empty() {
+                    y += ((views.len() as f32) / 2.0).ceil() * 20.0 + 4.0;
+                }
+
+                // Liste des bâtiments : une ligne par bâtiment, sans sous-menu.
+                let list_top = y + 2.0;
+                let list_bottom = dock_top - 6.0;
+                let visible = (list_bottom - list_top).max(1.0);
+                build_max_scroll = (tools.len() as f32 * BUILD_ROW - visible).max(0.0);
+                build_scroll = build_scroll.clamp(0.0, build_max_scroll);
+                let first = (build_scroll / BUILD_ROW).ceil() as usize;
+                let info = |picked: Tool| -> (String, i32, Option<String>) {
+                    match picked {
+                        Tool::Build(kind) => (world.kind_name(kind), world.kinds[kind].cost, descriptions.get(kind).and_then(|d| d.clone())),
+                        Tool::Wall => (wall_name.clone(), wall_cost, Some(tr("Mur de la cité"))),
+                        Tool::Road => (road_name.clone(), road_cost, Some(tr("Relie les bâtiments et les marcheurs"))),
+                        _ => (demolish_name.clone(), 0, None),
                     }
-                    let chosen = open_group == Some(*button) || tools.iter().any(|&(_, t)| t == tool);
-                    let state = if chosen { 2 } else if inside(slot) { 1 } else { 0 };
-                    graphics.blit(button + state, x, y);
-                    menu_rows.push((slot, MenuRow::Group(*button)));
-                }
-                let info_bottom = if groups.is_empty() { SIDEBAR_BUTTONS[0].1 - 4.0 } else { buttons_top - 4.0 };
-                // Ce que la catégorie dit de la cité, puis ses vues en surimpression.
-                let (lines, views) = category_info(&world, &text, index);
-                let width = SIDEBAR_WIDTH - PANEL_LEFT - 6.0;
-                top += 6.0;
-                for (label, wanted) in views {
-                    let slot = (side + PANEL_LEFT - 2.0, top, width, small_line + 8.0);
-                    if top + slot.3 > info_bottom {
-                        break;
+                };
+                let mut hovered_tool: Option<Tool> = None;
+                for (slot, picked) in tools.iter().enumerate().skip(first) {
+                    let y = list_top + slot as f32 * BUILD_ROW - build_scroll;
+                    if y + BUILD_ROW < list_top || y > list_bottom {
+                        continue;
                     }
-                    let lit = overlay == wanted || inside(slot);
-                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
-                    sdl::SDL_SetRenderDrawColor(renderer, 10, 40, 80, if lit { 220 } else { 140 });
-                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0, y: slot.1, w: slot.2, h: slot.3 });
-                    graphics.ink = (255, 255, 255);
-                    let font = if overlay == wanted { FONT_SMALL_GOLD } else { FONT_SMALL };
-                    let label_width = graphics.text_width(font, &label);
-                    graphics.draw_text(font, &label, slot.0 + (slot.2 - label_width) / 2.0, slot.1 + (slot.3 - small_line) / 2.0);
-                    graphics.ink = CHROME_INK;
-                    menu_rows.push((slot, MenuRow::Overlay(wanted)));
-                    top += slot.3 + 3.0;
+                    if y < list_top {
+                        continue;
+                    }
+                    let rect = (cx, y, cw, BUILD_ROW - 1.0);
+                    let chosen = *picked == tool;
+                    if chosen {
+                        graphics.fill(rect.0, rect.1, rect.2, rect.3, (64, 52, 24, 225));
+                        graphics.fill(rect.0, rect.1, 3.0, rect.3, (224, 186, 98, 255));
+                    } else if inside(rect) {
+                        graphics.fill(rect.0, rect.1, rect.2, rect.3, UI_FILL_HOVER);
+                    } else {
+                        graphics.fill(rect.0, rect.1, rect.2, 1.0, (60, 72, 86, 90));
+                    }
+                    if inside(rect) {
+                        hovered_tool = Some(*picked);
+                    }
+                    graphics.fill(cx + 3.0, y + 4.0, 42.0, 30.0, (8, 12, 17, 210));
+                    let drawn = matches!(picked, Tool::Build(k) if graphics.kind_icon(&world.kinds[*k], cx + 5.0, y + 5.0, 38.0, 28.0));
+                    if !drawn {
+                        graphics.blit_scaled(tool_button(&world, *picked), cx + 6.0, y + 6.0, 36.0, 28.0);
+                    }
+                    if slot < 9 {
+                        graphics.fill(cx + 3.0, y + 4.0, 9.0, 9.0, (10, 14, 20, 230));
+                        graphics.ink = UI_MUTED;
+                        graphics.draw_text(FONT_SMALL, &(slot + 1).to_string(), cx + 4.0, y + 3.0);
+                    }
+                    let (label, cost, _) = info(*picked);
+                    let fitted = graphics.fit(FONT_SMALL, &label, cw - 52.0);
+                    graphics.ink = UI_INK;
+                    graphics.draw_text(FONT_SMALL, &fitted, cx + 50.0, y + 2.0);
+                    let cost_label = format!("{cost} {}", text.get(8, 0));
+                    graphics.ink = if world.money < cost { UI_RED } else { UI_GOLD };
+                    graphics.draw_text(FONT_SMALL, &cost_label, cx + 50.0, y + 17.0);
+                    menu_rows.push((rect, MenuRow::Pick(*picked)));
                 }
-                top += 6.0;
-                // « Libellé : valeur » : le libellé en blanc, la valeur en doré dessous.
-                graphics.ink = (255, 255, 255);
-                for text_line in lines {
-                    let (label, value) = text_line.split_once(" : ").map_or((text_line.as_str(), None), |(l, v)| (l, Some(v)));
-                    let pieces: Vec<(Font, String)> = wrap_width(&graphics, FONT_SMALL, label, width)
-                        .into_iter()
-                        .map(|p| (FONT_SMALL, p))
-                        .chain(value.into_iter().flat_map(|v| wrap_width(&graphics, FONT_SMALL_GOLD, v, width).into_iter().map(|p| (FONT_SMALL_GOLD, p))))
-                        .collect();
-                    for (font, piece) in pieces {
-                        if top + small_line > info_bottom {
-                            break;
+                if build_max_scroll > 0.0 {
+                    let track = list_bottom - list_top;
+                    let thumb = (visible / (tools.len() as f32 * BUILD_ROW) * track).max(18.0);
+                    let offset = if build_max_scroll > 0.0 { build_scroll / build_max_scroll * (track - thumb) } else { 0.0 };
+                    graphics.fill(cx + cw - 2.0, list_top, 2.0, track, (0, 0, 0, 160));
+                    graphics.fill(cx + cw - 2.0, list_top + offset, 2.0, thumb, (188, 150, 74, 200));
+                }
+
+                // Fiche de l'outil survolé (ou tenu) au bas du panneau.
+                graphics.fill(cx, dock_top - 2.0, cw, 1.0, UI_LINE);
+                let shown = hovered_tool.or((tool != Tool::None && tools.contains(&tool)).then_some(tool));
+                let mut dy = dock_top + 3.0;
+                match shown {
+                    Some(picked) => {
+                        let (label, cost, description) = info(picked);
+                        let price = format!("{cost} {}", text.get(8, 0));
+                        let price_width = graphics.text_width(FONT_SMALL, &price);
+                        let fitted = graphics.fit(FONT_SMALL, &label, cw - price_width - 8.0);
+                        graphics.ink = UI_GOLD;
+                        graphics.draw_text(FONT_SMALL, &fitted, cx, dy);
+                        graphics.draw_text(FONT_SMALL, &price, cx + cw - price_width, dy);
+                        dy += small_line;
+                        if let Some(description) = description {
+                            graphics.ink = UI_MUTED;
+                            let fitted = graphics.fit(FONT_SMALL, &description, cw);
+                            graphics.draw_text(FONT_SMALL, &fitted, cx, dy);
                         }
-                        graphics.draw_text(font, &piece, side + PANEL_LEFT, top);
-                        top += small_line;
                     }
-                    top += 4.0;
-                }
-                graphics.ink = CHROME_INK;
-            }
-            // Zone des messages : la dernière annonce ; un clic ouvre le journal.
-            let message_slot = (side + MESSAGE_SLOT.0, MESSAGE_SLOT.1, MESSAGE_SLOT.2, MESSAGE_SLOT.3);
-            if let Some((_, last)) = journal.last() {
-                let mut top = message_slot.1 + 4.0;
-                graphics.ink = (255, 255, 255);
-                for piece in wrap_width(&graphics, FONT_SMALL, last, message_slot.2 - 8.0).into_iter().take(((message_slot.3 - 4.0) / small_line) as usize) {
-                    graphics.draw_text(FONT_SMALL, &piece, message_slot.0 + 4.0, top);
-                    top += small_line;
-                }
-                graphics.ink = CHROME_INK;
-            }
-            menu_rows.push((message_slot, MenuRow::Journal));
-            graphics.ink = (255, 255, 255);
-            if let (Some(index), Some(group)) = (open_category, open_group) {
-                let listed: Vec<(usize, Tool)> = category_groups(&world, index).into_iter().find(|(b, _)| *b == group).map(|(_, t)| t).unwrap_or_default();
-                let tools: Vec<Tool> = listed.iter().map(|&(_, t)| t).collect();
-                let labels: Vec<String> = listed
-                    .iter()
-                    .map(|&(slot, ref picked)| {
-                        let key = if slot < 9 { (slot + 1).to_string() } else { "-".to_string() };
-                        match *picked {
-                            Tool::Build(kind) => format!("{key}  {}  ({})", world.kind_name(kind), world.kinds[kind].cost),
-                            Tool::Wall => format!("{key}  {wall_name}  ({wall_cost})"),
-                            _ => format!("{key}  {road_name}  ({road_cost})"),
-                        }
-                    })
-                    .collect();
-                let width = labels.iter().map(|label| graphics.text_width(FONT_TEXT, label)).fold(0.0, f32::max) + 32.0;
-                let height = row * labels.len() as f32 + 10.0;
-                // À hauteur de l'onglet, sans sortir de l'écran par le bas.
-                let _ = index;
-                let top = group_top.min(h - height - 8.0).max(TOP_BAR_HEIGHT + 4.0);
-                let left = side - width - 6.0;
-                graphics.panel(left, top, width, height);
-                for (i, (label, picked)) in labels.iter().zip(&tools).enumerate() {
-                    let slot = (left, top + 5.0 + row * i as f32, width, row);
-                    if *picked == tool || inside(slot) {
-                        sdl::SDL_SetRenderDrawColor(renderer, 200, 160, 40, if *picked == tool { 140 } else { 70 });
-                        sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: slot.0 + 4.0, y: slot.1 - 1.0, w: width - 8.0, h: row - 2.0 });
+                    None => {
+                        graphics.ink = UI_MUTED;
+                        graphics.draw_text(FONT_SMALL, &tr("Choisissez un bâtiment."), cx, dy);
+                        graphics.draw_text(FONT_SMALL, &tr("Molette : faire défiler la liste."), cx, dy + small_line);
                     }
-                    graphics.draw_text(FONT_TEXT, label, left + 16.0, slot.1 + 3.0);
-                    menu_rows.push((slot, MenuRow::Pick(*picked)));
+                }
+            } else {
+                // Vue de la cité : population, emploi, humeur, objectifs, annonce.
+                graphics.ink = UI_GOLD;
+                graphics.draw_text(FONT_CHROME, &tr("Ville"), cx, content_top);
+                let mut y = content_top + 22.0;
+                let capacity: i32 = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).map(|h| world.capacity(h)).sum();
+                let jobs = world.workers_needed().min(world.workers_available());
+                let mut stat = |graphics: &mut Graphics, y: &mut f32, label: &str, value: &str, colour: (u8, u8, u8)| {
+                    graphics.ink = UI_MUTED;
+                    graphics.draw_text(FONT_SMALL, label, cx, *y);
+                    graphics.ink = colour;
+                    let width = graphics.text_width(FONT_SMALL, value);
+                    graphics.draw_text(FONT_SMALL, value, cx + cw - width, *y);
+                    *y += 16.0;
+                };
+                stat(&mut graphics, &mut y, &text.get(8, 3), &format!("{} / {}", world.population(), capacity), UI_INK);
+                stat(&mut graphics, &mut y, &text.get(8, 13), &format!("{jobs} / {}", world.workers_needed()), UI_INK);
+                stat(&mut graphics, &mut y, &tr("Humeur"), &format!("{} / 100", world.sentiment), UI_INK);
+                graphics.gauge(cx, y, cw, 4.0, world.sentiment, UI_GREEN);
+                y += 10.0;
+                stat(&mut graphics, &mut y, &tr("Santé"), &format!("{} / 100", world.health), UI_INK);
+                graphics.gauge(cx, y, cw, 4.0, world.health, UI_GREEN);
+                y += 14.0;
+                // Couverture des services : ce que la cité reçoit vraiment.
+                hud_section(&mut graphics, cx, y, cw, &tr("Services"));
+                y += 16.0;
+                let lived: Vec<&zeus::world::House> = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).filter(|h| h.population > 0).collect();
+                for service in [Service::Water, Service::Maintenance, Service::Security, Service::Health] {
+                    let percent = if lived.is_empty() { 0 } else { lived.iter().filter(|h| h.has(service, world.ticks)).count() * 100 / lived.len() } as i32;
+                    let label = service_name(&text, service);
+                    graphics.ink = UI_MUTED;
+                    graphics.draw_text(FONT_SMALL, &label, cx, y);
+                    graphics.ink = if percent >= 60 { UI_GREEN } else if percent >= 30 { UI_GOLD } else { UI_RED };
+                    let value = format!("{percent} %");
+                    let width = graphics.text_width(FONT_SMALL, &value);
+                    graphics.draw_text(FONT_SMALL, &value, cx + cw - width, y);
+                    graphics.gauge(cx, y + 10.0, cw, 3.0, percent, if percent >= 60 { (126, 196, 128) } else if percent >= 30 { (224, 186, 98) } else { (224, 116, 96) });
+                    y += 20.0;
+                }
+                y += 2.0;
+                hud_section(&mut graphics, cx, y, cw, &tr("Objectifs de l'épisode (O)"));
+                y += 16.0;
+                let objectives_top = y;
+                if goals.is_empty() {
+                    graphics.ink = UI_MUTED;
+                    graphics.draw_text(FONT_SMALL, &tr("Aucun objectif"), cx, y);
+                    y += small_line;
+                }
+                for (goal, status) in goals.iter().zip(statuses.iter()).take(3) {
+                    let (colour, mark) = match status {
+                        Status::Met => (UI_GREEN, true),
+                        Status::Pending(_) => (UI_GOLD, false),
+                        _ => (UI_MUTED, false),
+                    };
+                    graphics.fill(cx, y + 4.0, 6.0, 6.0, (colour.0, colour.1, colour.2, 255));
+                    if !mark {
+                        graphics.fill(cx + 2.0, y + 6.0, 2.0, 2.0, (13, 19, 27, 255));
+                    }
+                    let label = goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_)));
+                    let fitted = graphics.fit(FONT_SMALL, &label, cw - 14.0);
+                    graphics.ink = if *status == Status::Met { UI_MUTED } else { UI_INK };
+                    graphics.draw_text(FONT_SMALL, &fitted, cx + 12.0, y);
+                    y += 18.0;
+                }
+                menu_rows.push(((cx, objectives_top, cw, (y - objectives_top).max(1.0)), MenuRow::Key(sdl::KEY_O)));
+                y += 6.0;
+                hud_section(&mut graphics, cx, y, cw, &tr("Annonce"));
+                y += 16.0;
+                let announce_top = y;
+                if let Some((_, last)) = journal.last() {
+                    for piece in wrap_width(&graphics, FONT_SMALL, last, cw).into_iter().take(3) {
+                        graphics.ink = UI_INK;
+                        graphics.draw_text(FONT_SMALL, &piece, cx, y);
+                        y += small_line;
+                    }
+                } else {
+                    graphics.ink = UI_MUTED;
+                    graphics.draw_text(FONT_SMALL, &tr("Aucune annonce"), cx, y);
+                    y += small_line;
+                }
+                menu_rows.push(((cx, announce_top, cw, (y - announce_top).max(1.0)), MenuRow::Key(sdl::KEY_J)));
+            }
+
+            // Bas du panneau : touches des panneaux, puis outils de chantier.
+            graphics.fill(side + 8.0, dock_top - 4.0, SIDEBAR_WIDTH - 16.0, 1.0, UI_LINE);
+            // Icônes d'origine : coche des objectifs, philosophe, globe, parchemin.
+            let key_icons = [1267usize, 1343, 1271, 1291];
+            let key_w = (cw - 12.0) / 4.0;
+            for (i, image) in key_icons.iter().enumerate() {
+                let slot = (cx + i as f32 * (key_w + 4.0), dock_top + 38.0, key_w, 28.0);
+                let open = [goals_panel, advisor_panel, cities_panel, journal_panel][i];
+                graphics.fill(slot.0, slot.1, slot.2, slot.3, if open { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 180) });
+                graphics.stroke(slot.0, slot.1, slot.2, slot.3, if open { (206, 168, 88, 160) } else { (60, 72, 86, 100) });
+                graphics.blit_scaled(*image, slot.0 + (key_w - 32.0) / 2.0, slot.1 + 2.0, 32.0, 24.0);
+                let key = [sdl::KEY_O, sdl::KEY_A, sdl::KEY_C, sdl::KEY_J][i];
+                menu_rows.push((slot, MenuRow::Key(key)));
+            }
+            if journal_panel {
+                unread = 0;
+            }
+            if unread > 0 {
+                let slot = (cx + 3.0 * (key_w + 4.0), dock_top + 38.0, key_w, 28.0);
+                let count = unread.min(99).to_string();
+                let width = graphics.text_width(FONT_SMALL, &count) + 6.0;
+                graphics.fill(slot.0 + slot.2 - width - 1.0, slot.1 - 4.0, width, 11.0, (170, 54, 42, 255));
+                graphics.ink = UI_INK;
+                graphics.draw_text(FONT_SMALL, &count, slot.0 + slot.2 - width + 2.0, slot.1 - 5.0);
+            }
+            let tool_w = (cw - 12.0) / 4.0;
+            let roadblock = world.kinds.iter().position(|k| k.function == Function::Roadblock).filter(|&k| !world.locked.get(k).copied().unwrap_or(false));
+            let rotate = (ROTATE_BUTTON, MenuRow::Key(sdl::KEY_END), false, true);
+            let tools: [(usize, MenuRow, bool, bool); 4] = [
+                (ROAD_BUTTON, MenuRow::Pick(Tool::Road), tool == Tool::Road, true),
+                (
+                    ROADBLOCK_BUTTON,
+                    roadblock.map_or(MenuRow::Pick(Tool::None), |k| MenuRow::Pick(Tool::Build(k))),
+                    roadblock.is_some_and(|k| tool == Tool::Build(k)),
+                    roadblock.is_some(),
+                ),
+                (CLEAR_BUTTON, MenuRow::Pick(Tool::Demolish), tool == Tool::Demolish, true),
+                rotate,
+            ];
+            for (i, (image, action, chosen, enabled)) in tools.iter().enumerate() {
+                let slot = (cx + i as f32 * (tool_w + 4.0), dock_top + 70.0, tool_w, 42.0);
+                graphics.fill(slot.0, slot.1, slot.2, slot.3, if *chosen { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 190) });
+                graphics.stroke(slot.0, slot.1, slot.2, slot.3, if *chosen { (206, 168, 88, 180) } else { (60, 72, 86, 100) });
+                let state = if !enabled { 3 } else if *chosen { 2 } else if inside(slot) { 1 } else { 0 };
+                graphics.blit_scaled(image + state, slot.0 + (tool_w - 34.0) / 2.0, slot.1 + 3.0, 34.0, 36.0);
+                if *enabled {
+                    menu_rows.push((slot, *action));
                 }
             }
 
-            // Mini-carte en bas à gauche, avec le cadre de ce que montre l'écran.
+            // Mini-carte, flottante en bas à gauche ou dans la vue « carte ».
             if !minimap.is_null() {
                 minimap_age += 1;
                 if minimap_age >= MINIMAP_REFRESH {
@@ -5174,22 +5384,31 @@ fn run(
                     let pixels = minimap_pixels(&world);
                     sdl::SDL_UpdateTexture(minimap, null(), pixels.as_ptr() as *const c_void, (MINIMAP_WIDTH * 4) as i32);
                 }
-                // Dans le panneau (carte générale) ou flottante en bas à gauche.
-                let area = (side + PANEL_LEFT - 2.0, TAB_TOP + 4.0, SIDEBAR_WIDTH - PANEL_LEFT - 2.0, SIDEBAR_BUTTONS[0].1 - TAB_TOP - 12.0);
-                minimap_at.scale = if sidebar_map { (area.2 / minimap_at.width).min(area.3 / minimap_at.height) } else { minimap_at.base };
                 let (mw, mh) = minimap_at.size();
-                (minimap_at.x, minimap_at.y) = if sidebar_map { (area.0 + (area.2 - mw) / 2.0, area.1 + (area.3 - mh) / 2.0) } else { (12.0, h - mh - 12.0) };
-                graphics.panel(minimap_at.x - 4.0, minimap_at.y - 4.0, mw + 8.0, mh + 8.0);
+                if sidebar_map {
+                    let area = (cx, content_top + 4.0, cw, (h - content_top - DOCK_HEIGHT - 24.0).max(80.0));
+                    minimap_at.scale = (area.2 / minimap_at.width).min(area.3 / minimap_at.height);
+                    let (mw, mh) = minimap_at.size();
+                    (minimap_at.x, minimap_at.y) = (area.0 + (area.2 - mw) / 2.0, area.1 + 4.0);
+                } else {
+                    minimap_at.scale = minimap_at.base;
+                    (minimap_at.x, minimap_at.y) = (16.0, h - mh - 34.0);
+                }
+                let (mw, mh) = minimap_at.size();
+                graphics.panel(minimap_at.x - 7.0, minimap_at.y - 24.0, mw + 14.0, mh + 31.0);
+                graphics.ink = UI_GOLD;
+                graphics.draw_text(FONT_SMALL, &tr("Carte"), minimap_at.x, minimap_at.y - 19.0);
                 let part = sdl::FRect { x: minimap_at.left, y: minimap_at.top, w: minimap_at.width, h: minimap_at.height };
                 let place = sdl::FRect { x: minimap_at.x, y: minimap_at.y, w: mw, h: mh };
                 sdl::SDL_SetTextureScaleMode(minimap, sdl::SCALEMODE_NEAREST);
                 sdl::SDL_RenderTexture(renderer, minimap, &part, &place);
                 let ((x0, y0), (x1, y1)) = (minimap_at.place(visible.0, visible.1), minimap_at.place(visible.2, visible.3));
-                sdl::SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                sdl::SDL_SetRenderDrawColor(renderer, 236, 202, 122, 230);
                 for (ax, ay, bx, by) in [(x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)] {
                     sdl::SDL_RenderLine(renderer, ax, ay, bx, by);
                 }
             }
+            graphics.ink = UI_INK;
 
             // Fiche d'un bâtiment : complète dans une fenêtre après un clic droit (comme
             // dans le jeu), abrégée au survol.
@@ -5730,35 +5949,34 @@ fn run(
             if let (Some((_, action)), true) = (hovered_row, now - tooltip.1 > TOOLTIP_MS) {
                 let label = match action {
                     MenuRow::Category(index) => Some(category_names[index].clone()),
-                    MenuRow::Group(button) => open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button)).map(|(_, tools)| {
-                        {
-                        let names: Vec<String> = tools.iter().map(|&(_, t)| match t { Tool::Build(k) => world.kind_name(k), Tool::Wall => wall_name.clone(), _ => road_name.clone() }).collect();
-                        if names.len() > 2 { format!("{}, {} et {} autres", names[0], names[1], names.len() - 2) } else { names.join(", ") }
-                    }
-                    }),
+                    MenuRow::Pick(Tool::Build(kind)) => Some(format!("{} ({})", world.kind_name(kind), world.kinds[kind].cost)),
+                    MenuRow::Pick(Tool::Wall) => Some(format!("{wall_name} ({wall_cost})")),
                     MenuRow::Pick(Tool::Road) => Some(format!("{road_name} ({road_cost})")),
                     MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
+                    MenuRow::Key(sdl::KEY_END) => Some(tr("Rotation de la vue (Fin)")),
                     MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
                     MenuRow::Key(sdl::KEY_O) => Some(tr("Objectifs de l'épisode (O)")),
                     MenuRow::Key(sdl::KEY_J) => Some("Journal des messages (J)".to_string()),
                     MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
                     MenuRow::Key(sdl::KEY_C) => Some(tr("Cités du monde (C)")),
+                    MenuRow::Key(sdl::KEY_P) => Some(tr("Pause (P)")),
                     MenuRow::SidebarMap(true) => Some(tr("Carte générale")),
-                    MenuRow::SidebarMap(false) => Some("Constructions".to_string()),
+                    MenuRow::SidebarMap(false) => Some(tr("Constructions")),
                     MenuRow::Journal => Some("Journal des annonces (J)".to_string()),
                     _ => None,
                 };
                 if let Some(label) = label.filter(|l| !l.is_empty()) {
-                    let width = graphics.text_width(FONT_SMALL, &label) + 12.0;
+                    let width = graphics.text_width(FONT_SMALL, &label) + 16.0;
+                    let height = small_line + 8.0;
                     let (mut tx, mut ty) = (pointer_ui.0 + 14.0, pointer_ui.1 + 18.0);
                     tx = tx.min(w - width - 4.0);
-                    ty = ty.min(h - small_line - 10.0);
-                    sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
-                    sdl::SDL_SetRenderDrawColor(renderer, 250, 240, 200, 240);
-                    sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: tx, y: ty, w: width, h: small_line + 6.0 });
-                    graphics.ink = (40, 30, 10);
-                    graphics.draw_text(FONT_SMALL, &label, tx + 6.0, ty + 3.0);
-                    graphics.ink = (255, 255, 255);
+                    let floor = if pointer_ui.0 >= side { h - DOCK_HEIGHT } else { h };
+                    if ty + height > floor - 4.0 {
+                        ty = pointer_ui.1 - height - 8.0;
+                    }
+                    graphics.panel(tx, ty, width, height);
+                    graphics.ink = UI_INK;
+                    graphics.draw_text(FONT_SMALL, &label, tx + 8.0, ty + 4.0);
                 }
             }
             if !notice.0.is_empty() && now - notice.1 < NOTICE_MS {
