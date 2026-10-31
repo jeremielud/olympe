@@ -1596,9 +1596,9 @@ fn set_aside(world: &mut World, goals: &[Goal], text: &Text) -> String {
         let name = text.get(23, index).to_lowercase();
         let missing = amount - world.set_aside[index];
         if world.set_aside(index, missing) {
-            report.push(format!("{missing} {name} mis de côté"));
+            report.push(trf!("{} {} mis de côté", missing, name));
         } else {
-            report.push(format!("{name} : {} en stock sur {missing}", world.stored(index)));
+            report.push(trf!("{} : {} en stock sur {}", name, world.stored(index), missing));
         }
     }
     if report.is_empty() {
@@ -1679,15 +1679,15 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
     for (level, name) in level_names.iter().enumerate() {
         let (count, people) = houses.iter().filter(|h| h.level == level).fold((0, 0), |(c, p), h| (c + 1, p + h.population));
         if count > 0 {
-            population.push(format!("{name} : {count} ({people} habitants)"));
+            population.push(trf!("{} : {} ({} habitants)", name, count, people));
         }
     }
     pages.push((tr("Population"), population));
     // Emploi : postes par catégorie de bâtiments, et bâtiments à l'arrêt.
     let (needed, available) = (world.workers_needed(), world.workers_available());
     let mut employment = vec![match available - needed {
-        spare if spare >= 0 => format!("{needed} postes pour {available} travailleurs ; {spare} sans emploi"),
-        short => format!("{needed} postes pour {available} travailleurs ; il manque {} ouvriers", -short),
+        spare if spare >= 0 => trf!("{} postes pour {} travailleurs ; {} sans emploi", needed, available, spare),
+        short => trf!("{} postes pour {} travailleurs ; il manque {} ouvriers", needed, available, -short),
     }];
     let names: Vec<String> = CATEGORY_NAMES.iter().map(|&(index, fallback)| index.map(|i| text.get(4, i).trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| tr(fallback))).collect();
     for (category, name) in names.iter().enumerate() {
@@ -1704,7 +1704,7 @@ fn advice(text: &Text, world: &World, good_names: &[String], level_names: &[Stri
     let (sold, bought): (i32, i32) = world.cities.iter().fold((0, 0), |(s, b), c| (s + c.sold, b + c.bought));
     // Les percepteurs ne sortent pas sans palais.
     let unpaid = world.buildings.iter().flatten().find(|b| world.service_waits_for(b) == Some(Function::Palace));
-    let palace_note = unpaid.and_then(|_| world.kinds.iter().find(|k| k.function == Function::Palace)).map(|k| format!("Sans {}, les percepteurs ne lèvent aucun impôt", k.name.to_lowercase()));
+    let palace_note = unpaid.and_then(|_| world.kinds.iter().find(|k| k.function == Function::Palace)).map(|k| trf!("Sans {}, les percepteurs ne lèvent aucun impôt", k.name.to_lowercase()));
     pages.push((
         tr("Finances"),
         [
@@ -1873,13 +1873,13 @@ const LETTER_HEROES: [&str; 8] = ["achilles", "hercules", "jason", "odysseus", "
 /// Champs d'une lettre qui concerne une cité du monde.
 fn city_fields(text: &Text, world: &World, leaders: &[u8], city: usize) -> Vec<(&'static str, String)> {
     let written = CITY_TITLES.read().ok().and_then(|t| t.get(city).and_then(|(_, leader)| leader.clone()));
-    let leader = written.unwrap_or_else(|| leaders.get(city).map_or_else(|| "le chef".to_string(), |&l| text.get(139, l as usize)));
+    let leader = written.unwrap_or_else(|| leaders.get(city).map_or_else(|| tr("le chef"), |&l| text.get(139, l as usize)));
     vec![
-        ("player_name", "Chef".to_string()),
-        ("greeting", "Salutations".to_string()),
+        ("player_name", tr("Chef")),
+        ("greeting", tr("Salutations")),
         ("city_name", city_name(text, world, city)),
         ("leader_name", leader),
-        ("a_foreign_army", "une armée".to_string()),
+        ("a_foreign_army", tr("une armée")),
     ]
 }
 
@@ -2038,7 +2038,7 @@ fn hero_news(text: &Text, news: HeroNews, events: &[Event]) -> String {
         HeroNews::Arrived(hero) => text.get(heroes::TEXT_HALLS, 68).replace("[hero_name]", &hero_name(hero)),
         HeroNews::Departed(event) => {
             let (hero, quest) = quest(event);
-            format!("{hero} part : {quest}")
+            trf!("{} part : {}", hero, quest)
         }
         HeroNews::QuestDone(event) => trf!("Quête accomplie : {}", quest(event).1),
         HeroNews::Fighting(event) => trf!("Un héros affronte {}", monster_name(event)),
@@ -2071,16 +2071,16 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
         }),
         0 => {
             let unit = if b == 19 { 400 } else { 100 };
-            let alternative = if c > 0 { format!(" ou {}", resource(c)) } else { String::new() };
-            format!("{} {}{alternative} en réserve", a / unit, resource(b))
+            let alternative = if c > 0 { trf!(" ou {}", resource(c)) } else { String::new() };
+            trf!("{} {}{} en réserve", a / unit, resource(b), alternative)
         }
         1 if b == 43 => format!("{a} {} {}", resource(15).to_lowercase(), hall(34)),
-        1 => format!("{a} {}", if atlantean { "frégates" } else { "trières" }),
-        2 => format!("{a} manoirs ou mieux"),
+        1 => format!("{a} {}", if atlantean { tr("frégates") } else { tr("trières") }),
+        2 => trf!("{} manoirs ou mieux", a),
         10 => format!("{a} {}", hall(35)),
         3 => {
             let gods: Vec<String> = [b, c, d, e].iter().filter(|&&g| g >= 0).map(|&g| text.get(sanctuary::TEXT_GODS, g as usize)).collect();
-            if a > 1 { format!("{a} sanctuaires : {}", gods.join(", ")) } else { format!("{} {}", hall(47), gods.join(" ou ")) }
+            if a > 1 { trf!("{} sanctuaires : {}", a, gods.join(", ")) } else { trf!("{} {}", hall(47), gods.join(&tr(" ou "))) }
         }
         4 => hall(48),
         5 if b == -1 => hall(49),
@@ -2089,7 +2089,7 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
         7 => format!("{a} {}", hall(52)),
         8 => hall(54),
         9 => hall(55),
-        11 => format!("{a} drachmes {}", hall(36)),
+        11 => trf!("{} drachmes {}", a, hall(36)),
         12 => hall(56),
         13 => hall(57),
         14 => hall(58),
@@ -2101,10 +2101,10 @@ fn requirement_line(text: &Text, requirement: Requirement, check: Check, atlante
         return what;
     }
     let state = match check {
-        Check::Met => "rempli".to_string(),
-        Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 8 | 9 | 17) => format!("{current} % sur {wanted} %"),
-        Check::Missing { current, wanted } if requirement.kind == 4 => format!("criminalité {current}, sous {wanted} demandé"),
-        Check::Missing { current, wanted } if wanted > 1 => format!("{current} sur {wanted}"),
+        Check::Met => tr("rempli"),
+        Check::Missing { current, wanted } if matches!(requirement.kind, 5 | 8 | 9 | 17) => trf!("{} % sur {} %", current, wanted),
+        Check::Missing { current, wanted } if requirement.kind == 4 => trf!("criminalité {}, sous {} demandé", current, wanted),
+        Check::Missing { current, wanted } if wanted > 1 => trf!("{} sur {}", current, wanted),
         Check::Missing { .. } => tr("pas encore"),
         Check::Unsimulated => tr("non simulé, tenu pour rempli"),
     };
@@ -3614,7 +3614,7 @@ fn run(
     }
     // Monuments commémoratifs, ajoutés après les autres pour la même raison.
     for model in 0..zeus::world::COMMEMORATIVES {
-        let name = format!("{}, {}", text.get(TEXT_BUILDINGS, TYPE_COMMEMORATIVE), COMMEMORATIVE_SUBJECTS[model]);
+        let name = format!("{}, {}", text.get(TEXT_BUILDINGS, TYPE_COMMEMORATIVE), tr(COMMEMORATIVE_SUBJECTS[model]));
         let mut monument = Kind::simple(name, rules(TYPE_COMMEMORATIVE)?.cost, 3, COMMEMORATIVE_IMAGE + model, Function::Commemorative(model as u8), 0);
         monument.appeal = appeal_of(TYPE_COMMEMORATIVE)?;
         kinds.push(monument);
@@ -4210,12 +4210,12 @@ fn run(
             if let Some((city, change, resource)) = world.trade_news.pop() {
                 let (name, good) = (city_name(&text, &world, city), request_good(&text, resource));
                 let line = match change {
-                    0 => format!("{name} demande davantage de {good}"),
-                    1 => format!("{name} demande moins de {good}"),
-                    2 => format!("{name} vend davantage de {good}"),
-                    3 => format!("{name} vend moins de {good}"),
-                    4 => format!("Le prix de {good} monte : {} dr.", world.price(resource as usize)),
-                    _ => format!("Le prix de {good} baisse : {} dr.", world.price(resource as usize)),
+                    0 => trf!("{} demande davantage de {}", name, good),
+                    1 => trf!("{} demande moins de {}", name, good),
+                    2 => trf!("{} vend davantage de {}", name, good),
+                    3 => trf!("{} vend moins de {}", name, good),
+                    4 => trf!("Le prix de {} monte : {} dr.", good, world.price(resource as usize)),
+                    _ => trf!("Le prix de {} baisse : {} dr.", good, world.price(resource as usize)),
                 };
                 notice = (line, now);
                 world.trade_news.clear();
@@ -4232,7 +4232,7 @@ fn run(
                     fields.extend([("item", good.clone()), ("itemshort", good)]);
                     post("gift_title", if amount > 0 { "gift_granted" } else { "gift_insufficient_space" }, &fields);
                 }
-                let lines: Vec<String> = gifts.iter().filter(|g| g.2 > 0).map(|&(city, resource, amount)| format!("{amount} {} de {}", request_good(&text, resource), city_name(&text, &world, city))).collect();
+                let lines: Vec<String> = gifts.iter().filter(|g| g.2 > 0).map(|&(city, resource, amount)| trf!("{} {} de {}", amount, request_good(&text, resource), city_name(&text, &world, city))).collect();
                 if !lines.is_empty() {
                     notice = (trf!("Cadeaux reçus : {}", lines.join(", ")), now);
                 }
@@ -4258,7 +4258,7 @@ fn run(
             }
             if let Some((god, resource, amount)) = world.blessings.pop() {
                 let name = text.get(sanctuary::TEXT_GODS, god as usize);
-                notice = (format!("{name} vous rend visite et vous offre {amount} {}", request_good(&text, resource)), now);
+                notice = (trf!("{} vous rend visite et vous offre {} {}", name, amount, request_good(&text, resource)), now);
                 world.blessings.clear();
             }
             if !world.tributes.is_empty() {
@@ -4296,7 +4296,7 @@ fn run(
                     post(&format!("general_request_title_{tone}"), &format!("general_request_initial_announcement_{tone}"), &fields);
                 }
                 notice = match news {
-                    zeus::world::RequestNews::Arrived(_) => (format!("{name} demande {} {good} (touche C)", r.amount), now),
+                    zeus::world::RequestNews::Arrived(_) => (trf!("{} demande {} {} (touche C)", name, r.amount, good), now),
                     zeus::world::RequestNews::Expired(_) => (trf!("La demande de {} n'a pas été satisfaite", name), now),
                 };
                 world.request_news.clear();
@@ -4319,9 +4319,13 @@ fn run(
             }
             if let Some(change) = world.wage_news.pop() {
                 let tone = if change > 0 { "I" } else { "D" };
-                post(&format!("wage_change_title_{tone}"), &format!("wage_change_initial_announcement_{tone}"), &[("player_name", "Chef".to_string()), ("amount", change.abs().to_string())]);
-                let (verb, normal) = (if change > 0 { "montent" } else { "baissent" }, 30 + world.wage_shift);
-                notice = (format!("Les salaires {verb} de {} dr. : {normal} dr. par an pour dix ouvriers", change.abs()), now);
+                post(&format!("wage_change_title_{tone}"), &format!("wage_change_initial_announcement_{tone}"), &[("player_name", tr("Chef")), ("amount", change.abs().to_string())]);
+                let normal = 30 + world.wage_shift;
+                notice = (if change > 0 {
+                    trf!("Les salaires montent de {} dr. : {} dr. par an pour dix ouvriers", change.abs(), normal)
+                } else {
+                    trf!("Les salaires baissent de {} dr. : {} dr. par an pour dix ouvriers", change.abs(), normal)
+                }, now);
                 world.wage_news.clear();
             }
             if let Some((city, change)) = world.world_news.pop() {
@@ -4336,17 +4340,17 @@ fn run(
                     post(&format!("{key}_title"), &format!("{key}_initial_announcement"), &city_fields(&text, &world, &leaders, city));
                 }
                 let line = match change {
-                    zeus::world::BECOMES_ALLY => format!("{name} redevient votre alliée"),
-                    zeus::world::BECOMES_RIVAL => format!("{name} devient votre rivale"),
-                    zeus::world::BECOMES_VASSAL => format!("{name} devient votre vassale"),
-                    zeus::world::VASSAL_REBELS => format!("{name} se rebelle"),
-                    zeus::world::MILITARY_BUILDUP => format!("{name} renforce son armée"),
-                    zeus::world::MILITARY_DECLINE => format!("L'armée de {name} s'affaiblit"),
-                    zeus::world::TRADE_SHUTS => format!("{name} cesse de commercer avec vous"),
-                    zeus::world::TRADE_OPENS => format!("{name} ouvre son commerce avec vous"),
-                    zeus::world::ARMY_AWAY => format!("L'armée de {name} part en campagne : la cité est vulnérable"),
-                    zeus::world::BECOMES_INACTIVE | zeus::world::DISAPPEARS => format!("{name} se retire du monde"),
-                    _ => format!("{name} reparaît dans le monde"),
+                    zeus::world::BECOMES_ALLY => trf!("{} redevient votre alliée", name),
+                    zeus::world::BECOMES_RIVAL => trf!("{} devient votre rivale", name),
+                    zeus::world::BECOMES_VASSAL => trf!("{} devient votre vassale", name),
+                    zeus::world::VASSAL_REBELS => trf!("{} se rebelle", name),
+                    zeus::world::MILITARY_BUILDUP => trf!("{} renforce son armée", name),
+                    zeus::world::MILITARY_DECLINE => trf!("L'armée de {} s'affaiblit", name),
+                    zeus::world::TRADE_SHUTS => trf!("{} cesse de commercer avec vous", name),
+                    zeus::world::TRADE_OPENS => trf!("{} ouvre son commerce avec vous", name),
+                    zeus::world::ARMY_AWAY => trf!("L'armée de {} part en campagne : la cité est vulnérable", name),
+                    zeus::world::BECOMES_INACTIVE | zeus::world::DISAPPEARS => trf!("{} se retire du monde", name),
+                    _ => trf!("{} reparaît dans le monde", name),
                 };
                 notice = (line, now);
                 world.world_news.clear();
@@ -4409,11 +4413,11 @@ fn run(
             if let Some(disaster) = world.disasters.pop() {
                 let name = &world.kinds[disaster.kind].name;
                 let line = match disaster.cause {
-                    Cause::Fire => format!("Incendie : {name}"),
-                    Cause::Collapse => format!("Effondrement : {name}"),
-                    Cause::Raid => format!("Les envahisseurs incendient : {name}"),
-                    Cause::Monster(monster) => format!("{} détruit : {name}", text.get(heroes::TEXT_MONSTERS, monster as usize)),
-                    Cause::God(god) => format!("{} détruit : {name}", text.get(sanctuary::TEXT_GODS, god as usize)),
+                    Cause::Fire => trf!("Incendie : {}", name),
+                    Cause::Collapse => trf!("Effondrement : {}", name),
+                    Cause::Raid => trf!("Les envahisseurs incendient : {}", name),
+                    Cause::Monster(monster) => trf!("{} détruit : {}", text.get(heroes::TEXT_MONSTERS, monster as usize), name),
+                    Cause::God(god) => trf!("{} détruit : {}", text.get(sanctuary::TEXT_GODS, god as usize), name),
                 };
                 notice = (line, now);
                 world.disasters.clear();
@@ -4432,7 +4436,7 @@ fn run(
                     .iter()
                     .enumerate()
                     .map(|(i, &k)| {
-                        let name = story(data, map_path, settings.as_ref(), Step::Colony(k), Moment::Opening).map_or_else(|| format!("Colonie {}", k + 1), |(title, _)| title);
+                        let name = story(data, map_path, settings.as_ref(), Step::Colony(k), Moment::Opening).map_or_else(|| trf!("Colonie {}", k + 1), |(title, _)| title);
                         format!("{} : {name}", i + 1)
                     })
                     .collect();
@@ -4500,7 +4504,7 @@ fn run(
             commemoratives = world.commemoratives.len();
             if notice != logged {
                 logged = notice.clone();
-                if !JOURNAL_SKIPS.iter().any(|skip| notice.0.starts_with(skip)) {
+                if !JOURNAL_SKIPS.iter().any(|skip| notice.0.starts_with(skip) || notice.0.starts_with(&tr(skip))) {
                     let (day, month, year) = world.date();
                     let year = if start_year == 0 { year as i64 + 1 } else { start_year as i64 + year as i64 };
                     let date = format!("{} {} {}{}", day + 1, months[month as usize], year.abs(), if year < 0 { " av. J.-C." } else { "" });
@@ -4553,7 +4557,7 @@ fn run(
                         sdl::KEY_V => {
                             let next = (OVERLAYS.iter().position(|&(o, _)| o == overlay).unwrap_or(0) + 1) % OVERLAYS.len();
                             overlay = OVERLAYS[next].0;
-                            notice = (OVERLAYS[next].1.to_string(), now);
+                            notice = (tr(OVERLAYS[next].1), now);
                         }
                         sdl::KEY_F5 => {
                             notice = match journey.save(&world, &save_file) {
@@ -4848,9 +4852,9 @@ fn run(
                                 let Some(draft) = company.take() else { continue };
                                 let name = city_name(&text, &world, draft.city);
                                 notice = match world.conquer_with(draft.city, draft.raid, draft.soldiers, draft.triremes) {
-                                    Ok(months) => (format!("La compagnie part {} {name} : {months} mois de marche", if draft.raid { "piller" } else { "attaquer" }), now),
-                                    Err(Conquest::NoArmy) => ("Aucune troupe choisie".to_string(), now),
-                                    Err(Conquest::TooMany) => (format!("Pas assez de soldats ou de {} pour cette compagnie", world.ship_plural()), now),
+                                    Ok(months) => (if draft.raid { trf!("La compagnie part piller {} : {} mois de marche", name, months) } else { trf!("La compagnie part attaquer {} : {} mois de marche", name, months) }, now),
+                                    Err(Conquest::NoArmy) => (tr("Aucune troupe choisie"), now),
+                                    Err(Conquest::TooMany) => (trf!("Pas assez de soldats ou de {} pour cette compagnie", world.ship_plural()), now),
                                     Err(Conquest::Away) => ("L'armée est déjà en campagne".to_string(), now),
                                     Err(_) => (trf!("{} ne peut pas être attaquée", name), now),
                                 };
@@ -5252,7 +5256,7 @@ fn run(
             // Maisons du rectangle et leur coût, près du pointeur.
             if let Some((count, total, name)) = &drag_summary {
                 // La police du jeu n'a ni « × » ni tiret long.
-                let label = format!("{count} {name} : {total} {}", text.get(8, 0));
+                let label = trf!("{} {} : {} {}", count, name, total, text.get(8, 0));
                 let (lx, ly) = (pointer.0 / ui + 16.0, pointer.1 / ui - 8.0);
                 let width = graphics.text_width(FONT_SMALL, &label) + 8.0;
                 sdl::SDL_SetRenderDrawColor(renderer, 20, 20, 20, 200);
@@ -6210,9 +6214,9 @@ fn run(
                         let state = match status {
                             Status::Met => text.get(194, 62).to_lowercase(),
                             Status::Pending(Some(done)) if goal.kind == GoalKind::SetAside => {
-                                format!("{done} mis de côté, {} en stock", world.stored(goal.values[0] as usize))
+                                trf!("{} mis de côté, {} en stock", done, world.stored(goal.values[0] as usize))
                             }
-                            Status::Pending(Some(current)) => format!("actuellement {current}"),
+                            Status::Pending(Some(current)) => trf!("actuellement {}", current),
                             Status::Pending(None) => text.get(194, 52),
                             Status::Unsupported => tr("pas encore simulé par Olympe"),
                         };
@@ -6253,7 +6257,7 @@ fn run(
                 let pages = advice(&text, &world, &good_names, &level_names);
                 advisor_page %= pages.len();
                 let (title, lines) = &pages[advisor_page];
-                let heading = format!("Conseiller : {title} ({}/{}, Tab)", advisor_page + 1, pages.len());
+                let heading = trf!("Conseiller : {} ({}/{}, Tab)", title, advisor_page + 1, pages.len());
                 let width = lines.iter().map(|l| graphics.text_width(FONT_TEXT, l)).fold(graphics.text_width(FONT_TITLE, &heading), f32::max) + 48.0;
                 let height = title_line + 32.0 + row * lines.len() as f32;
                 let (px, py) = ((w - width) / 2.0, (h - height) / 2.0);
@@ -6279,17 +6283,17 @@ fn run(
                         let status = if c.kind == zeus::map::DISTANT { "lointaine".to_string() } else { statuses.get(c.status.clamp(0, 3) as usize).cloned().unwrap_or_default() };
                         let open = c.kind == zeus::map::FOREIGN && c.status <= zeus::map::RIVAL;
                         let action = if open { trf!(", défense {}, {} mois de marche) [soumettre]", world.defence(i), world.travel_months(i)) } else { ")".to_string() };
-                        let raid = if open { "  [piller]".to_string() } else { String::new() };
+                        let raid = if open { tr("  [piller]") } else { String::new() };
                         let names = |goods: &[(u8, i32)]| goods.iter().map(|&(g, _)| text.get(23, g as usize).to_lowercase()).collect::<Vec<_>>().join(", ");
                         let goods = trf!("Vend {} ; achète {}", names(&c.sells), names(&c.buys));
-                        let post = if world.sea_route(i) { "des docks" } else { "un poste de commerce" };
                         let trade = match (world.trades_with(i), served.contains(&i)) {
-                            (true, true) => format!("{goods} (ventes {} dr., achats {} dr.)", c.sold, c.bought),
-                            (true, false) => format!("{goods} : construisez {post} pour commercer"),
+                            (true, true) => trf!("{} (ventes {} dr., achats {} dr.)", goods, c.sold, c.bought),
+                            (true, false) if world.sea_route(i) => trf!("{} : construisez des docks pour commercer", goods),
+                            (true, false) => trf!("{} : construisez un poste de commerce pour commercer", goods),
                             (false, _) => String::new(),
                         };
                         let away = if world.army_away(i) { tr(", armée partie") } else { String::new() };
-                        (i, format!("{} ({status}, faveur {}, force {}{away}{action}", city_name(&text, &world, i), c.favor, c.military), raid, trade)
+                        (i, trf!("{} ({}, faveur {}, force {}{}{}", city_name(&text, &world, i), status, c.favor, c.military, away, action), raid, trade)
                     })
                     .collect();
                 // Le commerce d'une cité s'écrit en retrait sur une seconde ligne.
@@ -6339,12 +6343,12 @@ fn run(
                 let below = py + height + 8.0 + row * world.requests.len() as f32;
                 for (i, &resource) in traded.iter().enumerate() {
                     let policy = match world.trade_policy[resource] {
-                        TradePolicy::Both => "vente du surplus et achat",
-                        TradePolicy::SellOnly => "vente du surplus seulement",
-                        TradePolicy::BuyOnly => "achat seulement",
-                        TradePolicy::Neither => "ni vente ni achat",
+                        TradePolicy::Both => tr("vente du surplus et achat"),
+                        TradePolicy::SellOnly => tr("vente du surplus seulement"),
+                        TradePolicy::BuyOnly => tr("achat seulement"),
+                        TradePolicy::Neither => tr("ni vente ni achat"),
                     };
-                    let line = format!("Commerce de {} : {policy} [changer]", text.get(23, resource).to_lowercase());
+                    let line = trf!("Commerce de {} : {} [changer]", text.get(23, resource).to_lowercase(), policy);
                     let y = below + row * i as f32;
                     let line_width = (graphics.text_width(FONT_TEXT, &line) + 48.0).max(width);
                     graphics.panel(px, y, line_width, row);
@@ -6457,14 +6461,15 @@ fn run(
                 draft.triremes = draft.triremes.clamp(0, ships);
                 company = Some(draft);
 
-                let action = if draft.raid { "piller" } else { "soumettre" };
-                let title = format!("Compagnie pour {action} {}", city_name(&text, &world, draft.city));
+                let target = city_name(&text, &world, draft.city);
+                let title = if draft.raid { trf!("Compagnie pour piller {}", target) } else { trf!("Compagnie pour soumettre {}", target) };
                 let detail = trf!("Défense {} — {} mois de marche", world.defence(draft.city), world.travel_months(draft.city));
-                let ships_label = if world.atlantean { "Frégates" } else { "Trières" };
-                let units = [("Piétaille", 0), ("Hoplites", 1), ("Cavaliers", 2), (ships_label, 3)];
+                let ships_label = if world.atlantean { tr("Frégates") } else { tr("Trières") };
+                let units = [(tr("Piétaille"), 0), (tr("Hoplites"), 1), (tr("Cavaliers"), 2), (ships_label, 3)];
                 let lines: Vec<String> = units
                     .iter()
-                    .map(|&(name, slot)| {
+                    .map(|(name, slot)| {
+                        let slot = *slot;
                         let (count, max) = if slot < 3 { (draft.soldiers[slot], ranks[slot]) } else { (draft.triremes, ships) };
                         format!("{name} : {count} / {max}")
                     })
@@ -6553,14 +6558,14 @@ fn run(
                     MenuRow::Pick(Tool::Demolish) => Some(demolish_name.clone()),
                     MenuRow::Group(button) => open_category.and_then(|c| category_groups(&world, c).into_iter().find(|(b, _)| *b == button)).map(|(_, tools)| {
                         let names: Vec<String> = tools.iter().map(|&(_, t)| match t { Tool::Build(k) => world.kind_name(k), Tool::Wall => wall_name.clone(), _ => road_name.clone() }).collect();
-                        if names.len() > 2 { format!("{}, {} et {} autres", names[0], names[1], names.len() - 2) } else { names.join(", ") }
+                        if names.len() > 2 { trf!("{}, {} et {} autres", names[0], names[1], names.len() - 2) } else { names.join(", ") }
                     }),
-                    MenuRow::Journal => Some("Journal des annonces (J)".to_string()),
+                    MenuRow::Journal => Some(tr("Journal des annonces (J)")),
                     MenuRow::Key(sdl::KEY_END) => Some(tr("Rotation de la vue (Fin)")),
-                    MenuRow::Key(sdl::KEY_H) => Some("Aide (H)".to_string()),
+                    MenuRow::Key(sdl::KEY_H) => Some(tr("Aide (H)")),
                     MenuRow::Key(sdl::KEY_O) => Some(tr("Objectifs de l'épisode (O)")),
-                    MenuRow::Key(sdl::KEY_J) => Some("Journal des messages (J)".to_string()),
-                    MenuRow::Key(sdl::KEY_A) => Some("Conseillers (A)".to_string()),
+                    MenuRow::Key(sdl::KEY_J) => Some(tr("Journal des messages (J)")),
+                    MenuRow::Key(sdl::KEY_A) => Some(tr("Conseillers (A)")),
                     MenuRow::Key(sdl::KEY_C) => Some(tr("Cités du monde (C)")),
                     MenuRow::Key(sdl::KEY_P) => Some(tr("Pause (P)")),
                     MenuRow::SidebarMap(true) => Some(tr("Carte générale")),

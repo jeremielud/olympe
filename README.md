@@ -30,11 +30,11 @@ Estimate per area (October 2026), weighted by what a player runs into:
 | Trade and world cities | 70 % |
 | Mythology (gods, heroes, monsters, quests) | 70 % |
 | Army and combat (walls, towers, gatehouses, distant campaigns and raids) | 70 % |
-| Languages (English, Esperanto) and cheat menu | 55 % (menus, help, advisors, city status, info panels, panels and messages; full translation still to do) |
+| Languages (English, Esperanto) and cheat menu | 75 % (the whole game interface is translated, English using the official game's terms; still French: command-line options and debugging output; no cheat menu yet) |
 
 Still missing, notably: the image and specific rules of the Atlantean frigate (in an
 Atlantean city, the wharf and ship carry their Atlantean names but keep the trireme's
-image and rules), and a complete translation of the interface.
+image and rules), and the cheat menu.
 
 Checked by playing: the first tutorial, the colony tutorial and the first episode of
 *Perseus and Medusa* can be won with a city built by script (`essais/`).
@@ -329,7 +329,7 @@ adventure screen); the choice is remembered in the `langue` file of the user's
 configuration folder. The game's texts come from the language's subfolder (`en`) when
 it exists; Esperanto has its own translations. Esperanto voices, when available, go in
 `donnees/eo/audio/voice/campaign` and take precedence over those of the installation.
-Part of the interface still has to be translated.
+The English interface uses the terms of the official English release.
 
 Two interfaces are available: the original game's (the default) and a modern one, with
 a dark top bar with plaques and a build panel listing every building with its

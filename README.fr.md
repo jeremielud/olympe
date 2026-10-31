@@ -29,11 +29,11 @@ Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre 
 | Commerce et cités du monde | 70 % |
 | Mythologie (dieux, héros, monstres, quêtes) | 70 % |
 | Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 70 % |
-| Langues (anglais, espéranto) et menu de triche | 55 % (menus, aide, conseillers, état de la cité, fiches, panneaux et messages ; traduction complète à finir) |
+| Langues (anglais, espéranto) et menu de triche | 75 % (toute l'interface du jeu est traduite, l'anglais avec les termes du jeu officiel ; restent en français les options de la ligne de commande et les sorties de mise au point ; pas encore de menu de triche) |
 
 Manque encore notamment : l'image et les règles propres de la frégate atlante
 (dans une cité atlante, le quai et le navire portent leur nom atlante, mais gardent
-l'image et les règles de la trière), et la traduction complète de l'interface.
+l'image et les règles de la trière), et le menu de triche.
 
 Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
 *Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
@@ -339,7 +339,7 @@ aventures) ; le choix est retenu dans le fichier `langue` de la configuration de
 l'utilisateur. Les textes du jeu viennent du sous-dossier de la langue (`en`) quand il
 existe ; l'espéranto a ses propres traductions. Les voix espéranto, quand elles
 existent, se rangent dans `donnees/eo/audio/voice/campaign` et passent avant celles de
-l'installation. Une partie de l'interface reste à traduire.
+l'installation. L'interface anglaise emploie les termes de la version anglaise officielle.
 
 Deux habillages sont proposés : celui du jeu d'origine (par défaut) et un habillage
 moderne, avec un bandeau sombre à plaques et un panneau de construction en liste, où

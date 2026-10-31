@@ -144,7 +144,7 @@ L'armée de {} part en campagne : la cité est vulnérable	The army of {} goes o
 {} reparaît dans le monde	{} reappears in the world
 Des voleurs ont pillé une maison luxueuse : postez des gardes	Thieves have looted a luxury house: post guards
 Un voleur a dérobé {} dr. au trésor : postez des gardes	A thief stole {} dr. from the treasury: post guards
-Une épidémie a emporté {} habitants : bâtissez des infirmeries	An epidemic killed {} residents: build infirmaries
+Une épidémie a emporté {} habitants : bâtissez des infirmeries	Plague killed {} residents: build infirmaries
 Incendie	Fire
 Effondrement	Collapse
 épisode suivant : {}	next episode: {}
@@ -182,8 +182,8 @@ Attrait : {}	Appeal: {}
 {} mis de côté, {} en stock	{} set aside, {} in stock
 pas encore simulé par Olympe	not yet simulated by Olympe
 R : mettre de côté ce qui est en stock	R: set aside what is in stock
-Conseiller : {} ({}/{}, Tab)	Adviser: {} ({}/{}, Tab)
-Cités du monde	Cities of the world
+Conseiller : {} ({}/{}, Tab)	Overseer: {} ({}/{}, Tab)
+Cités du monde	World cities
 , soumettre : {} sur {}	, subdue: {} out of {}
   vend {} ; achète {} (ventes {} dr., achats {} dr.)	  sells {}; buys {} (sales {} dr., purchases {} dr.)
   [ouvrir le commerce : {} dr.]	  [open trade: {} dr.]
@@ -216,19 +216,19 @@ Page préc. et Page suiv. : vitesse du jeu	Page Up and Page Down: game speed
 F5 : enregistrer ; F9 : recharger	F5: save; F9: reload
 F : plein écran	F: full screen
 M : musique ; B : bruitages	M: music; B: sound effects
-O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)	O: episode goals; C: cities of the world (click: subdue); A: advisers (Tab: page)
+O : objectifs de l'épisode ; C : cités du monde (clic : soumettre) ; A : conseillers (Tab : page)	O: episode goals; C: world cities (click: subdue); A: aides (Tab: page)
 R : mettre de côté les marchandises demandées	R: set aside the requested goods
 + et - : taux d'imposition	+ and -: tax rate
 Survoler un bâtiment : ses informations ; clic sur un passant : il parle	Hover a building: its details; click a walker: they talk
 H : refermer cette aide	H: close this help
-Agriculture	Agriculture
+Agriculture	Husbandry
 Industrie	Industry
 Distribution	Distribution
-Hygiène et sécurité	Health and safety
+Hygiène et sécurité	Hygiene and Safety
 Administration	Administration
 Culture	Culture
 Embellissement	Beautification
-Armée	Army
+Armée	Military
 aucun	none
 très bas	very low
 bas	low
@@ -240,7 +240,7 @@ usage :\n  olympe                              lance le jeu (écran de choix d'a
 Glisser avec le clic droit ou flèches : déplacer la vue	Right-drag or arrow keys: move the view
 Clic gauche : bâtir ; glisser pour tracer une route (bouton route sous les onglets)	Left click: build; drag to lay a road (road button under the tabs)
 V : vues (eau, risques, attrait, criminalité, culture, santé, impôts) ; J : journal	V: overlays (water, risks, appeal, crime, culture, health, taxes); J: journal
-O : objectifs de l'épisode ; C : cités du monde (clic : choisir la compagnie) ; A : conseillers (Tab : page)	O: episode goals; C: cities of the world (click: choose the company); A: advisers (Tab: page)
+O : objectifs de l'épisode ; C : cités du monde (clic : choisir la compagnie) ; A : conseillers (Tab : page)	O: episode goals; C: world cities (click: choose the company); A: aides (Tab: page)
 Survoler un bâtiment : son résumé ; clic droit : sa fiche ; clic sur un passant : il parle	Hover a building: its summary; right click: its details; click a walker: they talk
 Musique (M)	Music (M)
 Bruitages (B)	Sound effects (B)
@@ -251,8 +251,8 @@ Pause (P)	Pause (P)
 Vues (V)	Overlays (V)
 Mettre de côté (R)	Set aside (R)
 Objectifs (O)	Goals (O)
-Conseillers (A)	Advisers (A)
-Cités du monde (C)	Cities of the world (C)
+Conseillers (A)	Aides (A)
+Cités du monde (C)	World cities (C)
 Journal (J)	Journal (J)
  av. J.-C.	 BC
   (pause)	  (paused)
@@ -351,3 +351,83 @@ Habillage moderne (I)	Modern interface (I)
 Habillage d'origine (I)	Original interface (I)
 I : habillage d'origine ou moderne	I: original or modern interface
 Cités (C)	Cities (C)
+Sans {}, les percepteurs ne lèvent aucun impôt	Without a {}, tax collectors levy no taxes
+le chef	the leader
+Chef	Leader
+Salutations	Greetings
+une armée	an army
+ ou {}	 or {}
+frégates	frigates
+{} {}	{} {}
+ ou 	 or 
+{} drachmes {}	{} drachmas {}
+rempli	met
+criminalité {}, sous {} demandé	crime {}, below {} required
+{} sur {}	{} of {}
+{} {} de {}	{} {} from {}
+Les salaires montent de {} dr. : {} dr. par an pour dix ouvriers	Wages rise by {} dr.: {} dr. a year for ten workers
+Les salaires baissent de {} dr. : {} dr. par an pour dix ouvriers	Wages fall by {} dr.: {} dr. a year for ten workers
+Incendie : {}	Fire: {}
+Effondrement : {}	Collapse: {}
+Les envahisseurs incendient : {}	Invaders set fire to: {}
+{} détruit : {}	{} destroys: {}
+Colonie {}	Colony {}
+La compagnie part piller {} : {} mois de marche	The company sets out to raid {}: {} months' march
+La compagnie part attaquer {} : {} mois de marche	The company sets out to attack {}: {} months' march
+Aucune troupe choisie	No forces chosen
+Pas assez de soldats ou de {} pour cette compagnie	Not enough soldiers or {} for this company
+{} {} : {} {}	{} {}: {} {}
+actuellement {}	currently {}
+  [piller]	  [raid]
+{} (ventes {} dr., achats {} dr.)	{} (sales {} dr., purchases {} dr.)
+{} : construisez des docks pour commercer	{}: build a Pier to trade
+{} : construisez un poste de commerce pour commercer	{}: build a Trading Post to trade
+{} ({}, faveur {}, force {}{}{}	{} ({}, favor {}, strength {}{}{}
+vente du surplus et achat	sell surplus and buy
+vente du surplus seulement	sell surplus only
+achat seulement	buy only
+ni vente ni achat	neither sell nor buy
+Commerce de {} : {} [changer]	Trade in {}: {} [change]
+Compagnie pour piller {}	Choose forces to raid {}
+Compagnie pour soumettre {}	Choose forces to conquer {}
+Frégates	Frigates
+Trières	Triremes
+Piétaille	Rabble
+Hoplites	Hoplites
+Cavaliers	Horsemen
+{}, {} et {} autres	{}, {} and {} more
+Journal des annonces (J)	Message log (J)
+Aide (H)	Help (H)
+Journal des messages (J)	Message log (J)
+Espace ou P : pause	Space or P: pause
+Origine et Fin : pivoter la vue	Home and End: rotate the view
+Vue normale	View: normal
+Vue : eau	View: water
+Vue : risque d'incendie	View: fire risk
+Vue : risque d'effondrement	View: collapse risk
+Vue : attrait	View: appeal
+Vue : criminalité	View: crime
+Vue : culture	View: culture
+Vue : santé	View: health
+Vue : impôts	View: taxes
+croissance	growth
+victoire	victory
+colonie	colony
+athlètes	athletes
+conquête	conquest
+âge d'or	golden age
+héros	heroes
+alliance	alliance
+sagesse	wisdom
+Vue	View
+Vitesse	Speed
+Musique	Music
+Bruitages	Sound effects
+Imposition	Taxation
+Partie	Game
+Enregistrement	Cannot save
+Chargement	Cannot load
+Rien à mettre	Nothing to set
+Route commerciale	Trade route
+Pas de route	No road
+Pas assez de drachmes	Not enough drachmas
