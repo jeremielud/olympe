@@ -335,6 +335,13 @@ existe ; l'espéranto a ses propres traductions. Les voix espéranto, quand elle
 existent, se rangent dans `donnees/eo/audio/voice/campaign` et passent avant celles de
 l'installation. Une partie de l'interface reste à traduire.
 
+Deux habillages sont proposés : celui du jeu d'origine (par défaut) et un habillage
+moderne, avec un bandeau sombre à plaques et un panneau de construction en liste, où
+chaque bâtiment a sa vignette, son prix et sa description. La touche `I` ou le menu
+Options passe de l'un à l'autre, et le choix est retenu dans le fichier `interface` de
+la configuration ; `--interface moderne` ou `--interface origine` l'impose pour un seul
+lancement.
+
 Les parties s'enregistrent avec `F5` et se rechargent avec `F9` ; elles sont rangées
 dans le sous-dossier `sauvegardes` des données.
 
