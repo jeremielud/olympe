@@ -418,8 +418,8 @@ const MILITARY_TAB: usize = 9;
 const WINGED_TAB: usize = 0;
 /// Boutons ronds d'origine : route, barrage routier, pelle, rotation.
 const ROAD_BUTTON: usize = 1275;
-const CLEAR_BUTTON: usize = 1279;
-const ROADBLOCK_BUTTON: usize = 1283;
+const ROADBLOCK_BUTTON: usize = 1279;
+const CLEAR_BUTTON: usize = 1283;
 const ROTATE_BUTTON: usize = 1287;
 /// Ruban vertical des catégories, à gauche du panneau.
 const RAIL_LEFT: f32 = 8.0;
@@ -695,8 +695,6 @@ enum MenuRow {
     Policy(usize),
     /// Bascule une vue en surimpression (boutons « Voir… » du panneau).
     Overlay(Overlay),
-    /// Zone des messages du panneau : ouvre le journal.
-    Journal,
     /// Menu du bandeau (Fichier, Options, Aide) : l'ouvre ou le referme.
     TopMenu(usize),
     /// Onglets du haut du panneau : constructions, ou carte générale.
@@ -2170,7 +2168,6 @@ const FONT_CHROME: Font = Font(335);
 /// appréciations, comme sous les onglets du jeu.
 const FONT_SMALL: Font = Font(1809);
 const FONT_SMALL_GOLD: Font = Font(1943);
-const CHROME_INK: (u8, u8, u8) = (20, 40, 90);
 /// Habillage moderne : ardoise profonde, or patiné, parchemin clair.
 const UI_INK: (u8, u8, u8) = (238, 231, 213);
 const UI_MUTED: (u8, u8, u8) = (152, 164, 176);
@@ -2178,7 +2175,6 @@ const UI_GOLD: (u8, u8, u8) = (224, 186, 98);
 const UI_GREEN: (u8, u8, u8) = (126, 196, 128);
 const UI_RED: (u8, u8, u8) = (224, 116, 96);
 const UI_FILL: (u8, u8, u8, u8) = (13, 19, 27, 238);
-const UI_FILL_SOFT: (u8, u8, u8, u8) = (23, 32, 43, 220);
 const UI_FILL_HOVER: (u8, u8, u8, u8) = (43, 58, 74, 235);
 const UI_LINE: (u8, u8, u8, u8) = (188, 150, 74, 110);
 
@@ -2248,17 +2244,6 @@ impl Graphics {
         pen - x
     }
 
-    /// Dessine une image de l'interface d'origine, coin haut-gauche en (x, y).
-    unsafe fn blit(&mut self, image: usize, x: f32, y: f32) {
-        if let Some(sprite) = self.sprite(Source::Interface, image) {
-            let target = sdl::FRect { x, y, w: sprite.width, h: sprite.height };
-            unsafe {
-                sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_NEAREST);
-                sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
-            }
-        }
-    }
-
     /// Dessine une image de l'interface d'origine, agrandie ou réduite.
     unsafe fn blit_scaled(&mut self, image: usize, x: f32, y: f32, w: f32, h: f32) {
         if let Some(sprite) = self.sprite(Source::Interface, image) {
@@ -2300,14 +2285,6 @@ impl Graphics {
         }
     }
 
-    /// Panneau sans ombre, pour les bandeaux collés au bord de l'écran.
-    unsafe fn slab(&self, x: f32, y: f32, w: f32, h: f32, colour: (u8, u8, u8, u8)) {
-        unsafe {
-            self.fill(x, y, w, h, colour);
-            self.stroke(x, y, w, h, UI_LINE);
-            self.fill(x + 1.0, y + 1.0, w - 2.0, 1.0, (206, 168, 88, 190));
-        }
-    }
 
     /// Vignette d'un bâtiment : sa plus haute image, réduite dans la case donnée.
     /// Les champs (parts `crop`) sont écartés : c'est le bâtiment qu'on reconnaît.
@@ -2363,31 +2340,35 @@ impl Graphics {
 
 /// Plaque du bandeau : libellé discret au-dessus, valeur lisible dessous.
 unsafe fn hud_chip(graphics: &mut Graphics, right: &mut f32, y: f32, label: &str, value: &str, colour: (u8, u8, u8)) -> (f32, f32, f32, f32) {
-    let width = graphics.text_width(FONT_TEXT, value).max(graphics.text_width(FONT_SMALL, label)) + 18.0;
-    *right -= width;
-    let slot = (*right, y, width, 32.0);
-    graphics.fill(slot.0, slot.1, slot.2, slot.3, (18, 25, 34, 235));
-    graphics.stroke(slot.0, slot.1, slot.2, slot.3, UI_LINE);
-    graphics.ink = colour;
-    if label.is_empty() {
-        graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 9.0);
-    } else {
-        graphics.ink = UI_MUTED;
-        graphics.draw_text(FONT_SMALL, label, slot.0 + 9.0, slot.1 + 3.0);
+    unsafe {
+        let width = graphics.text_width(FONT_TEXT, value).max(graphics.text_width(FONT_SMALL, label)) + 18.0;
+        *right -= width;
+        let slot = (*right, y, width, 32.0);
+        graphics.fill(slot.0, slot.1, slot.2, slot.3, (18, 25, 34, 235));
+        graphics.stroke(slot.0, slot.1, slot.2, slot.3, UI_LINE);
         graphics.ink = colour;
-        graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 15.0);
+        if label.is_empty() {
+            graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 9.0);
+        } else {
+            graphics.ink = UI_MUTED;
+            graphics.draw_text(FONT_SMALL, label, slot.0 + 9.0, slot.1 + 3.0);
+            graphics.ink = colour;
+            graphics.draw_text(FONT_TEXT, value, slot.0 + 9.0, slot.1 + 15.0);
+        }
+        graphics.ink = UI_INK;
+        *right -= 6.0;
+        slot
     }
-    graphics.ink = UI_INK;
-    *right -= 6.0;
-    slot
 }
 
 /// Titre de section du panneau, souligné d'un filet d'or.
 unsafe fn hud_section(graphics: &mut Graphics, x: f32, y: f32, width: f32, label: &str) {
-    graphics.ink = UI_GOLD;
-    graphics.draw_text(FONT_SMALL, label, x, y);
-    graphics.fill(x, y + graphics.line_height(FONT_SMALL) + 2.0, width, 1.0, UI_LINE);
-    graphics.ink = UI_INK;
+    unsafe {
+        graphics.ink = UI_GOLD;
+        graphics.draw_text(FONT_SMALL, label, x, y);
+        graphics.fill(x, y + graphics.line_height(FONT_SMALL) + 2.0, width, 1.0, UI_LINE);
+        graphics.ink = UI_INK;
+    }
 }
 
 /// Position du coin haut-gauche de la boîte d'une case, en pixels de monde.
@@ -3578,9 +3559,8 @@ fn run(
         // Action de chaque ligne du menu, telle qu'affichée à la dernière image.
         let mut menu_rows: Vec<((f32, f32, f32, f32), MenuRow)> = Vec::new();
         let mut open_category: Option<usize> = None;
-        // Défilement de la liste des bâtiments de la catégorie ouverte, et sa borne.
+        // Défilement de la liste des bâtiments de la catégorie ouverte.
         let mut build_scroll = 0.0f32;
-        let mut build_max_scroll = 0.0f32;
         // Élément survolé et depuis quand, pour les bulles d'aide.
         let mut tooltip: (Option<i64>, u64) = (None, 0);
         // Fiche ouverte par un clic droit (case du bâtiment), et où le bouton droit a été
@@ -4559,10 +4539,6 @@ fn run(
                                 overlay = if overlay == wanted { Overlay::None } else { wanted };
                                 continue;
                             }
-                            Some(MenuRow::Journal) => {
-                                journal_panel = !journal_panel;
-                                continue;
-                            }
                             Some(MenuRow::Policy(resource)) => {
                                 world.trade_policy[resource] = world.trade_policy[resource].next();
                                 continue;
@@ -4990,7 +4966,8 @@ fn run(
             let line = graphics.line_height(FONT_TEXT);
             let title_line = graphics.line_height(FONT_TITLE);
             let row = line + 8.0;
-            let small_line = graphics.line_height(FONT_SMALL) + 1.0;
+            // Les capitales accentuées dépassent la hauteur des lettres sans accent.
+            let small_line = graphics.line_height(FONT_SMALL) + 4.0;
             let side = w - SIDEBAR_WIDTH;
             graphics.ink = UI_INK;
             menu_rows.clear();
@@ -5092,25 +5069,30 @@ fn run(
 
             // Deux vues : les constructions, ou la carte générale.
             let seg_y = TOP_BAR_HEIGHT + 8.0;
-            let seg_w = (cw - 4.0) / 2.0;
-            for (i, label) in [tr("Constructions"), tr("Carte générale")].iter().enumerate() {
+            // Chaque onglet prend la largeur de son libellé, le reste est partagé.
+            let labels = [tr("Constructions"), tr("Carte")];
+            let widths = labels.each_ref().map(|label| graphics.text_width(FONT_SMALL, label) + 12.0);
+            let spare = ((cw - 4.0 - widths[0] - widths[1]) / 2.0).max(0.0);
+            let mut seg_x = cx;
+            for (i, label) in labels.iter().enumerate() {
                 let wanted = i == 1;
-                let slot = (cx + i as f32 * (seg_w + 4.0), seg_y, seg_w, 24.0);
+                let slot = (seg_x, seg_y, widths[i] + spare, 24.0);
+                seg_x += slot.2 + 4.0;
                 let active = sidebar_map == wanted;
                 graphics.fill(slot.0, slot.1, slot.2, slot.3, if active { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 180) });
                 if active {
                     graphics.stroke(slot.0, slot.1, slot.2, slot.3, (206, 168, 88, 170));
                 }
                 graphics.ink = if active { UI_GOLD } else { UI_MUTED };
-                let width = graphics.text_width(FONT_SMALL, label);
-                graphics.draw_text(FONT_SMALL, label, slot.0 + (slot.2 - width) / 2.0, slot.1 + 7.0);
+                let fitted = graphics.fit(FONT_SMALL, label, slot.2 - 8.0);
+                let width = graphics.text_width(FONT_SMALL, &fitted);
+                graphics.draw_text(FONT_SMALL, &fitted, slot.0 + (slot.2 - width) / 2.0, slot.1 + 7.0);
                 menu_rows.push((slot, MenuRow::SidebarMap(wanted)));
             }
             let mut content_top = TOP_BAR_HEIGHT + 42.0;
             let dock_top = h - DOCK_HEIGHT;
             if sidebar_map {
-                hud_section(&mut graphics, cx, content_top, cw, &tr("Carte générale"));
-                content_top += 16.0;
+                content_top += 24.0;
             } else if let Some(index) = open_category {
                 // En-tête de la catégorie, avec sa croix de fermeture.
                 graphics.ink = UI_GOLD;
@@ -5124,11 +5106,13 @@ fn run(
                 menu_rows.push((close, MenuRow::Category(index)));
                 let tools = category_tools(&world, index);
                 graphics.ink = UI_MUTED;
-                graphics.draw_text(FONT_SMALL, &format!("{} {}", tools.len(), tr("bâtiments")), cx, content_top + 16.0);
+                let subtitle_y = content_top + graphics.line_height(FONT_CHROME) + 6.0;
+                let count_label = if tools.len() == 1 { tr("bâtiment") } else { tr("bâtiments") };
+                graphics.draw_text(FONT_SMALL, &format!("{} {count_label}", tools.len()), cx, subtitle_y);
 
                 // Ce que dit la catégorie de la cité, puis ses vues en surimpression.
                 let (info, views) = category_info(&world, &text, index);
-                let mut y = content_top + 34.0;
+                let mut y = subtitle_y + small_line + 6.0;
                 let mut info_lines: Vec<String> = Vec::new();
                 for text_line in info.iter().take(2) {
                     info_lines.extend(wrap_width(&graphics, FONT_SMALL, text_line, cw).into_iter().take(2));
@@ -5157,7 +5141,7 @@ fn run(
                 let list_top = y + 2.0;
                 let list_bottom = dock_top - 6.0;
                 let visible = (list_bottom - list_top).max(1.0);
-                build_max_scroll = (tools.len() as f32 * BUILD_ROW - visible).max(0.0);
+                let build_max_scroll = (tools.len() as f32 * BUILD_ROW - visible).max(0.0);
                 build_scroll = build_scroll.clamp(0.0, build_max_scroll);
                 let first = (build_scroll / BUILD_ROW).ceil() as usize;
                 let info = |picked: Tool| -> (String, i32, Option<String>) {
@@ -5224,17 +5208,18 @@ fn run(
                 match shown {
                     Some(picked) => {
                         let (label, cost, description) = info(picked);
+                        // Nom en entier, puis le prix et la description sur la ligne suivante.
                         let price = format!("{cost} {}", text.get(8, 0));
-                        let price_width = graphics.text_width(FONT_SMALL, &price);
-                        let fitted = graphics.fit(FONT_SMALL, &label, cw - price_width - 8.0);
                         graphics.ink = UI_GOLD;
-                        graphics.draw_text(FONT_SMALL, &fitted, cx, dy);
-                        graphics.draw_text(FONT_SMALL, &price, cx + cw - price_width, dy);
+                        graphics.draw_text(FONT_SMALL, &graphics.fit(FONT_SMALL, &label, cw), cx, dy);
                         dy += small_line;
+                        graphics.ink = if world.money < cost { UI_RED } else { UI_INK };
+                        graphics.draw_text(FONT_SMALL, &price, cx, dy);
                         if let Some(description) = description {
+                            let left = graphics.text_width(FONT_SMALL, &price) + 10.0;
                             graphics.ink = UI_MUTED;
-                            let fitted = graphics.fit(FONT_SMALL, &description, cw);
-                            graphics.draw_text(FONT_SMALL, &fitted, cx, dy);
+                            let fitted = graphics.fit(FONT_SMALL, &description, cw - left);
+                            graphics.draw_text(FONT_SMALL, &fitted, cx + left, dy);
                         }
                     }
                     None => {
@@ -5250,13 +5235,13 @@ fn run(
                 let mut y = content_top + 22.0;
                 let capacity: i32 = world.buildings.iter().flatten().filter_map(|b| b.house.as_ref()).map(|h| world.capacity(h)).sum();
                 let jobs = world.workers_needed().min(world.workers_available());
-                let mut stat = |graphics: &mut Graphics, y: &mut f32, label: &str, value: &str, colour: (u8, u8, u8)| {
+                let stat = |graphics: &mut Graphics, y: &mut f32, label: &str, value: &str, colour: (u8, u8, u8)| {
                     graphics.ink = UI_MUTED;
                     graphics.draw_text(FONT_SMALL, label, cx, *y);
                     graphics.ink = colour;
                     let width = graphics.text_width(FONT_SMALL, value);
                     graphics.draw_text(FONT_SMALL, value, cx + cw - width, *y);
-                    *y += 16.0;
+                    *y += small_line + 2.0;
                 };
                 stat(&mut graphics, &mut y, &text.get(8, 3), &format!("{} / {}", world.population(), capacity), UI_INK);
                 stat(&mut graphics, &mut y, &text.get(8, 13), &format!("{jobs} / {}", world.workers_needed()), UI_INK);
@@ -5302,10 +5287,18 @@ fn run(
                         graphics.fill(cx + 2.0, y + 6.0, 2.0, 2.0, (13, 19, 27, 255));
                     }
                     let label = goal.describe(&text, &level_names, matches!(journey.step(), Step::Colony(_)));
-                    let fitted = graphics.fit(FONT_SMALL, &label, cw - 14.0);
+                    let mut pieces = wrap_width(&graphics, FONT_SMALL, &label, cw - 14.0);
+                    if pieces.len() > 2 {
+                        let rest = pieces[1..].join(" ");
+                        pieces.truncate(1);
+                        pieces.push(graphics.fit(FONT_SMALL, &rest, cw - 14.0));
+                    }
                     graphics.ink = if *status == Status::Met { UI_MUTED } else { UI_INK };
-                    graphics.draw_text(FONT_SMALL, &fitted, cx + 12.0, y);
-                    y += 18.0;
+                    for piece in &pieces {
+                        graphics.draw_text(FONT_SMALL, piece, cx + 12.0, y);
+                        y += small_line;
+                    }
+                    y += 4.0;
                 }
                 menu_rows.push(((cx, objectives_top, cw, (y - objectives_top).max(1.0)), MenuRow::Key(sdl::KEY_O)));
                 y += 6.0;
@@ -5384,14 +5377,15 @@ fn run(
                     let pixels = minimap_pixels(&world);
                     sdl::SDL_UpdateTexture(minimap, null(), pixels.as_ptr() as *const c_void, (MINIMAP_WIDTH * 4) as i32);
                 }
-                let (mw, mh) = minimap_at.size();
                 if sidebar_map {
-                    let area = (cx, content_top + 4.0, cw, (h - content_top - DOCK_HEIGHT - 24.0).max(80.0));
+                    // Le cadre déborde de 7 pixels de chaque côté de l'image.
+                    let area = (cx + 7.0, content_top, cw - 14.0, (h - content_top - DOCK_HEIGHT - 24.0).max(80.0));
                     minimap_at.scale = (area.2 / minimap_at.width).min(area.3 / minimap_at.height);
-                    let (mw, mh) = minimap_at.size();
+                    let (mw, _) = minimap_at.size();
                     (minimap_at.x, minimap_at.y) = (area.0 + (area.2 - mw) / 2.0, area.1 + 4.0);
                 } else {
                     minimap_at.scale = minimap_at.base;
+                    let (_, mh) = minimap_at.size();
                     (minimap_at.x, minimap_at.y) = (16.0, h - mh - 34.0);
                 }
                 let (mw, mh) = minimap_at.size();
@@ -5962,7 +5956,6 @@ fn run(
                     MenuRow::Key(sdl::KEY_P) => Some(tr("Pause (P)")),
                     MenuRow::SidebarMap(true) => Some(tr("Carte générale")),
                     MenuRow::SidebarMap(false) => Some(tr("Constructions")),
-                    MenuRow::Journal => Some("Journal des annonces (J)".to_string()),
                     _ => None,
                 };
                 if let Some(label) = label.filter(|l| !l.is_empty()) {
