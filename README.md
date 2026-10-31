@@ -231,8 +231,8 @@ Ce qui fonctionne :
   pêcher en deux tiers du temps, Héra ajoute 3 points au croît de la population,
   Hermès rend les porteurs plus rapides d'un tiers, Athéna donne 4 points d'armure
   contre les projectiles aux soldats de la cité, Atlas accélère les chantiers (le
-  quai arme son navire en 16 jours au lieu de 32), Apollon ajoute 20 à chaque note
-  de culture ou de science ; Zeus, Déméter, Artémis, Arès et Hadès agissent par leurs
+  quai arme son navire en 16 jours au lieu de 32), Apollon ajoute 20 au score de
+  la cité aux jeux panhelléniques ; Zeus, Déméter, Artémis, Arès et Hadès agissent par leurs
   événements (défense contre les dieux hostiles, monstres, invasions) plutôt que par
   un bienfait permanent ;
 - santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
