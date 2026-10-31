@@ -6,7 +6,7 @@
 //! X : démolir, clic gauche : appliquer, Échap : lâcher l'outil, puis quitter.
 //! Espace : pause. F5 : enregistrer la partie, F9 : la recharger.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CString, c_void};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -2594,6 +2594,36 @@ fn house_grid(size: i32, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
     (0..rows).flat_map(|j| (0..columns).map(move |i| (from.0 + sx * i * size, from.1 + sy * j * size))).collect()
 }
 
+/// Maisons réellement posées par un rectangle glissé : le rectangle de `house_grid` se
+/// remplit en partant de la case du départ, et chaque maison se cale sur la première
+/// place libre ; une route, un bâtiment ou de l'eau ne font que la décaler, sans laisser
+/// de maison à cheval ni de trou inutile.
+fn house_plan(world: &World, kind: usize, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let size = world.kinds[kind].size.max(1) as i32;
+    let footprint = |at: (i32, i32)| {
+        let (cx, cy) = build_corner(world, kind, at);
+        (0..size).flat_map(move |dy| (0..size).map(move |dx| (cx + dx, cy + dy)))
+    };
+    let region: HashSet<(i32, i32)> = house_grid(size, from, to).into_iter().flat_map(footprint).collect();
+    let (sx, sy) = (if to.0 < from.0 { -1 } else { 1 }, if to.1 < from.1 { -1 } else { 1 });
+    let mut candidates: Vec<(i32, i32)> = region.iter().copied().collect();
+    candidates.sort_by_key(|&(x, y)| ((y - from.1) * sy, (x - from.0) * sx));
+    let mut taken: HashSet<(i32, i32)> = HashSet::new();
+    let mut plan = Vec::new();
+    for at in candidates {
+        let tiles: Vec<(i32, i32)> = footprint(at).collect();
+        if tiles.iter().any(|tile| !region.contains(tile) || taken.contains(tile)) {
+            continue;
+        }
+        let (cx, cy) = build_corner(world, kind, at);
+        if world.can_place(kind, cx, cy) {
+            taken.extend(tiles);
+            plan.push(at);
+        }
+    }
+    plan
+}
+
 /// Cases que couvre un geste de `from` à `to` : le tracé d'une route ou d'un mur, ou
 /// le rectangle à démolir.
 fn drag_tiles(world: &World, tool: Tool, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
@@ -3934,8 +3964,14 @@ fn run(
                     }
                     ("w", &[steps]) => Some(sdl::Event::mouse_wheel(steps, script_pointer)),
                     // Clic droit : enfoncé, relâché.
-                    ("rd", _) => Some(sdl::Event::mouse_button(true, sdl::BUTTON_RIGHT, script_pointer)),
-                    ("ru", _) => Some(sdl::Event::mouse_button(false, sdl::BUTTON_RIGHT, script_pointer)),
+                    ("rd", _) => {
+                        script_buttons |= sdl::BUTTON_RIGHT_MASK;
+                        Some(sdl::Event::mouse_button(true, sdl::BUTTON_RIGHT, script_pointer))
+                    }
+                    ("ru", _) => {
+                        script_buttons &= !sdl::BUTTON_RIGHT_MASK;
+                        Some(sdl::Event::mouse_button(false, sdl::BUTTON_RIGHT, script_pointer))
+                    }
                     // Vue centrée sur une case, pointeur sur le centre d'une case.
                     ("vue", &[x, y]) => {
                         (view.cx, view.cy) = tile_origin(x as i32, y as i32);
@@ -4651,7 +4687,7 @@ fn run(
                     // route ou le mur le long du chemin, ou la démolition du rectangle.
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => {
                         if let Some((kind, from, to)) = build_drag.take() {
-                            let tiles = house_grid(world.kinds[kind].size as i32, from, to);
+                            let tiles = house_plan(&world, kind, from, to);
                             let mut placed = 0;
                             for &tile in &tiles {
                                 let (x, y) = build_corner(&world, kind, tile);
@@ -4685,23 +4721,23 @@ fn run(
                             hovered = (-1, -1);
                         }
                     }
-                    sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_RIGHT => {
-                        right_press = Some(0.0);
-                        // Le clic droit lâche aussi l'outil, comme dans le jeu, et annule le
-                        // geste en cours.
-                        drag_from = None;
-                        build_drag = None;
-                        if tool != Tool::None {
-                            (tool, hovered) = (Tool::None, (-1, -1));
-                            right_press = None;
-                        }
-                    }
+                    // Glisser avec le bouton droit déplace la vue sans rien changer à l'outil ;
+                    // ce n'est qu'au relâchement qu'on sait si c'était un simple clic.
+                    sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_RIGHT => right_press = Some(0.0),
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_RIGHT => {
-                        // Un clic droit sans glisser ouvre la fiche du bâtiment visé.
                         if right_press.take().is_some_and(|moved| moved < 6.0) {
-                            let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
-                            let at = pick(&world, wx, wy);
-                            info_pinned = world.building_at(at.0, at.1).map(|_| at);
+                            if drag_from.is_some() || build_drag.is_some() {
+                                // Un clic droit annule le geste en cours…
+                                (drag_from, build_drag) = (None, None);
+                            } else if tool != Tool::None {
+                                // … ou lâche l'outil, comme dans le jeu…
+                                (tool, hovered) = (Tool::None, (-1, -1));
+                            } else {
+                                // … sinon il ouvre la fiche du bâtiment visé.
+                                let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
+                                let at = pick(&world, wx, wy);
+                                info_pinned = world.building_at(at.0, at.1).map(|_| at);
+                            }
                         }
                     }
                     sdl::EVENT_MOUSE_BUTTON_DOWN if event.button() == sdl::BUTTON_LEFT && info_pinned.is_some() => info_pinned = None,
@@ -5144,25 +5180,33 @@ fn run(
             }
 
             // Aperçu de ce que l'outil poserait : translucide, rougi si c'est impossible
-            // (ou au-delà des drachmes). Des maisons glissées : tout le rectangle.
-            let mut house_plan: Option<(usize, i32, String)> = None;
+            // (ou au-delà des drachmes). Des maisons glissées : seulement celles qui
+            // seront posées, dans la limite des drachmes.
+            let mut drag_summary: Option<(usize, i32, String)> = None;
             if let (Tool::Build(kind), true) = (tool, in_grid(under)) {
-                let mut tiles = match build_drag {
-                    Some((dragged, from, to)) if dragged == kind => house_grid(world.kinds[kind].size as i32, from, to),
-                    _ => vec![under],
+                let cost = world.kinds[kind].cost;
+                let affordable = if cost > 0 { (world.money / cost).max(0) as usize } else { usize::MAX };
+                let planned = match build_drag {
+                    Some((dragged, from, to)) if dragged == kind => Some(house_plan(&world, kind, from, to).into_iter().take(affordable).collect::<Vec<_>>()),
+                    _ => None,
                 };
+                if let Some(planned) = &planned {
+                    drag_summary = Some((planned.len(), planned.len() as i32 * cost, world.kind_name(kind)));
+                }
+                // Rien à poser : la case survolée, en rouge.
+                let mut tiles = planned.filter(|p| !p.is_empty()).unwrap_or_else(|| vec![under]);
                 tiles.retain(|&tile| in_grid(tile));
                 // De l'arrière vers l'avant, pour que les maisons se recouvrent bien.
                 tiles.sort_by_key(|&(x, y)| {
                     let (rx, ry) = zeus::world::rotate(orientation(), x, y);
                     rx + ry
                 });
-                let (cost, mut budget, mut count) = (world.kinds[kind].cost, world.money, 0);
+                let mut budget = world.money;
                 for at in tiles {
                 let corner = build_corner(&world, kind, at);
                 let allowed = world.can_place(kind, corner.0, corner.1) && budget >= cost;
                 if allowed {
-                    (budget, count) = (budget - cost, count + 1);
+                    budget -= cost;
                 }
                 // Le bâtiment se montre comme à l'orientation 0, à partir de sa case.
                 let start = zeus::world::rotate(orientation(), at.0, at.1);
@@ -5185,9 +5229,6 @@ fn run(
                     sdl::SDL_SetTextureColorMod(sprite.texture, 255, 255, 255);
                 }
                 }
-                if build_drag.is_some() {
-                    house_plan = Some((count, count as i32 * cost, world.kind_name(kind)));
-                }
             } else if tool == Tool::Demolish && !drag_plan.is_empty() {
                 for &tile in &drag_plan {
                     outline_tile(renderer, &view, &world, tile, w, h, (255, 60, 40));
@@ -5209,7 +5250,7 @@ fn run(
             sdl::SDL_SetRenderScale(renderer, ui, ui);
             let (w, h) = (w / ui, h / ui);
             // Maisons du rectangle et leur coût, près du pointeur.
-            if let Some((count, total, name)) = &house_plan {
+            if let Some((count, total, name)) = &drag_summary {
                 // La police du jeu n'a ni « × » ni tiret long.
                 let label = format!("{count} {name} : {total} {}", text.get(8, 0));
                 let (lx, ly) = (pointer.0 / ui + 16.0, pointer.1 / ui - 8.0);
