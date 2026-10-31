@@ -2,8 +2,12 @@
 name = "olympe"
 version = "0.1.0"
 edition = "2024"
-description = "Moteur libre pour Zeus : le Maître de l'Olympe et son extension Poséidon — demande les données du jeu d'origine"
+description = "Open-source engine for Zeus: Master of Olympus and its Poseidon expansion (requires the original game data)"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/jeremielud/olympe"
+readme = "README.md"
+keywords = ["zeus", "poseidon", "city-builder", "game-engine", "reimplementation"]
+categories = ["games", "game-engines"]
 default-run = "olympe"
 
 [lib]

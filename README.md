@@ -1,391 +1,384 @@
 # Olympe
 
-Moteur libre, écrit en Rust, pour *Zeus : le Maître de l'Olympe* et son extension
-*Poséidon* (Impressions Games, 2000-2001). Il lit les données du jeu d'origine et les
-fait tourner sur une machine d'aujourd'hui : toute définition d'écran, zoom libre,
-interface agrandie sur les écrans à haute définition.
+*English · [Français](README.fr.md)*
 
-**Olympe ne contient aucune donnée du jeu.** Il vous faut votre propre exemplaire :
-un jeu déjà installé, les CD, ou leurs images.
+A free, open-source engine written in Rust for *Zeus: Master of Olympus* and its
+expansion *Poseidon* (Impressions Games, 2000–2001). It reads the original game's data
+and runs it on today's computers: any screen resolution, free zoom, and an interface
+scaled up on high-DPI displays. It runs on Linux, and the code is written to be
+cross-platform.
 
-## État du projet
+**Olympe contains no game data.** You need your own copy of the game: an existing
+installation, the CDs, or their images.
 
-Olympe est une réécriture en cours, pas encore un remplaçant complet du jeu.
+## Project status
 
-### Avancement : environ 75 %
+Olympe is a rewrite in progress, not yet a complete replacement for the game.
 
-Estimation par domaine (octobre 2026), pondérée par ce qu'un joueur rencontre :
+### Progress: about 75 %
 
-| Domaine | Avancement |
+Estimate per area (October 2026), weighted by what a player runs into:
+
+| Area | Progress |
 |---|---|
-| Installation et lecture des données (cartes, images, textes, sons, vidéos) | 100 % |
-| Affichage de la cité (terrain, bâtiments, personnages, mini-carte, zoom) | 90 % |
-| Aventures, épisodes, colonies et objectifs (152 épisodes sur 152 suivis) | 85 % |
-| Musique, bruitages, voix et récits narrés | 85 % |
-| Économie et logements (emploi, vivres, marchandises, évolution, impôts, risques) | 85 % |
-| Interface (menus, fiches, vues, journal, superviseurs, panneaux) | 80 % |
-| Commerce et cités du monde | 70 % |
-| Mythologie (dieux, héros, monstres, quêtes) | 70 % |
-| Armée et combats (murs, tours, corps de garde, campagnes et raids au loin) | 70 % |
-| Langues (anglais, espéranto) et menu de triche | 55 % (menus, aide, conseillers, état de la cité, fiches, panneaux et messages ; traduction complète à finir) |
+| Installing and reading the data (maps, images, texts, sounds, videos) | 100 % |
+| City display (terrain, buildings, walkers, minimap, zoom) | 90 % |
+| Adventures, episodes, colonies and goals (152 of 152 episodes tracked) | 85 % |
+| Music, sound effects, voices and narrated stories | 85 % |
+| Economy and housing (employment, food, goods, evolution, taxes, risks) | 85 % |
+| Interface (menus, info panels, overlays, journal, advisors, panels) | 80 % |
+| Trade and world cities | 70 % |
+| Mythology (gods, heroes, monsters, quests) | 70 % |
+| Army and combat (walls, towers, gatehouses, distant campaigns and raids) | 70 % |
+| Languages (English, Esperanto) and cheat menu | 55 % (menus, help, advisors, city status, info panels, panels and messages; full translation still to do) |
 
-Manque encore notamment : l'image et les règles propres de la frégate atlante
-(dans une cité atlante, le quai et le navire portent leur nom atlante, mais gardent
-l'image et les règles de la trière), et la traduction complète de l'interface.
+Still missing, notably: the image and specific rules of the Atlantean frigate (in an
+Atlantean city, the wharf and ship carry their Atlantean names but keep the trireme's
+image and rules), and a complete translation of the interface.
 
-Vérifié en jouant : le premier tutoriel, celui de la colonie et le premier épisode de
-*Persée et Méduse* se gagnent avec une cité bâtie par script (`essais/`).
+Checked by playing: the first tutorial, the colony tutorial and the first episode of
+*Perseus and Medusa* can be won with a city built by script (`essais/`).
 
-Ce qui fonctionne :
+What works:
 
-- installation des données depuis un jeu installé, le contenu d'un CD ou une image de CD ;
-- écran de choix parmi les 40 aventures, avec leur récit d'ouverture ;
-- affichage de la carte, zoom, mini-carte, mer animée ;
-- construction : routes, logements modestes et luxueux, agoras et échoppes, fermes,
-  ateliers, entrepôt, grenier, culture, palais, stade, embellissements ; glisser avec
-  une maison en main remplit le rectangle de maisons qui se touchent (aperçu et coût
-  pendant le geste, pose au relâchement), et les prés fleuris se teintent de vert quand
-  une ferme est en main ;
-- simulation : immigrants, emploi, tournées des marcheurs, vivres et marchandises,
-  attrait des quartiers, évolution des logements (note de culture du jeu : 15 pour la
-  philosophie, 20 pour l'athlétisme, 30 de plus avec un stade, 25 pour le théâtre,
-  relevée dans ses sauvegardes), impôts, incendies et effondrements
-  (rythmes et seuils de `Zeus.exe`) ; la main-d'œuvre se partage comme dans le jeu : en
-  cas de pénurie, chaque bâtiment reçoit la même part de ses postes et travaille
-  d'autant plus lentement ;
-- musique et bruitages d'ambiance d'origine ;
-- objectifs de l'épisode, lus dans l'aventure (touche `O`) : population, trésor,
-  logement, profit et production annuels sont suivis, et les marchandises à
-  réserver pour la cité suivante se mettent de côté par la touche `R` (vivres du
-  grenier ; laine, huile, vin, armement, bronze, bois, marbre et sculptures de
-  l'entrepôt) ; l'épisode se termine sur son récit de victoire quand tous sont atteints ;
-- sanctuaires des dieux que l'épisode désigne (catégorie Mythologie), disposés
-  comme dans le jeu ; des porteurs apportent au chantier, par la route, le marbre, le bois et les sculptures de l'entrepôt
-  (quantités provisoires), et les objectifs de sanctuaire sont suivis ; achevés, ceux
-  d'Athéna, de Dionysos et d'Héphaïstos apportent olives, raisin et bronze, et
-  chaque année le dieu vient en personne laisser un bienfait (choix d'Olympe) ;
-- monuments de Poséidon (pyramides, monuments, sanctuaires mineurs, autel et temple
-  de l'Olympe…), proposés quand un objectif les demande : disposés et élevés étape
-  par étape comme dans le jeu, à mesure que le marbre, le bois et les sculptures
-  arrivent de l'entrepôt (quantités provisoires) ; pentes, angles, marches et
-  décors de marbre comme dans le jeu, statues, autel et temple des sanctuaires ;
-- marbre noir et orichalque de Poséidon : atelier et raffinerie posés n'importe où
-  (raccourci), marchandises rangées à l'entrepôt ;
-- bâtiments autorisés de chaque épisode, lus dans l'aventure (le tableau du panneau
-  « Bâtiments autorisés » de l'éditeur, en 0x902d30 dans `Zeus.exe`) : ce qu'un épisode
-  ne permet pas n'apparaît pas dans les menus ; fermes, élevage et matières premières
-  restent réglés par les ressources ;
-- cités atlantes (drapeau à l'octet 648 de chaque épisode, lu en 0x902bb0 dans
-  `Zeus.exe` et vérifié dans le jeu : les quatre aventures atlantes de Poséidon) : la
-  science y remplace la culture grecque — bibliothèque, université et observatoire,
-  atelier d'inventeurs et laboratoire, musée, aux images de Poséidon ; points de
-  science mesurés dans le jeu : astronomie 20, apprentissage 15, recherche 25 (le
-  musée compte comme le stade, non mesuré) ;
-- campagnes lointaines (panneau des cités du monde, touche `C`) : un panneau choisit
-  les compagnies qui partent — piétaille, hoplites, cavaliers et trières, chacun de
-  zéro au maximum présent — et le reste garde la cité ; la compagnie part
-  soumettre ou piller une cité étrangère, marche le temps que donne la route du monde
-  (longueur × allure / 200 mois, deux au moins), livre bataille puis rentre, comme dans
-  `Zeus.exe` : un homme de piétaille ou un hoplite compte pour un, un cavalier pour
-  deux, une trière pour six (elle peut couler, et son quai l'attend sans en bâtir
-  d'autre) ; la défense d'une cité vaut √(années, trente au plus) × barème de difficulté
-  × son niveau militaire, moitié moins si son armée est partie, et remonte d'un point
-  par mois ; pertes des deux camps selon l'écart des forces (barèmes du jeu), soldats
-  tombés retirés des logements qui les fournissaient ; un raid victorieux rapporte une
-  marchandise que la cité vend (dans la limite de ce que portent hoplites,
-  cavaliers et trières) ou des drachmes selon sa richesse ;
-- soldats des cités atlantes : archers, lanciers et chars de `poseidonimps.sg3`
-  (mêmes règles que piétaille, hoplites et cavaliers, comme dans les règles des
-  personnages du jeu), avec leurs animations de marche et de combat ;
-- chars des cités atlantes : l'usine à chars se fait livrer du bois par l'entrepôt et
-  des chevaux par le haras (un de chaque par char, quantités d'Olympe), range ses
-  chars à l'entrepôt (baies de Poséidon), et le marchand de chars de l'agora les
-  porte aux logements luxueux, qui les exigent à la place des chevaux ; le marbre
-  noir et l'orichalque ont aussi retrouvé leurs vraies baies ;
-- rotation de la vue (touches Origine et Fin), comme dans le jeu : le terrain est
-  repavé pour l'orientation par une transcription de la routine de `Zeus.exe`
-  (0x521520 : eau, falaises et rampes d'après les hauteurs, arbres, rochers,
-  carrières, plages, marais, broussailles, prés, herbe en plaques), qui retrouve
-  99,9 % des images des cartes à l'orientation 0 ; les bâtiments gardent leur seule
-  vue et c'est leur emprise qui tourne, le palais prend ses images de l'autre sens,
-  la mini-carte et les personnages tournent avec la vue ; le terrain surélevé se
-  dessine 30 pixels plus haut par niveau, comme dans le jeu (hauteurs du bloc 23 des
-  cartes), et la souris désigne la case surélevée dessinée sous elle ;
-- jeux panhelléniques (épisodes qui les prévoient, octet 808) : chaque année les
-  Olympiques, Isthmiques, Néméens ou Pythiques selon l'année, comme dans `Zeus.exe` ;
-  départ au sixième mois, résultat au huitième, d'après la couverture et le nombre de
-  lieux de la discipline (un héros présent aide) ; une victoire vaut un monument
-  commémoratif et la faveur des cités du monde, une victoire aux Olympiques fait
-  accueillir les suivants, ce qui exige un stade ;
-- `olympe --bilan` vérifie que chaque épisode de chaque aventure installée a tous ses
-  objectifs suivis et réalisables avec ses bâtiments permis, et une place sur la carte
-  pour ce qu'il faut produire, et assez de culture permise pour les logements
-  demandés (152 sur 152) ;
-- hippodrome (Administration, aventures de l'Atlantide) : sections de piste posées
-  bout à bout, droites ou virages selon leurs voisines ; une boucle fermée accueille
-  les courses et rapporte chaque mois (barème d'Olympe), et l'objectif compte un stade
-  par section (hypothèse d'Olympe) ;
-- murs (onglet Armée, tracés comme les routes, 5 drachmes la case) : l'image de chaque
-  case suit ses voisins d'après la table du jeu ; les envahisseurs les contournent et,
-  sans passage, sapent le plus proche jusqu'à la brèche (solidité d'Olympe). Les murs
-  arrêtent aussi les citoyens : le corps de garde (type 131, deux images selon le sens
-  de la route), posé sur une route, les laisse passer et barre la route aux
-  envahisseurs ;
-- tours (onglet Armée, règles du type 132) : en activité, leurs sentinelles tirent sur
-  l'envahisseur le plus proche à portée, avec la portée, l'attaque à distance et la
-  cadence de la « sentinelle de tour » des règles des personnages ;
-- quai des trières (onglet Armée), au bord de l'eau : il prend deux charges de
-  bois et deux d'armement à l'entrepôt et lance une trière 32 jours plus tard (comme le jeu ; celui-ci
-  n'a pas d'image reconnue du quai, une pêcherie en tient lieu) ; les objectifs
-  d'entretien de trières sont suivis ;
-- héros, quêtes et monstres : temple de chaque héros (catégorie Mythologie), avec
-  ses exigences lues dans le jeu, dont l'hippodrome en activité (cités atlantes) et
-  le stade ou le musée actif ; un héros venu dans la cité affronte le monstre
-  qui lui revient puis part pour sa quête, et les objectifs correspondants sont
-  suivis ; les monstres entrent dans la cité, où ils détruisent un bâtiment tous les
-  deux mois jusqu'à ce que leur héros, venu de son temple, les tue (les monstres
-  marins restent au large) ; un monstre lâché ou envahisseur arrive à sa date ;
-- dieux hostiles en personne : à la date de leur événement, ils entrent dans la
-  cité et la ravagent six mois, un seul si un dieu défenseur y a son sanctuaire
-  (comme dans le jeu, Zeus contre tous, Aphrodite contre Arès, Héphaïstos, Hermès
-  et Dionysos, Héra contre Zeus ; six mois de séjour comme dans le jeu, mais durée
-  écourtée et rythme des destructions d'Olympe) ;
-- soldats fournis par les logements (piétaille, hoplites, cavaliers, selon les
-  chiffres de l'éditeur d'aventures) pour les objectifs militaires, sans trières ;
-- cités du monde lues dans la carte (statut, force militaire, commerce ouvert) ;
-  panneau `C`, d'où l'on envoie l'armée (voir les campagnes lointaines), ce qui suit
-  les objectifs « Régner » ; le commerce passe, comme dans le jeu, par un poste de
-  commerce pour une cité reliée par la terre ou par des docks au bord de l'eau pour
-  une cité reliée par la mer (voie de la route du monde, octet 0x140), entrepôts à
-  huit baies attribués chacun à une partenaire (le jeu la fait choisir, Olympe prend
-  la première qui n'en a pas) ; les cités lointaines commercent aussi : chaque mois, on vend à la cité ce qu'elle achète au-delà
-  d'une réserve et l'on achète ce qu'elle vend quand les réserves sont basses
-  (marchandises, quantités et prix lus dans la carte) ; le panneau dit ce que chaque
-  cité vend et achète, et règle par marchandise ce que le commerce peut en faire
-  (vendre le surplus et acheter, l'un des deux, ou rien) ; les vassales
-  et les colonies fondées
-  paient chaque année le tribut réglé dans l'éditeur ; les cités rivales
-  envoient leurs armées à la date prévue : les soldats entrent par le point
-  d'invasion de l'événement, ou débarquent d'un navire s'il est en mer, les hoplites de la cité sortent du palais à leur rencontre
-  et ils se battent avec les points de vie, attaques, armures et portées des règles
-  du jeu (`figure_model`), l'armée ennemie composée selon les fréquences de ses unités (Grecs, Troyens, Perses, centaures, amazones,
-  Égyptiens, Mayas, Phéniciens, Océanides ou Atlantes, selon la cité) ; si les envahisseurs l'emportent, ils brûlent
-  des bâtiments et repartent avec un cinquième du trésor ; les
-  cadeaux des cités arrivent à leur date, et ceux de la cité mère apportent à la
-  colonie ce qu'elle avait mis de côté ;
-  les événements de l'épisode changent le monde à leur date (une cité devient
-  rivale, alliée, vassale, se rebelle, renforce ou perd son armée) et apportent les
-  demandes des cités (marchandises, vivres, drachmes, soldats), que l'on satisfait
-  depuis le panneau `C` : servir une cité accroît sa faveur, l'ignorer la fâche,
-  jusqu'à la rendre rivale (barème d'Olympe) ; ils font aussi varier les prix,
-  l'offre et la demande des cités, les salaires, et éloignent l'armée d'une rivale
-  (sa défense est alors réduite de moitié) ; les catastrophes frappent les zones
-  peintes dans l'éditeur à partir de leur point de départ : un tremblement de terre
-  ouvre la fissure, la lave recouvre le pays, un raz-de-marée inonde la côte six mois
-  (pour toujours si l'aventure le veut), un glissement couvre d'éboulis le pied de la
-  pente, et les bâtiments touchés sont détruits ;
-- enchaînement des épisodes dans l'ordre de l'aventure, avec leurs récits narrés
-  (voix du jeu, retrouvées pour les aventures de Zeus, de Poséidon et en dossier), leurs
-  objectifs et leurs ressources : départ pour une colonie sur sa propre carte (au
-  choix du joueur quand l'aventure en propose plus qu'elle n'a d'épisodes de colonie),
-  retour à la cité mère, fin de l'aventure ; la sauvegarde retient l'épisode en cours
-  et les colonies choisies ;
-- interface du jeu : bandeau avec menus Fichier, Options et Aide ; panneau latéral
-  avec onglets de catégories, informations de la catégorie (couverture des services,
-  logements libres…), boutons « Voir… », boutons illustrés des groupes de bâtiments,
-  onglet de la carte générale, zone des messages ; bulles d'aide au survol ; fiche
-  d'un bâtiment au clic droit ; pause par `P` avec son bandeau ;
-- vues en surimpression (touche `V`) : eau, risques d'incendie et d'effondrement,
-  attrait, criminalité, culture, santé et impôts, chaque bâtiment teinté du vert au
-  rouge ;
-- fiche des maisons : ce qui leur manque pour évoluer ; un service bloqué dit ce qu'il
-  attend (palais pour les percepteurs, école pour les philosophes et les acteurs) ;
-- superviseurs (touche A, Tab pour changer de page) : population par niveau de
-  logement, emploi par catégorie, finances, services et réserves, mythologie, armée
-  et commerce, en panneaux de texte comme dans le jeu ;
-- lettres d'événements du jeu (`model/zeus eventmsg.txt`) : demandes des cités (au
-  ton de leur statut), cadeaux, invasions, dieux, héros, sanctuaires achevés,
-  commerce, salaires, peste s'ouvrent comme les récits, datées, avec le nom de la
-  cité et de son chef (en toutes lettres dans les cartes de Poséidon) ;
-- un clic sur un passant (porteur d'eau, garde, philosophe, dieu…) le fait parler,
-  avec les voix du jeu ;
-- la vidéo d'introduction, convertie par l'installateur (avec ffmpeg) en images et en
-  son qu'Olympe lit lui-même, au lancement (`--sans-intro` pour la passer) ;
-- cinq niveaux de difficulté (Débutant à Olympien, touche D sur l'écran des
-  aventures ou `--difficulte`), avec leurs fichiers de règles et le trésor initial
-  ajusté comme dans le jeu ;
-- taux d'imposition réglable (touches `+` et `-`), d'« aucun » à « scandaleux » avec
-  les taux du jeu, et humeur de la cité calculée comme dans `Zeus.exe`, deux fois par
-  mois : impôts selon la difficulté (`tax_sentiment_model.txt`), salaires, chômage,
-  vivres de chaque maison et dettes, amortis hors de la zone 41–60, et sans effet
-  négatif tant que la cité n'a pas dépassé 349 habitants ; chaque jour, l'humeur
-  règle les migrations comme dans le jeu : de 12 arrivants au-delà de 70 à aucun
-  entre 36 et 49, puis jusqu'à 3 départs par jour sous 16 (pas sous 100 habitants),
-  les arrivants allant d'abord aux maisons vides, les partants quittant d'abord les
-  logements les plus modestes ; plus d'arrivants après trois ans de dettes ;
-- criminalité des logements modestes comme dans le jeu (incrément et base de chaque
-  niveau, écart de l'humeur à 40, passage des gardes) : au-delà de 80 une maison
-  produit un voleur, qui pille une maison luxueuse ou le trésor ;
-- bienfaits permanents des sanctuaires, comme dans le jeu : Dionysos fait baisser la
-  criminalité, Aphrodite retient tous les habitants et abaisse de 10 l'attrait que
-  demandent les logements, Héphaïstos ôte tout risque d'incendie, Poséidon fait
-  pêcher en deux tiers du temps, Héra ajoute 3 points au croît de la population,
-  Hermès rend les porteurs plus rapides d'un tiers, Athéna donne 4 points d'armure
-  contre les projectiles aux soldats de la cité, Atlas accélère les chantiers (le
-  quai arme son navire en 16 jours au lieu de 32), Apollon ajoute 20 au score de
-  la cité aux jeux panhelléniques ; Zeus, Déméter, Artémis, Arès et Hadès agissent par leurs
-  événements (défense contre les dieux hostiles, monstres, invasions) plutôt que par
-  un bienfait permanent ;
-- santé de la cité comme dans le jeu (conseiller des services) : elle tend chaque
-  mois vers la part des habitants que visitent les médecins et qui ont mangé, plus un
-  bonus pour les cités de moins de 1 000 habitants ; sous 75, une épidémie peut
-  éclater (jusqu'à 3 chances sur 100 par jour sous 10, une par mois au plus) et
-  frapper 40 % des maisons, les moins soignées d'abord, emportant d'un quart des
-  habitants en très facile à tous en très difficile ; chaque année, la santé fait
-  naître (jusqu'à 6 % au-delà de 90) ou mourir (jusqu'à 5 %) une part des habitants ;
-- sauvegarde et rechargement d'une partie.
+- installing the data from an installed game, the contents of a CD, or a CD image;
+- the adventure selection screen with all 40 adventures and their opening stories;
+- map display, zoom, minimap, animated sea;
+- building: roads, common and elite housing, agoras and shops, farms, workshops,
+  storehouse, granary, culture, palace, stadium, beautification; dragging with a house
+  selected fills the rectangle with adjoining houses, which flow around roads and
+  obstacles (preview and cost while dragging, placed on release), and flowering
+  meadows are tinted green while a farm is selected;
+- simulation: immigrants, employment, walker routes, food and goods, neighbourhood
+  appeal, housing evolution (the game's culture points: 15 for philosophy, 20 for
+  athletics, 30 more with a stadium, 25 for drama, measured from its save files), taxes,
+  fires and collapses (rates and thresholds from `Zeus.exe`); the workforce is shared as
+  in the game: when labour is short, each building gets the same share of its jobs and
+  works that much more slowly;
+- the original music and ambient sounds;
+- episode goals, read from the adventure (`O` key): population, treasury, housing,
+  yearly profit and production are tracked, and the goods to set aside for the next
+  city are reserved with the `R` key (food from the granary; fleece, oil, wine, armour,
+  bronze, wood, marble and sculptures from the storehouse); the episode ends with its
+  victory story once all are met;
+- sanctuaries of the gods chosen by the episode (Mythology category), laid out as in
+  the game; carriers bring marble, wood and sculptures from the storehouse to the site
+  by road (provisional quantities), and sanctuary goals are tracked; once finished,
+  those of Athena, Dionysus and Hephaestus provide olives, grapes and bronze, and each
+  year the god comes in person to grant a blessing (Olympe's choice);
+- Poseidon's monuments (pyramids, monuments, minor sanctuaries, altar and temple of
+  Olympus…), offered when a goal requires them: laid out and raised step by step as in
+  the game as marble, wood and sculptures arrive from the storehouse (provisional
+  quantities); slopes, corners, steps and marble decorations as in the game, statues,
+  altar and temple of the sanctuaries;
+- Poseidon's black marble and orichalc: workshop and refinery placed anywhere
+  (shortcut), goods stored in the storehouse;
+- each episode's allowed buildings, read from the adventure (the table of the editor's
+  "Allowed buildings" panel, at 0x902d30 in `Zeus.exe`): what an episode does not allow
+  does not appear in the menus; farms, herding and raw materials still depend on the
+  resources;
+- Atlantean cities (flag at byte 648 of each episode, read at 0x902bb0 in `Zeus.exe`
+  and checked in the game: Poseidon's four Atlantean adventures): science replaces
+  Greek culture — library, university and observatory, inventors' workshop and
+  laboratory, museum, with Poseidon's images; science points measured in the game:
+  astronomy 20, learning 15, research 25 (the museum counts like the stadium, not
+  measured);
+- distant campaigns (world cities panel, `C` key): a panel picks the companies that
+  leave — rabble, hoplites, horsemen and triremes, each from zero to the number
+  available — and the rest guard the city; the company sets out to conquer or raid a
+  foreign city, marches for as long as the world route takes (length × pace / 200
+  months, at least two), fights, then returns, as in `Zeus.exe`: a rabble or hoplite
+  counts as one, a horseman as two, a trireme as six (it can sink, and its wharf waits
+  for it without building another); a city's defence is √(years, at most thirty) ×
+  difficulty factor × its military level, halved if its army is away, and recovers one
+  point per month; losses on both sides depend on the strength gap (the game's tables),
+  and fallen soldiers are removed from the houses that supplied them; a successful raid
+  brings back goods the city sells (up to what hoplites, horsemen and triremes can
+  carry) or drachmas depending on its wealth;
+- Atlantean soldiers: archers, spearmen and chariots from `poseidonimps.sg3` (same
+  rules as rabble, hoplites and horsemen, as in the game's walker rules), with their
+  walking and fighting animations;
+- Atlantean chariots: the chariot factory gets wood from the storehouse and horses
+  from the horse ranch (one of each per chariot, Olympe's quantities), stores its
+  chariots in the storehouse (Poseidon's bays), and the agora's chariot vendor brings
+  them to elite housing, which requires them instead of horses; black marble and
+  orichalc also have their proper bays;
+- view rotation (Home and End keys), as in the game: the terrain is re-tiled for the
+  orientation by a transcription of `Zeus.exe`'s routine (0x521520: water, cliffs and
+  ramps from the heights, trees, rocks, quarries, beaches, marshes, scrub, meadows,
+  patches of grass), which reproduces 99.9 % of the map images at orientation 0;
+  buildings keep their single view and their footprint rotates, the palace uses its
+  images for the other direction, and the minimap and walkers rotate with the view;
+  raised terrain is drawn 30 pixels higher per level, as in the game (heights from
+  block 23 of the maps), and the mouse picks the raised tile drawn under it;
+- Panhellenic Games (episodes that schedule them, byte 808): each year the Olympian,
+  Isthmian, Nemean or Pythian Games depending on the year, as in `Zeus.exe`; entrants
+  leave in the sixth month and the result comes in the eighth, based on coverage and
+  the number of venues for the discipline (a hero in the city helps, and so does a
+  sanctuary of Apollo); a victory earns a commemorative monument and the favour of the
+  world cities, and winning the Olympian Games means hosting the next ones, which
+  requires a stadium;
+- `olympe --bilan` checks that every episode of every installed adventure has all its
+  goals tracked and achievable with its allowed buildings, room on the map for what has
+  to be produced, and enough allowed culture for the housing required (152 of 152);
+- hippodrome (Administration, Atlantis adventures): track sections laid end to end,
+  straight or curved depending on their neighbours; a closed loop hosts races and earns
+  money every month (Olympe's rates), and the goal counts one stadium per section
+  (Olympe's assumption);
+- walls (Military tab, drawn like roads, 5 drachmas per tile): each tile's image
+  follows its neighbours according to the game's table; invaders walk around them and,
+  if there is no way through, undermine the nearest one until it breaches (Olympe's
+  strength). Walls also stop citizens: the gatehouse (type 131, two images depending on
+  the road's direction), placed on a road, lets them through and bars the way to
+  invaders;
+- towers (Military tab, rules of type 132): when staffed, their sentries shoot at the
+  nearest invader in range, with the range, ranged attack and rate of fire of the
+  "tower sentry" in the walker rules;
+- trireme wharf (Military tab), on the shore: it takes two loads of wood and two of
+  armour from the storehouse and launches a trireme 32 days later (as in the game; it
+  has no recognised wharf image, so a fishery stands in for it); trireme upkeep goals
+  are tracked;
+- heroes, quests and monsters: each hero's hall (Mythology category), with requirements
+  read from the game, including an active hippodrome (Atlantean cities) and an active
+  stadium or museum; a hero who comes to the city fights the monster assigned to them,
+  then leaves on their quest, and the matching goals are tracked; monsters enter the
+  city and destroy a building every two months until their hero, coming from their
+  hall, kills them (sea monsters stay offshore); a released or invading monster arrives
+  on schedule;
+- hostile gods in person: on the date of their event they enter the city and ravage it
+  for six months, only one if a defending god has a sanctuary there (as in the game,
+  Zeus against all, Aphrodite against Ares, Hephaestus, Hermes and Dionysus, Hera
+  against Zeus; six-month stay as in the game, but a shortened duration and Olympe's
+  rate of destruction);
+- soldiers supplied by housing (rabble, hoplites, horsemen, using the adventure
+  editor's figures) for military goals, without triremes;
+- world cities read from the map (status, military strength, open trade); the `C`
+  panel, from which the army is sent (see distant campaigns), which tracks the "Rule"
+  goals; as in the game, trade goes through a trading post for a city linked by land or
+  through docks on the shore for a city linked by sea (world route type, byte 0x140),
+  with eight-bay storehouses each assigned to a partner (the game lets you choose,
+  Olympe takes the first one that has none); distant cities trade too: each month the
+  city sells what a partner buys beyond a reserve and buys what it sells when reserves
+  are low (goods, quantities and prices read from the map); the panel shows what each
+  city sells and buys, and sets per good what trade may do with it (sell the surplus
+  and buy, one of the two, or nothing); vassals and founded colonies pay the yearly
+  tribute set in the editor; rival cities send their armies on schedule: soldiers enter
+  at the event's invasion point, or land from a ship if it comes by sea, the city's
+  hoplites march out of the palace to meet them, and they fight with the hit points,
+  attacks, armour and ranges of the game's rules (`figure_model`), the enemy army being
+  made up according to its unit frequencies (Greeks, Trojans, Persians, centaurs,
+  Amazons, Egyptians, Mayans, Phoenicians, Oceanids or Atlanteans, depending on the
+  city); if the invaders win, they burn buildings and leave with a fifth of the
+  treasury; gifts from cities arrive on schedule, and those from the mother city bring
+  the colony what it had set aside; the episode's events change the world on their
+  date (a city becomes a rival, an ally or a vassal, rebels, gains or loses its army)
+  and bring city requests (goods, food, drachmas, soldiers), which are fulfilled from
+  the `C` panel: serving a city raises its favour, ignoring it angers it, until it
+  becomes a rival (Olympe's rates); events also change prices, cities' supply and
+  demand, and wages, and send a rival's army away (its defence is then halved);
+  disasters strike the areas painted in the editor from their starting point: an
+  earthquake opens the rift, lava covers the land, a tidal wave floods the coast for six
+  months (forever if the adventure says so), a landslide covers the foot of the slope
+  with rubble, and the buildings hit are destroyed;
+- episodes follow one another in the adventure's order, with their narrated stories
+  (the game's voices, recovered for the Zeus and Poseidon adventures and for those in a
+  folder), their goals and their resources: leaving for a colony on its own map (the
+  player's choice when the adventure offers more colonies than it has colony episodes),
+  returning to the mother city, end of the adventure; the save file remembers the
+  current episode and the chosen colonies;
+- the game's interface: top bar with File, Options and Help menus; side panel with
+  category tabs, category information (service coverage, free housing…), "See…"
+  buttons, illustrated buttons for building groups, general map tab, message area;
+  tooltips on hover; a building's info panel on right-click; pause with `P` and its
+  banner;
+- a second, modern interface, which the `I` key switches to and from: dark top bar with
+  plaques, and a build panel listing every building with its thumbnail, price and
+  description;
+- overlays (`V` key): water, fire and collapse risk, appeal, crime, culture, health and
+  taxes, with each building tinted from green to red;
+- house info panel: what a house lacks to evolve; a blocked service says what it is
+  waiting for (palace for tax collectors, school for philosophers and actors);
+- advisors (`A` key, Tab to change page): population per housing level, employment per
+  category, finances, services and stocks, mythology, army and trade, in text panels
+  as in the game;
+- the game's event letters (`model/zeus eventmsg.txt`): city requests (in a tone that
+  matches their status), gifts, invasions, gods, heroes, finished sanctuaries, trade,
+  wages and plague open like the stories, dated, with the name of the city and its
+  leader (spelled out in Poseidon's maps);
+- clicking a walker (water carrier, guard, philosopher, god…) makes them speak, with
+  the game's voices;
+- the introduction video, converted by the installer (with ffmpeg) into images and
+  sound that Olympe plays itself, at startup (`--sans-intro` skips it);
+- five difficulty levels (Beginner to Olympian, `D` key on the adventure screen or
+  `--difficulte`), with their rule files and the starting treasury adjusted as in the
+  game;
+- adjustable tax rate (`+` and `-` keys), from "none" to "outrageous" with the game's
+  rates, and city sentiment computed as in `Zeus.exe`, twice a month: taxes depending
+  on difficulty (`tax_sentiment_model.txt`), wages, unemployment, each house's food and
+  debts, damped outside the 41–60 band, and with no negative effect until the city
+  exceeds 349 inhabitants; every day, sentiment drives migration as in the game: from
+  12 newcomers above 70 to none between 36 and 49, then up to 3 departures a day below
+  16 (not below 100 inhabitants), newcomers going first to empty houses and leavers
+  leaving the humblest housing first; no more newcomers after three years of debt;
+- crime in common housing as in the game (increment and base for each level, distance
+  of sentiment from 40, passing guards): above 80 a house produces a thief, who robs an
+  elite house or the treasury;
+- permanent blessings of the sanctuaries, as in the game: Dionysus lowers crime,
+  Aphrodite keeps all inhabitants and lowers by 10 the appeal housing needs, Hephaestus
+  removes all fire risk, Poseidon makes fishing take two thirds of the time, Hera adds 3
+  points to population growth, Hermes makes carriers a third faster, Athena gives the
+  city's soldiers 4 points of armour against missiles, Atlas speeds up construction
+  (the wharf fits out its ship in 16 days instead of 32), Apollo adds 20 to the city's
+  score at the Panhellenic Games; Zeus, Demeter, Artemis, Ares and Hades act through
+  their events (defence against hostile gods, monsters, invasions) rather than through
+  a permanent blessing;
+- city health as in the game (services advisor): each month it moves towards the share
+  of inhabitants visited by physicians and who have eaten, plus a bonus for cities under
+  1,000 inhabitants; below 75 an epidemic can break out (up to 3 chances in 100 a day
+  below 10, at most one per month) and strike 40 % of houses, the least cared-for
+  first, killing from a quarter of the inhabitants on very easy to all of them on very
+  hard; each year, health makes part of the population be born (up to 6 % above 90) or
+  die (up to 5 %);
+- saving and loading a game.
 
-Toutes les aventures installées se jouent de bout en bout : `olympe --bilan` vérifie
-que chacun des 152 épisodes a ses objectifs suivis et réalisables, et chaque aventure
-s'enchaîne jusqu'à son récit de fin.
+All installed adventures can be played from start to finish: `olympe --bilan` checks
+that each of the 152 episodes has its goals tracked and achievable, and each adventure
+runs through to its closing story.
 
-Ce qui reste approché ou absent : les tirs des archers sont figurés par des traits,
-faute d'images de flèches dans les catalogues ; les exploitations se posent à moins de huit
-cases de leur gisement (arbres, carrière de marbre, rochers de cuivre, marbre noir,
-orichalque), sauf si la carte n'en a aucun alors qu'un objectif l'exige ; le
-sommet des pyramides, l'observatoire et le musée posés sur les monuments sont
-figurés par des obélisques ; 
-l'interface est celle d'Olympe, habillée des images d'origine. Les rythmes des
-producteurs et des ateliers, et l'usure de la laine, de l'huile et du vin dans les
-maisons, sont ceux du jeu ; ceux de la pêcherie (selon la distance au banc de poissons
-le plus proche placé dans l'éditeur), de la laiterie et du pavillon de chasse ont été
-mesurés dans le jeu, mais Olympe ne fait paraître ni bateaux, ni chèvres, ni gibier.
-D'autres réglages d'équilibre (quantités de matériaux) sont approchés et non repris du
-jeu, de même que le butin des voleurs.
+What is approximated or missing: archers' shots are drawn as lines, since the catalogs
+have no arrow images; resource buildings are placed within eight tiles of their deposit
+(trees, marble quarry, copper rocks, black marble, orichalc), unless the map has none
+while a goal requires one; the top of the pyramids and the observatory and museum
+placed on monuments are drawn as obelisks; the interface is Olympe's own, dressed in
+the original images. The rates of producers and workshops, and the use of fleece, oil
+and wine in houses, are the game's; those of the fishery (depending on the distance to
+the nearest fishing spot placed in the editor), the dairy and the hunting lodge were
+measured in the game, but Olympe shows no boats, goats or game animals. Other balance
+settings (amounts of materials) are approximations rather than the game's values, as is
+the thieves' loot.
 
 
 ## Installation
 
-Il faut :
+You need:
 
-- [Rust](https://www.rust-lang.org/fr/tools/install) 1.85 ou plus récent ;
-- les bibliothèques **SDL3** et **Opus** avec leurs fichiers de développement
-  (`SDL3-devel` et `libopus-devel`, ou `libsdl3-dev` et `libopus-dev`, selon le système) ;
-- **ffmpeg**, facultatif, pour convertir la musique du jeu à l'installation des données.
-  Sans lui, le jeu fonctionne mais sans musique.
+- [Rust](https://www.rust-lang.org/tools/install) 1.85 or newer;
+- the **SDL3** and **Opus** libraries with their development files (`SDL3-devel` and
+  `libopus-devel`, or `libsdl3-dev` and `libopus-dev`, depending on the system);
+- **ffmpeg**, optional, to convert the game's music when installing the data. Without
+  it the game works, but without music.
 
-Sous Linux et les autres Unix :
+On Linux and other Unix systems:
 
 ```sh
 ./installer.sh
 ```
 
-Le script compile Olympe et pose le programme dans `~/.local/bin`, avec une entrée de
-menu et une icône. Sur tout système, on peut aussi faire :
+The script builds Olympe and installs the program in `~/.local/bin`, with a menu entry
+and an icon. On any system you can also run:
 
 ```sh
 cargo install --path . --bin olympe
 ```
 
-## Installer les données du jeu
+## Installing the game data
 
 ```sh
 olympe installer <source> [<source>…]
 ```
 
-Une source est, au choix :
+A source is any of:
 
-- le dossier où le jeu est installé ;
-- un dossier contenant le contenu d'un CD ;
-- une image de CD (`.iso`, `.bin`, brute ou non).
+- the folder where the game is installed;
+- a folder holding the contents of a CD;
+- a CD image (`.iso`, `.bin`, raw or not).
 
-Avec les CD, donnez celui de Zeus puis celui de Poséidon :
+With the CDs, give the Zeus CD first, then the Poseidon CD:
 
 ```sh
-olympe installer "CD zeus.iso" "CD poséidon.iso"
+olympe installer "zeus cd.iso" "poseidon cd.iso"
 ```
 
-Un correctif officiel (le programme `mise_a_jour_2_1_fr_poseidon.exe`, par exemple) se
-donne comme une source de plus, en dernier, ou seul après coup :
+An official patch (for example the program `mise_a_jour_2_1_fr_poseidon.exe`) is given
+as one more source, last, or on its own afterwards:
 
 ```sh
 olympe installer mise_a_jour_2_1_fr_poseidon.exe
 ```
 
-Olympe y trouve les fichiers de données qu'il corrige et les met à jour ; le programme
-Windows lui-même n'est jamais exécuté.
+Olympe finds the data files it patches and updates them; the Windows program itself is
+never run.
 
-Les données vont dans le dossier habituel du système (`~/.local/share/olympe` sous
-Linux, `~/Library/Application Support/olympe` sous macOS, `%APPDATA%\olympe` sous
-Windows), ou dans celui que désigne `--vers`. Comptez environ 700 Mo et une minute.
+The data goes into the system's usual folder (`~/.local/share/olympe` on Linux,
+`~/Library/Application Support/olympe` on macOS, `%APPDATA%\olympe` on Windows), or
+into the one given with `--vers`. It takes about 700 MB and a minute.
 
-## Jouer
+## Playing
 
 ```sh
-olympe                          # écran de choix d'aventure
-olympe "les aventures de jason" # une aventure par son nom
-olympe chemin/vers/carte.map    # une carte précise
+olympe                              # adventure selection screen
+olympe "les aventures de jason"     # an adventure by name
+olympe path/to/map.map              # a specific map
 ```
 
-En jeu, la touche `H` affiche les commandes. `olympe --aide` liste les options.
+In game, the `H` key shows the controls. `olympe --aide` lists the options (the
+command-line options and in-game texts are in French by default).
 
-La langue se choisit avec `--langue en` ou `--langue eo` (ou avec `L` sur l'écran des
-aventures) ; le choix est retenu dans le fichier `langue` de la configuration de
-l'utilisateur. Les textes du jeu viennent du sous-dossier de la langue (`en`) quand il
-existe ; l'espéranto a ses propres traductions. Les voix espéranto, quand elles
-existent, se rangent dans `donnees/eo/audio/voice/campaign` et passent avant celles de
-l'installation. Une partie de l'interface reste à traduire.
+The language is chosen with `--langue en` or `--langue eo` (or with `L` on the
+adventure screen); the choice is remembered in the `langue` file of the user's
+configuration folder. The game's texts come from the language's subfolder (`en`) when
+it exists; Esperanto has its own translations. Esperanto voices, when available, go in
+`donnees/eo/audio/voice/campaign` and take precedence over those of the installation.
+Part of the interface still has to be translated.
 
-Deux habillages sont proposés : celui du jeu d'origine (par défaut) et un habillage
-moderne, avec un bandeau sombre à plaques et un panneau de construction en liste, où
-chaque bâtiment a sa vignette, son prix et sa description. La touche `I` ou le menu
-Options passe de l'un à l'autre, et le choix est retenu dans le fichier `interface` de
-la configuration ; `--interface moderne` ou `--interface origine` l'impose pour un seul
-lancement.
+Two interfaces are available: the original game's (the default) and a modern one, with
+a dark top bar with plaques and a build panel listing every building with its
+thumbnail, price and description. The `I` key or the Options menu switches between
+them, and the choice is remembered in the `interface` file of the configuration
+folder; `--interface moderne` or `--interface origine` forces one for a single launch.
 
-Les parties s'enregistrent avec `F5` et se rechargent avec `F9` ; elles sont rangées
-dans le sous-dossier `sauvegardes` des données.
+Games are saved with `F5` and loaded with `F9`; they are stored in the `sauvegardes`
+subfolder of the data folder.
 
-## Développement
+## Development
 
 ```sh
 cargo test --release
 ```
 
-Les tests qui portent sur les données du jeu cherchent un dossier `donnees/` à la
-racine du dépôt et ne font rien s'il est absent. Pour le créer :
+Tests that use the game data look for a `donnees/` folder at the root of the repository
+and do nothing if it is missing. To create it:
 
 ```sh
 olympe installer <sources> --vers donnees
 ```
 
-Le code est commenté en français. Les formats du jeu d'origine (images, cartes,
-aventures, textes, archives des CD) sont lus par des modules sans dépendance externe ;
-seuls l'affichage et le son passent par SDL3 et Opus.
+The code is commented in French. The original game's formats (images, maps,
+adventures, texts, CD archives) are read by modules with no external dependency; only
+display and sound go through SDL3 and Opus.
 
-Outils de mise au point : `zeus-iso`, `zeus-cab`, `zeus-sprites`, `zeus-map`,
-`zeus-text`, `zeus-jpeg`, `zeus-opus` (voir `src/bin/`). `olympe --mesure 600`
-dessine 600 images sans synchronisation verticale et donne la cadence obtenue.
+Debugging tools: `zeus-iso`, `zeus-cab`, `zeus-sprites`, `zeus-map`, `zeus-text`,
+`zeus-jpeg`, `zeus-opus` (see `src/bin/`). `olympe --mesure 600` draws 600 frames
+without vertical sync and reports the frame rate.
 
-## Systèmes
+## Platforms
 
-Olympe est développé et essayé sous Linux (Wayland, rendu OpenGL par SDL3).
+Olympe is developed and tested on Linux (Wayland, OpenGL rendering through SDL3).
 
-Sur la machine de développement (processeur graphique intégré), le jeu a été essayé
-avec chaque combinaison que SDL3 propose : affichage Wayland ou X11, rendu OpenGL,
-OpenGL ES 2, Vulkan, « gpu » de SDL, et rendu logiciel sans carte graphique. Tous
-fonctionnent ; une cité se dessine en 1 à 2 ms par image avec accélération, 6 ms en
-rendu logiciel. Pour forcer un choix : `SDL_VIDEODRIVER=x11` ou
-`SDL_RENDER_DRIVER=software`, par exemple.
+On the development machine (integrated GPU), the game was tested with every
+combination SDL3 offers: Wayland or X11 display, OpenGL, OpenGL ES 2, Vulkan, SDL's
+"gpu" renderer, and software rendering without a GPU. All of them work; a city is
+drawn in 1 to 2 ms per frame with acceleration, 6 ms with software rendering. To force
+a choice: `SDL_VIDEODRIVER=x11` or `SDL_RENDER_DRIVER=software`, for example.
 
-Pour Windows (`x86_64-pc-windows-gnu`) et macOS (`aarch64-apple-darwin`), le code passe
-le contrôle du compilateur (`cargo check --target …`) : rien n'y est propre à un
-système. L'édition de liens avec SDL3 et Opus, et le jeu lui-même, n'y ont pas encore
-été essayés.
+For Windows (`x86_64-pc-windows-gnu`) and macOS (`aarch64-apple-darwin`), the code
+passes the compiler's checks (`cargo check --target …`): nothing in it is specific to
+one system. Linking with SDL3 and Opus, and the game itself, have not been tried there
+yet.
 
-## Licence
+## License
 
-Olympe est distribué sous licence GNU GPL, version 3 ou ultérieure (voir `LICENSE`).
+Olympe is distributed under the GNU GPL, version 3 or later (see `LICENSE`).
 
-*Zeus : le Maître de l'Olympe* et *Poséidon* sont des marques et des œuvres de leurs
-ayants droit. Ce projet n'est ni affilié à eux ni approuvé par eux.
+*Zeus: Master of Olympus* and *Poseidon* are trademarks and works of their respective
+owners. This project is neither affiliated with nor endorsed by them.

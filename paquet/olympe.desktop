@@ -1,10 +1,12 @@
 [Desktop Entry]
 Type=Application
 Name=Olympe
-GenericName=Jeu de gestion de cité
-Comment=Moteur libre pour Zeus : le Maître de l'Olympe et Poséidon
+GenericName=City-building game
+GenericName[fr]=Jeu de gestion de cité
+Comment=Open-source engine for Zeus: Master of Olympus and Poseidon
+Comment[fr]=Moteur libre pour Zeus : le Maître de l'Olympe et Poséidon
 Exec=olympe
 Icon=olympe
 Terminal=false
 Categories=Game;StrategyGame;Simulation;
-Keywords=zeus;poseidon;cité;grèce;
+Keywords=zeus;poseidon;olympus;city;greece;cité;grèce;
