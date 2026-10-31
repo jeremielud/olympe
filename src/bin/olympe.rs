@@ -391,7 +391,7 @@ const HELP: [&str; 21] = [
     "Mini-carte : clic pour s'y rendre",
     "1 à 9 et 0 : ouvrir une catégorie, puis choisir un bâtiment",
     "Panneau : clic sur une catégorie, puis sur un bâtiment ; molette pour défiler",
-    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route en bas du panneau) ; glisser une maison pour en poser une rangée",
+    "Clic gauche : bâtir ; glisser pour tracer une route (bouton route en bas du panneau) ; glisser des maisons pour remplir un rectangle",
     "X : dégager",
     "Echap : lâcher l'outil, refermer la catégorie, quitter",
     "Espace ou P : pause",
@@ -496,7 +496,7 @@ const RAIL_BUTTON: (f32, f32) = (46.0, 42.0);
 const CONTENT_LEFT: f32 = 62.0;
 const CONTENT_WIDTH: f32 = MODERN_SIDEBAR_WIDTH - CONTENT_LEFT - 8.0;
 /// Bas du panneau : fiche de l'outil, touches, outils.
-const DOCK_HEIGHT: f32 = 120.0;
+const DOCK_HEIGHT: f32 = 138.0;
 /// Hauteur d'une ligne de bâtiment dans la liste.
 const BUILD_ROW: f32 = 38.0;
 /// Délai avant l'affichage d'une bulle d'aide.
@@ -2222,6 +2222,33 @@ impl Graphics {
         sprite
     }
 
+    /// Bouton rond de l'interface d'origine, détouré : son image garde dans les coins
+    /// le bleu du panneau où il se logeait, qu'on efface hors du cercle.
+    fn round_sprite(&mut self, id: usize) -> Option<Sprite> {
+        let key = (Source::Interface, id | ROUND_SPRITE);
+        if let Some(&sprite) = self.sprites.get(&key) {
+            return sprite;
+        }
+        let sprite = (|| {
+            let catalog = self.catalog(Source::Interface);
+            let image = catalog.images.get(id)?;
+            let mut rgba = catalog.decode(id).ok()?;
+            let (w, h) = (image.width as f32, image.height as f32);
+            // Un pixel de marge : certaines pièces ne sont pas tout à fait centrées.
+            let radius = w.min(h) / 2.0 - 1.0;
+            for (index, pixel) in rgba.chunks_exact_mut(4).enumerate() {
+                let (x, y) = ((index % image.width) as f32 + 0.5 - w / 2.0, (index / image.width) as f32 + 0.5 - h / 2.0);
+                let distance = (x * x + y * y).sqrt();
+                // Bord adouci sur un pixel.
+                let keep = (radius - distance).clamp(0.0, 1.0);
+                pixel[3] = (pixel[3] as f32 * keep) as u8;
+            }
+            self.upload_rgba(&rgba, image.width, image.height)
+        })();
+        self.sprites.insert(key, sprite);
+        sprite
+    }
+
     fn upload(&self, source: Source, id: usize) -> Option<Sprite> {
         let catalog = self.catalog(source);
         let image = catalog.images.get(id)?;
@@ -2246,7 +2273,12 @@ impl Graphics {
         if green * 2 > opaque {
             return None;
         }
-        let (w, h) = (image.width as i32, image.height as i32);
+        self.upload_rgba(&rgba, image.width, image.height)
+    }
+
+    /// Envoie des pixels RGBA à la carte graphique.
+    fn upload_rgba(&self, rgba: &[u8], width: usize, height: usize) -> Option<Sprite> {
+        let (w, h) = (width as i32, height as i32);
         // SAFETY : `rgba` contient w × h pixels de 4 octets et vit jusqu'au retour de l'appel.
         unsafe {
             let texture = sdl::SDL_CreateTexture(self.renderer, sdl::PIXELFORMAT_ABGR8888, sdl::TEXTUREACCESS_STATIC, w, h);
@@ -2258,6 +2290,13 @@ impl Graphics {
         }
     }
 }
+
+/// Marque des images détourées dans le cache des images (`round_sprite`).
+const ROUND_SPRITE: usize = 1 << 24;
+/// Logement modeste dans les vignettes : une maison habitée (quatrième état de
+/// `HOUSE_IMAGES` dans le monde) plutôt que le terrain vacant de sa première image.
+const HOUSE_LOT_IMAGE: usize = 1006;
+const HOUSE_ICON_IMAGE: usize = 1012;
 
 /// Polices de l'interface.
 const FONT_TEXT: Font = Font(335);
@@ -2368,6 +2407,44 @@ impl Graphics {
         }
     }
 
+    /// Image de l'interface centrée dans la case donnée, réduite sans être déformée
+    /// (jamais agrandie : les petites icônes restent nettes).
+    unsafe fn blit_fit(&mut self, image: usize, x: f32, y: f32, w: f32, h: f32) {
+        let Some(sprite) = self.sprite(Source::Interface, image) else { return };
+        let scale = (w / sprite.width).min(h / sprite.height).min(1.0);
+        let (tw, th) = ((sprite.width * scale).round(), (sprite.height * scale).round());
+        let target = sdl::FRect { x: (x + (w - tw) / 2.0).round(), y: (y + (h - th) / 2.0).round(), w: tw, h: th };
+        unsafe {
+            sdl::SDL_SetTextureScaleMode(sprite.texture, if scale < 1.0 { sdl::SCALEMODE_LINEAR } else { sdl::SCALEMODE_NEAREST });
+            sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
+        }
+    }
+
+    /// Bouton rond d'origine, détouré et centré dans la case.
+    unsafe fn blit_round(&mut self, image: usize, x: f32, y: f32, w: f32, h: f32) {
+        let Some(sprite) = self.round_sprite(image) else { return };
+        let scale = (w / sprite.width).min(h / sprite.height).min(1.0);
+        let (tw, th) = ((sprite.width * scale).round(), (sprite.height * scale).round());
+        let target = sdl::FRect { x: (x + (w - tw) / 2.0).round(), y: (y + (h - th) / 2.0).round(), w: tw, h: th };
+        unsafe {
+            sdl::SDL_SetTextureScaleMode(sprite.texture, sdl::SCALEMODE_LINEAR);
+            sdl::SDL_RenderTexture(self.renderer, sprite.texture, null(), &target);
+        }
+    }
+
+    /// Bouton de l'habillage moderne : ardoise, éclairé au survol, doré quand il est actif.
+    unsafe fn button(&self, slot: (f32, f32, f32, f32), active: bool, hover: bool) {
+        let (x, y, w, h) = slot;
+        unsafe {
+            let fill = if active { (64, 52, 24, 235) } else if hover { UI_FILL_HOVER } else { (20, 29, 40, 215) };
+            self.fill(x, y, w, h, fill);
+            // Liseré clair en haut, sombre en bas : un léger relief.
+            self.fill(x + 1.0, y + 1.0, w - 2.0, 1.0, if active { (236, 202, 122, 160) } else { (90, 106, 124, 90) });
+            self.fill(x + 1.0, y + h - 2.0, w - 2.0, 1.0, (0, 0, 0, 120));
+            self.stroke(x, y, w, h, if active { (206, 168, 88, 200) } else if hover { (150, 126, 70, 150) } else { (60, 72, 86, 140) });
+        }
+    }
+
     /// Remplit un rectangle, en mélange si la couleur est translucide.
     unsafe fn fill(&self, x: f32, y: f32, w: f32, h: f32, colour: (u8, u8, u8, u8)) {
         let (r, g, b, a) = colour;
@@ -2409,10 +2486,11 @@ impl Graphics {
     unsafe fn kind_icon(&mut self, kind: &Kind, x: f32, y: f32, w: f32, h: f32) -> bool {
         let mut chosen: Option<(Source, usize, f32, f32)> = None;
         for part in kind.parts.iter().filter(|part| !part.crop) {
-            if let Some(sprite) = self.sprite(part.source, part.image) {
+            let image = if kind.function == Function::House && part.image == HOUSE_LOT_IMAGE { HOUSE_ICON_IMAGE } else { part.image };
+            if let Some(sprite) = self.sprite(part.source, image) {
                 let better = chosen.is_none_or(|(_, _, width, height)| sprite.height * sprite.width > width * height);
                 if better {
-                    chosen = Some((part.source, part.image, sprite.width, sprite.height));
+                    chosen = Some((part.source, image, sprite.width, sprite.height));
                 }
             }
         }
@@ -2504,21 +2582,16 @@ fn tile_origin(x: i32, y: i32) -> (f32, f32) {
     ((x - y) as f32 * HALF_WIDTH, (x + y) as f32 * HALF_HEIGHT)
 }
 
-/// Cases traversées en ligne droite de `from` à `to`, sans `from` : le glissement
-/// d'une maison tente chaque case, et les emprises qui se chevauchent sont refusées,
-/// ce qui laisse des maisons jointives sans trou.
-fn house_drag_tiles(from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+/// Maisons d'un rectangle glissé de `from` à `to` : une toutes les `size` cases dans
+/// chaque sens, à partir de la case où le geste a commencé, pour qu'elles se touchent.
+/// Seules les maisons se posent ainsi : les autres bâtiments coûtent trop cher pour un
+/// geste involontaire.
+fn house_grid(size: i32, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let size = size.max(1);
     let (dx, dy) = (to.0 - from.0, to.1 - from.1);
-    let steps = dx.abs().max(dy.abs());
-    if steps == 0 {
-        return Vec::new();
-    }
-    (1..=steps)
-        .map(|i| {
-            let ratio = i as f32 / steps as f32;
-            (from.0 + (dx as f32 * ratio).round() as i32, from.1 + (dy as f32 * ratio).round() as i32)
-        })
-        .collect()
+    let (sx, sy) = (if dx < 0 { -1 } else { 1 }, if dy < 0 { -1 } else { 1 });
+    let (columns, rows) = (dx.abs() / size + 1, dy.abs() / size + 1);
+    (0..rows).flat_map(|j| (0..columns).map(move |i| (from.0 + sx * i * size, from.1 + sy * j * size))).collect()
 }
 
 /// Cases que couvre un geste de `from` à `to` : le tracé d'une route ou d'un mur, ou
@@ -3666,9 +3739,9 @@ fn run(
         let mut hovered = (-1, -1);
         // Dernière case d'un glissement en cours (route ou démolition).
         let mut drag_from: Option<(i32, i32)> = None;
-        // Maison posée et dernière case visitée pendant un clic maintenu : glisser
-        // pose une rangée de maisons, alignées sur la grille.
-        let mut build_drag: Option<(usize, (i32, i32))> = None;
+        // Maisons glissées : le modèle, la case où le geste a commencé et la dernière
+        // case survolée. Le rectangle se remplit de maisons au relâchement.
+        let mut build_drag: Option<(usize, (i32, i32), (i32, i32))> = None;
         let mut event = sdl::Event::new();
         let mut running = true;
         // (profondeur, couche, coin haut-gauche en pixels de monde, catalogue, image)
@@ -4557,22 +4630,19 @@ fn run(
                         if let (true, Some(target)) = (buttons & sdl::BUTTON_LEFT_MASK != 0, minimap_at.target(pointer.0 / ui, pointer.1 / ui)) {
                             (view.cx, view.cy) = target;
                         }
-                        // Clic maintenu sur une maison : poser la rangée au fil du geste.
-                        if let Some((kind, last)) = build_drag {
+                        // Clic maintenu sur une maison : le rectangle suit le pointeur tant
+                        // qu'il reste sur la carte.
+                        if let Some((kind, from, _)) = build_drag {
                             let (ix, iy) = (pointer.0 / ui, pointer.1 / ui);
                             let (top_bar, sidebar_width) = chrome_size();
                             let over_map = iy >= top_bar && ix < w / ui - sidebar_width;
-                            if buttons & sdl::BUTTON_LEFT_MASK == 0 || tool != Tool::Build(kind) || !over_map {
+                            if buttons & sdl::BUTTON_LEFT_MASK == 0 || tool != Tool::Build(kind) {
                                 build_drag = None;
-                            } else if world.kinds.get(kind).is_some_and(|k| k.function == Function::House) {
+                            } else if over_map {
                                 let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h);
                                 let at = pick(&world, wx, wy);
-                                if at != last && in_grid(at) {
-                                    for tile in house_drag_tiles(last, at) {
-                                        let (cx, cy) = build_corner(&world, kind, tile);
-                                        let _ = world.place_building(kind, cx, cy);
-                                    }
-                                    build_drag = Some((kind, at));
+                                if in_grid(at) {
+                                    build_drag = Some((kind, from, at));
                                 }
                             }
                         }
@@ -4580,7 +4650,24 @@ fn run(
                     // Relâcher pose le tracé montré pendant le geste, comme dans le jeu : la
                     // route ou le mur le long du chemin, ou la démolition du rectangle.
                     sdl::EVENT_MOUSE_BUTTON_UP if event.button() == sdl::BUTTON_LEFT => {
-                        build_drag = None;
+                        if let Some((kind, from, to)) = build_drag.take() {
+                            let tiles = house_grid(world.kinds[kind].size as i32, from, to);
+                            let mut placed = 0;
+                            for &tile in &tiles {
+                                let (x, y) = build_corner(&world, kind, tile);
+                                placed += world.place_building(kind, x, y) as usize;
+                            }
+                            // Rien de posé : dire pourquoi, d'après la case du départ.
+                            if placed == 0 {
+                                let (x, y) = build_corner(&world, kind, from);
+                                if world.money < world.kinds[kind].cost {
+                                    notice = (trf!("Pas assez de drachmes pour {}", world.kind_name(kind)), now);
+                                } else if let Some(hint) = world.placement_hint(kind, x, y) {
+                                    notice = (format!("{} : {}", world.kind_name(kind), tr(hint)), now);
+                                }
+                            }
+                            hovered = (-1, -1);
+                        }
                         if let Some(from) = drag_from.take() {
                             let to = { let (wx, wy) = view.to_world(pointer.0, pointer.1, w, h); pick(&world, wx, wy) };
                             let tiles = drag_tiles(&world, tool, from, to);
@@ -4778,6 +4865,10 @@ fn run(
                             }
                             // Le geste commence ; il se pose au relâchement.
                             Tool::Road | Tool::Wall | Tool::Demolish => drag_from = Some((x, y)),
+                            // Maison : le rectangle commence ; il se remplit au relâchement.
+                            Tool::Build(kind) if world.kinds.get(kind).is_some_and(|k| k.function == Function::House) => {
+                                build_drag = Some((kind, (x, y), (x, y)));
+                            }
                             Tool::Build(kind) => {
                                 let at = (x, y);
                                 let (x, y) = build_corner(&world, kind, at);
@@ -4787,11 +4878,6 @@ fn run(
                                     } else if let Some(hint) = world.placement_hint(kind, x, y) {
                                         notice = (format!("{} : {}", world.kind_name(kind), tr(hint)), now);
                                     }
-                                }
-                                // Seules les maisons se posent en glissant : les autres
-                                // bâtiments coûtent trop cher pour un geste involontaire.
-                                if world.kinds.get(kind).is_some_and(|k| k.function == Function::House) {
-                                    build_drag = Some((kind, at));
                                 }
                             }
                         }
@@ -5057,12 +5143,29 @@ fn run(
                 sdl::SDL_RenderLine(renderer, a.0, a.1, b.0, b.1);
             }
 
-            // Aperçu de ce que l'outil poserait : translucide, rougi si c'est impossible.
+            // Aperçu de ce que l'outil poserait : translucide, rougi si c'est impossible
+            // (ou au-delà des drachmes). Des maisons glissées : tout le rectangle.
+            let mut house_plan: Option<(usize, i32, String)> = None;
             if let (Tool::Build(kind), true) = (tool, in_grid(under)) {
-                let corner = build_corner(&world, kind, under);
-                let allowed = world.can_place(kind, corner.0, corner.1) && world.money >= world.kinds[kind].cost;
-                // Le bâtiment se montre comme à l'orientation 0, à partir de la case survolée.
-                let start = zeus::world::rotate(orientation(), under.0, under.1);
+                let mut tiles = match build_drag {
+                    Some((dragged, from, to)) if dragged == kind => house_grid(world.kinds[kind].size as i32, from, to),
+                    _ => vec![under],
+                };
+                tiles.retain(|&tile| in_grid(tile));
+                // De l'arrière vers l'avant, pour que les maisons se recouvrent bien.
+                tiles.sort_by_key(|&(x, y)| {
+                    let (rx, ry) = zeus::world::rotate(orientation(), x, y);
+                    rx + ry
+                });
+                let (cost, mut budget, mut count) = (world.kinds[kind].cost, world.money, 0);
+                for at in tiles {
+                let corner = build_corner(&world, kind, at);
+                let allowed = world.can_place(kind, corner.0, corner.1) && budget >= cost;
+                if allowed {
+                    (budget, count) = (budget - cost, count + 1);
+                }
+                // Le bâtiment se montre comme à l'orientation 0, à partir de sa case.
+                let start = zeus::world::rotate(orientation(), at.0, at.1);
                 for part in world.kinds[kind].parts.clone() {
                     let Some(sprite) = graphics.sprite(part.source, part.image) else { continue };
                     let carrier = zeus::world::unrotate(orientation(), start.0 + part.dx as i32, start.1 + part.dy as i32 + part.size as i32 - 1);
@@ -5080,6 +5183,10 @@ fn run(
                     sdl::SDL_RenderTexture(renderer, sprite.texture, null(), &target);
                     sdl::SDL_SetTextureAlphaMod(sprite.texture, 255);
                     sdl::SDL_SetTextureColorMod(sprite.texture, 255, 255, 255);
+                }
+                }
+                if build_drag.is_some() {
+                    house_plan = Some((count, count as i32 * cost, world.kind_name(kind)));
                 }
             } else if tool == Tool::Demolish && !drag_plan.is_empty() {
                 for &tile in &drag_plan {
@@ -5101,6 +5208,17 @@ fn run(
             // lisible. Tout ce qui suit se mesure en unités d'interface.
             sdl::SDL_SetRenderScale(renderer, ui, ui);
             let (w, h) = (w / ui, h / ui);
+            // Maisons du rectangle et leur coût, près du pointeur.
+            if let Some((count, total, name)) = &house_plan {
+                // La police du jeu n'a ni « × » ni tiret long.
+                let label = format!("{count} {name} : {total} {}", text.get(8, 0));
+                let (lx, ly) = (pointer.0 / ui + 16.0, pointer.1 / ui - 8.0);
+                let width = graphics.text_width(FONT_SMALL, &label) + 8.0;
+                sdl::SDL_SetRenderDrawColor(renderer, 20, 20, 20, 200);
+                sdl::SDL_SetRenderDrawBlendMode(renderer, sdl::BLENDMODE_BLEND);
+                sdl::SDL_RenderFillRect(renderer, &sdl::FRect { x: lx - 4.0, y: ly - 2.0, w: width, h: graphics.line_height(FONT_SMALL) + 4.0 });
+                graphics.draw_text(FONT_SMALL_GOLD, &label, lx, ly);
+            }
             // Coût du tracé, près du pointeur.
             if matches!(tool, Tool::Road | Tool::Wall) && drag_from.is_some() {
                 let unit = if tool == Tool::Road { road_cost } else { wall_cost };
@@ -5202,21 +5320,26 @@ fn run(
                 graphics.fill(side, MODERN_TOP_BAR_HEIGHT, 1.0, h - MODERN_TOP_BAR_HEIGHT, UI_LINE);
                 graphics.fill(side, MODERN_TOP_BAR_HEIGHT, MODERN_SIDEBAR_WIDTH, 1.0, UI_LINE);
 
-                // Ruban des catégories, avec leurs icônes d'origine.
+                // Ruban des catégories : la vignette du premier bâtiment de chacune, comme
+                // dans la liste ; l'icône d'origine si la catégorie n'en a aucun.
                 for (index, &(icon, _)) in CATEGORY_TABS.iter().enumerate() {
                     let slot = (side + RAIL_LEFT, MODERN_TOP_BAR_HEIGHT + RAIL_TOP + RAIL_STEP * index as f32, RAIL_BUTTON.0, RAIL_BUTTON.1);
                     let chosen = open_category == Some(index) && !sidebar_map;
+                    graphics.button(slot, chosen, inside(slot));
                     if chosen {
-                        graphics.fill(slot.0, slot.1, slot.2, slot.3, (64, 52, 24, 235));
-                        graphics.stroke(slot.0, slot.1, slot.2, slot.3, (206, 168, 88, 190));
                         graphics.fill(slot.0 - 4.0, slot.1 + 6.0, 3.0, slot.3 - 12.0, (224, 186, 98, 255));
-                    } else if inside(slot) {
-                        graphics.fill(slot.0, slot.1, slot.2, slot.3, UI_FILL_HOVER);
-                    } else {
-                        graphics.fill(slot.0, slot.1, slot.2, slot.3, (18, 26, 36, 170));
                     }
-                    let state = if chosen { 2 } else if inside(slot) { 1 } else { 0 };
-                    graphics.blit_scaled(UI_TABS + UI_TAB_STATES * icon + state, slot.0 + 4.0, slot.1 + 3.0, 38.0, 36.0);
+                    let offered = category_tools(&world, index).into_iter().find_map(|t| match t { Tool::Build(kind) => Some(kind), _ => None });
+                    // Rien à bâtir pour l'instant : le premier bâtiment de la catégorie, assombri.
+                    let shown = offered.or_else(|| (0..world.kinds.len()).find(|&k| category_of(world.kinds[k].function) == index));
+                    let drawn = shown.is_some_and(|kind| graphics.kind_icon(&world.kinds[kind], slot.0 + 4.0, slot.1 + 4.0, slot.2 - 8.0, slot.3 - 8.0));
+                    if !drawn {
+                        let state = if chosen { 2 } else if inside(slot) { 1 } else { 0 };
+                        graphics.blit_fit(UI_TABS + UI_TAB_STATES * icon + state, slot.0 + 3.0, slot.1 + 3.0, slot.2 - 6.0, slot.3 - 6.0);
+                    }
+                    if offered.is_none() && !chosen {
+                        graphics.fill(slot.0 + 1.0, slot.1 + 1.0, slot.2 - 2.0, slot.3 - 2.0, (12, 17, 24, 170));
+                    }
                     menu_rows.push((slot, MenuRow::Category(index)));
                 }
 
@@ -5478,29 +5601,35 @@ fn run(
 
                 // Bas du panneau : touches des panneaux, puis outils de chantier.
                 graphics.fill(side + 8.0, dock_top - 4.0, MODERN_SIDEBAR_WIDTH - 16.0, 1.0, UI_LINE);
-                // Icônes d'origine : coche des objectifs, philosophe, globe, parchemin.
-                let key_icons = [1267usize, 1343, 1271, 1291];
-                let key_w = (cw - 12.0) / 4.0;
-                for (i, image) in key_icons.iter().enumerate() {
-                    let slot = (cx + i as f32 * (key_w + 4.0), dock_top + 38.0, key_w, 28.0);
-                    let open = [goals_panel, advisor_panel, cities_panel, journal_panel][i];
-                    graphics.fill(slot.0, slot.1, slot.2, slot.3, if open { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 180) });
-                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, if open { (206, 168, 88, 160) } else { (60, 72, 86, 100) });
-                    graphics.blit_scaled(*image, slot.0 + (key_w - 32.0) / 2.0, slot.1 + 2.0, 32.0, 24.0);
-                    let key = [sdl::KEY_O, sdl::KEY_A, sdl::KEY_C, sdl::KEY_J][i];
-                    menu_rows.push((slot, MenuRow::Key(key)));
-                }
+                // Fenêtres : de vrais boutons, deux par ligne, avec leur touche.
+                let panels = [
+                    (tr("Objectifs (O)"), sdl::KEY_O, goals_panel),
+                    (tr("Conseillers (A)"), sdl::KEY_A, advisor_panel),
+                    (tr("Cités (C)"), sdl::KEY_C, cities_panel),
+                    (tr("Journal (J)"), sdl::KEY_J, journal_panel),
+                ];
+                let key_w = (cw - 4.0) / 2.0;
                 if journal_panel {
                     unread = 0;
                 }
-                if unread > 0 {
-                    let slot = (cx + 3.0 * (key_w + 4.0), dock_top + 38.0, key_w, 28.0);
-                    let count = unread.min(99).to_string();
-                    let width = graphics.text_width(FONT_SMALL, &count) + 6.0;
-                    graphics.fill(slot.0 + slot.2 - width - 1.0, slot.1 - 4.0, width, 11.0, (170, 54, 42, 255));
-                    graphics.ink = UI_INK;
-                    graphics.draw_text(FONT_SMALL, &count, slot.0 + slot.2 - width + 2.0, slot.1 - 5.0);
+                for (i, (label, key, open)) in panels.iter().enumerate() {
+                    let slot = (cx + (i % 2) as f32 * (key_w + 4.0), dock_top + 36.0 + (i / 2) as f32 * 24.0, key_w, 21.0);
+                    graphics.button(slot, *open, inside(slot));
+                    let short = label.rsplit_once(" (").map_or(label.as_str(), |(name, _)| name);
+                    let fitted = graphics.fit(FONT_SMALL, short, slot.2 - 10.0);
+                    let width = graphics.text_width(FONT_SMALL, &fitted);
+                    graphics.ink = if *open { UI_GOLD } else { UI_INK };
+                    graphics.draw_text(FONT_SMALL, &fitted, slot.0 + (slot.2 - width) / 2.0, slot.1 + 5.0);
+                    if *key == sdl::KEY_J && unread > 0 {
+                        let count = unread.min(99).to_string();
+                        let width = graphics.text_width(FONT_SMALL, &count) + 6.0;
+                        graphics.fill(slot.0 + slot.2 - width - 2.0, slot.1 - 4.0, width, 11.0, (170, 54, 42, 255));
+                        graphics.ink = UI_INK;
+                        graphics.draw_text(FONT_SMALL, &count, slot.0 + slot.2 - width + 1.0, slot.1 - 5.0);
+                    }
+                    menu_rows.push((slot, MenuRow::Key(*key)));
                 }
+                graphics.ink = UI_INK;
                 let tool_w = (cw - 12.0) / 4.0;
                 let roadblock = world.kinds.iter().position(|k| k.function == Function::Roadblock).filter(|&k| !world.locked.get(k).copied().unwrap_or(false));
                 let rotate = (ROTATE_BUTTON, MenuRow::Key(sdl::KEY_END), false, true);
@@ -5515,12 +5644,12 @@ fn run(
                     (CLEAR_BUTTON, MenuRow::Pick(Tool::Demolish), tool == Tool::Demolish, true),
                     rotate,
                 ];
+                // Outils de chantier : les pièces rondes d'origine, à leur taille.
                 for (i, (image, action, chosen, enabled)) in tools.iter().enumerate() {
-                    let slot = (cx + i as f32 * (tool_w + 4.0), dock_top + 70.0, tool_w, 42.0);
-                    graphics.fill(slot.0, slot.1, slot.2, slot.3, if *chosen { (64, 52, 24, 235) } else if inside(slot) { UI_FILL_HOVER } else { (18, 26, 36, 190) });
-                    graphics.stroke(slot.0, slot.1, slot.2, slot.3, if *chosen { (206, 168, 88, 180) } else { (60, 72, 86, 100) });
+                    let slot = (cx + i as f32 * (tool_w + 4.0), dock_top + 86.0, tool_w, 44.0);
+                    graphics.button(slot, *chosen, *enabled && inside(slot));
                     let state = if !enabled { 3 } else if *chosen { 2 } else if inside(slot) { 1 } else { 0 };
-                    graphics.blit_scaled(image + state, slot.0 + (tool_w - 34.0) / 2.0, slot.1 + 3.0, 34.0, 36.0);
+                    graphics.blit_round(image + state, slot.0, slot.1 + 3.0, slot.2, slot.3 - 6.0);
                     if *enabled {
                         menu_rows.push((slot, *action));
                     }
@@ -6546,12 +6675,15 @@ mod narration_tests {
 
 #[cfg(test)]
 mod drag_tests {
-    use super::house_drag_tiles;
+    use super::house_grid;
 
     #[test]
-    fn a_house_drag_walks_every_tile_between_the_ends() {
-        assert_eq!(house_drag_tiles((0, 0), (4, 0)), vec![(1, 0), (2, 0), (3, 0), (4, 0)]);
-        assert_eq!(house_drag_tiles((0, 0), (0, -3)), vec![(0, -1), (0, -2), (0, -3)]);
-        assert!(house_drag_tiles((2, 2), (2, 2)).is_empty());
+    fn a_house_drag_fills_the_rectangle_with_touching_houses() {
+        // Un clic sans glisser : une seule maison.
+        assert_eq!(house_grid(2, (5, 5), (5, 5)), vec![(5, 5)]);
+        // Maisons de 2 × 2 : une toutes les deux cases, dans le sens du geste.
+        assert_eq!(house_grid(2, (0, 0), (4, 1)), vec![(0, 0), (2, 0), (4, 0)]);
+        assert_eq!(house_grid(2, (0, 0), (-3, 2)), vec![(0, 0), (-2, 0), (0, 2), (-2, 2)]);
+        assert_eq!(house_grid(2, (0, 0), (3, 3)).len(), 4);
     }
 }
